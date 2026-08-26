@@ -55,6 +55,7 @@
   .speed-row input { width: 70px; }
 }
 .mobile-menu-toggle{display:none;margin-left:auto;border:1px solid #294963;background:#102b42;color:#a9cce2;width:38px;height:38px;border-radius:10px;place-items:center;cursor:pointer}
+.delete-button{display:grid;place-items:center;border:0;background:transparent;color:#d9828b;width:32px;height:32px;border-radius:8px;cursor:pointer}.delete-button:hover{background:#48252c;color:#ffb0b0}
 @media (max-width: 900px) {
   .sidebar { display: flex !important; }
   .mobile-menu-toggle{display:grid}

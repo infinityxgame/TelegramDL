@@ -253,6 +253,40 @@ async def get_downloads() -> List[Dict[str, Any]]:
     ]
 
 
+@app.delete("/api/downloads/{item_id:path}")
+async def delete_download(item_id: str) -> Dict[str, Any]:
+    item_id = item_id.strip()
+    state = downloads_state.get(item_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="La descarga no existe")
+    if state.get("status") not in {"completed", "skipped", "failed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="No se puede borrar una descarga activa")
+
+    file_path = state.get("file_path")
+    deleted_file = False
+    if file_path:
+        target = Path(file_path).expanduser().resolve()
+        download_root = Path(downloader_instance.download_folder if downloader_instance else runtime_config["download_folder"])
+        if not download_root.is_absolute():
+            download_root = BASE_DIR / download_root
+        download_root = download_root.resolve()
+        if target != download_root and download_root not in target.parents:
+            raise HTTPException(status_code=403, detail="La ruta del archivo no es válida")
+        try:
+            if target.exists():
+                if not target.is_file():
+                    raise HTTPException(status_code=409, detail="La ruta no corresponde a un archivo")
+                target.unlink()
+                deleted_file = True
+        except OSError as error:
+            raise HTTPException(status_code=500, detail=f"No se pudo borrar el archivo: {error}") from error
+
+    downloads_state.pop(item_id, None)
+    if downloader_instance:
+        downloader_instance.listener_messages.pop(item_id, None)
+    return {"status": "ok", "id": item_id, "deleted_file": deleted_file}
+
+
 @app.get("/api/settings")
 async def get_settings() -> Dict[str, Any]:
     return {"status": "ok", "settings": public_config(runtime_config)}

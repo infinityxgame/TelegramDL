@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Menu, Radio, Save, Settings2, X, Zap } from 'lucide-vue-next'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Menu, Radio, Save, Settings2, Trash2, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -98,6 +98,15 @@ const cancelDownload = async (id) => {
   } catch (err) { error.value = err.message }
 }
 
+const deleteDownload = async item => {
+  if (!window.confirm(`¿Borrar el archivo "${item.file_name}" del servidor?`)) return
+  try {
+    await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+    message.value = 'Archivo borrado'
+    await fetchDownloads()
+  } catch (err) { error.value = err.message }
+}
+
 const activeDownloads = computed(() => downloads.value.filter(item => item.status === 'downloading'))
 const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
 const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
@@ -161,7 +170,7 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
         </aside>
       </div>
 
-      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span></div></section>
+      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
       <ListenerView v-else />
       <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
