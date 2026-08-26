@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
-from pyrogram import Client
+from pyrogram import Client, filters
 from pyrogram.errors import FloodWait
 from pyrogram.file_id import FileId
+from pyrogram.handlers import MessageHandler
 
 try:
     from fastapi import Body, FastAPI, HTTPException
@@ -41,6 +42,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "chunk_workers": 4,
     "speed_limit": {"value": 0, "unit": "MB"},
     "download_folder": "descargas",
+    "listener_enabled": True,
+    "listener_chat_ids": [],
 }
 SPEED_MULTIPLIERS = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
 MAX_STATE_ITEMS = 1000
@@ -91,6 +94,24 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
     folder = raw.get("download_folder", DEFAULT_CONFIG["download_folder"])
     folder = str(folder).strip() or DEFAULT_CONFIG["download_folder"]
 
+    raw_chat_ids = raw.get("listener_chat_ids", [])
+    if isinstance(raw_chat_ids, str):
+        raw_chat_ids = [part.strip() for part in raw_chat_ids.split(",") if part.strip()]
+    if not isinstance(raw_chat_ids, list):
+        if strict:
+            raise ValueError("Los IDs de escucha deben ser una lista")
+        raw_chat_ids = []
+    chat_ids = []
+    for raw_chat_id in raw_chat_ids:
+        try:
+            chat_id = int(raw_chat_id)
+        except (TypeError, ValueError):
+            if strict:
+                raise ValueError("Cada ID de escucha debe ser numérico")
+            continue
+        if chat_id not in chat_ids:
+            chat_ids.append(chat_id)
+
     return {
         "max_concurrent_downloads": _bounded_int(
             raw.get("max_concurrent_downloads", DEFAULT_CONFIG["max_concurrent_downloads"]),
@@ -109,6 +130,8 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
         ),
         "speed_limit": {"value": value, "unit": unit},
         "download_folder": folder,
+        "listener_enabled": bool(raw.get("listener_enabled", DEFAULT_CONFIG["listener_enabled"])),
+        "listener_chat_ids": chat_ids,
     }
 
 
@@ -131,7 +154,11 @@ def load_config() -> Dict[str, Any]:
         return config
     try:
         with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
-            return normalize_config(json.load(config_file))
+            raw_config = json.load(config_file)
+        config = normalize_config(raw_config)
+        if config != raw_config:
+            save_config(config)
+        return config
     except (OSError, json.JSONDecodeError):
         print(f"⚠️ No se pudo leer {CONFIG_PATH.name}; se usarán los valores por defecto.")
         return normalize_config(DEFAULT_CONFIG)
@@ -144,6 +171,8 @@ def public_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "parallel_chunks": normalized["parallel_chunks"],
         "chunk_workers": normalized["chunk_workers"],
         "speed_limit": normalized["speed_limit"],
+        "listener_enabled": normalized["listener_enabled"],
+        "listener_chat_ids": normalized["listener_chat_ids"],
     }
 
 
@@ -227,6 +256,22 @@ async def get_settings() -> Dict[str, Any]:
     return {"status": "ok", "settings": public_config(runtime_config)}
 
 
+@app.get("/api/listener/settings")
+async def get_listener_settings() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "enabled": runtime_config["listener_enabled"],
+        "chat_ids": runtime_config["listener_chat_ids"],
+    }
+
+
+@app.get("/api/listener")
+async def get_listener_items() -> List[Dict[str, Any]]:
+    if not downloader_instance:
+        return []
+    return downloader_instance.get_listener_items()
+
+
 async def apply_and_save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
     global runtime_config
     candidate = dict(runtime_config)
@@ -249,6 +294,21 @@ async def apply_and_save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
 async def set_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     settings = await apply_and_save_settings(data)
     return {"status": "ok", "settings": settings}
+
+
+@app.put("/api/listener/settings")
+async def set_listener_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    settings = await apply_and_save_settings(
+        {
+            "listener_enabled": data.get("enabled", True),
+            "listener_chat_ids": data.get("chat_ids", []),
+        }
+    )
+    return {
+        "status": "ok",
+        "enabled": settings["listener_enabled"],
+        "chat_ids": settings["listener_chat_ids"],
+    }
 
 
 @app.post("/api/settings/speed")
@@ -317,6 +377,29 @@ async def start_download(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "job_id": job_id,
         "max_concurrent_downloads": downloader_instance.max_concurrent_downloads,
     }
+
+
+@app.post("/api/listener/download")
+async def download_listener_item(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    item_id = str(data.get("id", "")).strip()
+    if not downloader_instance:
+        raise HTTPException(status_code=503, detail="El cliente no está listo")
+    listener_item = downloader_instance.listener_messages.get(item_id)
+    if not listener_item:
+        raise HTTPException(status_code=404, detail="Multimedia no encontrado")
+    message, chat_id = listener_item
+    state = downloads_state.get(item_id, {})
+    if state.get("status") in {"queued", "downloading", "completed"}:
+        return {"status": "ok", "message": "La multimedia ya está gestionándose"}
+    update_state(item_id, status="queued")
+    task = asyncio.create_task(
+        downloader_instance.download_file_from_message(message, chat_id, item_id)
+    )
+    active_tasks[item_id] = task
+    task.add_done_callback(
+        lambda finished, current_item=item_id: active_tasks.pop(current_item, None)
+    )
+    return {"status": "ok"}
 
 
 @app.get("/")
@@ -416,6 +499,9 @@ class TelegramDownloader:
         self.parallel_chunks = self.config["parallel_chunks"]
         self.chunk_workers = self.config["chunk_workers"]
         self.max_concurrent_downloads = self.config["max_concurrent_downloads"]
+        self.listener_enabled = self.config["listener_enabled"]
+        self.watched_chat_ids = set(self.config["listener_chat_ids"])
+        self.listener_messages: Dict[str, Tuple[Any, Any]] = {}
 
         self.speed_limit: Optional[float] = None
         self.bytes_downloaded_since_limit_set = 0
@@ -428,9 +514,10 @@ class TelegramDownloader:
             "downloader_session",
             api_id=api_id,
             api_hash=api_hash,
-            no_updates=True,
+            no_updates=False,
             max_concurrent_transmissions=10,
         )
+        self.client.add_handler(MessageHandler(self._on_new_media, filters.media))
         folder = Path(self.config["download_folder"])
         if not folder.is_absolute():
             folder = BASE_DIR / folder
@@ -453,6 +540,8 @@ class TelegramDownloader:
         self.config = normalized
         self.parallel_chunks = normalized["parallel_chunks"]
         self.chunk_workers = normalized["chunk_workers"]
+        self.listener_enabled = normalized["listener_enabled"]
+        self.watched_chat_ids = set(normalized["listener_chat_ids"])
 
         async with self.limit_lock:
             self._set_speed_limit_from_config(normalized)
@@ -506,6 +595,53 @@ class TelegramDownloader:
         async with self._concurrency_condition:
             self._active_file_downloads = max(0, self._active_file_downloads - 1)
             self._concurrency_condition.notify_all()
+
+    def get_listener_items(self) -> List[Dict[str, Any]]:
+        return [
+            {key: value for key, value in item.items() if key != "file_path"}
+            for item in sorted(
+                (
+                    item
+                    for item in downloads_state.values()
+                    if item.get("source") == "listener"
+                ),
+                key=lambda item: item.get("updated_at", 0),
+                reverse=True,
+            )[:200]
+        ]
+
+    async def _on_new_media(self, client: Client, message: Any) -> None:
+        if not self.listener_enabled or not message.chat:
+            return
+        chat_id = message.chat.id
+        if chat_id not in self.watched_chat_ids:
+            return
+        info = self._extract_media_info(message)
+        if not info:
+            return
+
+        item_id = f"listener:{chat_id}:{message.id}"
+        self.listener_messages[item_id] = (message, chat_id)
+        update_state(
+            item_id,
+            job_id=f"listener:{chat_id}",
+            message_id=message.id,
+            chat_id=chat_id,
+            file_name=sanitize_file_name(info.file_name) or f"file_{message.id}",
+            total_str=format_bytes(info.file_size),
+            kind=info.kind,
+            source="listener",
+            status="available",
+            progress=0,
+        )
+        if len(self.listener_messages) > 300:
+            oldest = sorted(
+                self.listener_messages,
+                key=lambda key: downloads_state.get(key, {}).get("updated_at", 0),
+            )[:50]
+            for old_item_id in oldest:
+                self.listener_messages.pop(old_item_id, None)
+                downloads_state.pop(old_item_id, None)
 
     @staticmethod
     def _item_id(job_id: str, message_id: int) -> str:

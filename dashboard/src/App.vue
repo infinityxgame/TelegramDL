@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import ListenerView from './views/ListenerView.vue'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -9,6 +10,7 @@ const error = ref('')
 const saving = ref(false)
 const hydrated = ref(false)
 const host = window.location.host
+const activeView = ref('downloads')
 const settings = reactive({
   max_concurrent_downloads: 2,
   parallel_chunks: true,
@@ -114,13 +116,18 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">↘</span><span>Telegram<span class="brand-accent">DL</span></span></div>
       <p class="sidebar-copy">Centro de descargas personal</p>
+      <nav class="sidebar-nav">
+        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'"><span>↓</span> Descargas</button>
+        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'"><span>◉</span> Escucha</button>
+      </nav>
       <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
       <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
     </aside>
 
     <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>Descargas</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
+      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : 'Escucha' }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
 
+      <template v-if="activeView === 'downloads'">
       <div v-if="message" class="toast success">✓ {{ message }}</div>
       <div v-if="error" class="toast danger">{{ error }}</div>
 
@@ -151,7 +158,13 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
       </div>
 
       <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span></div></section>
+      </template>
+      <ListenerView v-else />
       <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
     </main>
   </div>
 </template>
+
+<style>
+.sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
+</style>
