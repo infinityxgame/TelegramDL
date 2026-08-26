@@ -259,7 +259,7 @@ async def delete_download(item_id: str) -> Dict[str, Any]:
     state = downloads_state.get(item_id)
     if not state:
         raise HTTPException(status_code=404, detail="La descarga no existe")
-    if state.get("status") not in {"completed", "skipped", "failed", "cancelled"}:
+    if state.get("status") not in {"available", "completed", "skipped", "failed", "cancelled"}:
         raise HTTPException(status_code=409, detail="No se puede borrar una descarga activa")
 
     file_path = state.get("file_path")

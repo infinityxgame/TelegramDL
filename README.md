@@ -96,7 +96,7 @@ El servidor de desarrollo redirige las peticiones `/api` al backend de `http://1
 
 - **Descargas:** añade enlaces de mensajes de Telegram y consulta el progreso.
 - **Configuración:** ajusta descargas simultáneas, partes por archivo, límite de velocidad y carpeta de destino.
-- **Escucha:** activa la escucha y añade IDs numéricos de grupos o chats privados. Cada ID puede eliminarse desde el propio panel y los cambios se guardan en `config.json`.
+- **Escucha:** activa la escucha y añade IDs numéricos de grupos o chats privados. Cada ID puede eliminarse desde el propio panel y los cambios se guardan en `config.json`. Los archivos detectados aparecen en una lista donde pueden descargarse o eliminarse si no se desean.
 
 ## Archivos importantes
 
