@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Radio, Save, Settings2, X, Zap } from 'lucide-vue-next'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Menu, Radio, Save, Settings2, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -13,6 +13,7 @@ const saving = ref(false)
 const hydrated = ref(false)
 const host = window.location.host
 const activeView = ref('downloads')
+const mobileMenuOpen = ref(false)
 const settings = reactive({
   max_concurrent_downloads: 2,
   parallel_chunks: true,
@@ -115,12 +116,12 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
 
 <template>
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark"><Download :size="18" /></span><span>Telegram<span class="brand-accent">DL</span></span></div>
+    <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
+      <div class="brand"><span class="brand-mark"><Download :size="18" /></span><span>Telegram<span class="brand-accent">DL</span></span><button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button></div>
       <p class="sidebar-copy">Centro de descargas personal</p>
       <nav class="sidebar-nav">
-        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'"><ArrowDownToLine :size="16" /> Descargas</button>
-        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'"><Radio :size="16" /> Escucha</button>
+        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
+        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
       </nav>
       <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
       <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>

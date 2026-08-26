@@ -54,3 +54,9 @@
   .row-side button, .download-small { font-size: 9px; }
   .speed-row input { width: 70px; }
 }
+.mobile-menu-toggle{display:none;margin-left:auto;border:1px solid #294963;background:#102b42;color:#a9cce2;width:38px;height:38px;border-radius:10px;place-items:center;cursor:pointer}
+@media (max-width: 900px) {
+  .mobile-menu-toggle{display:grid}
+  .sidebar-nav{display:none}
+  .sidebar.mobile-open .sidebar-nav{display:flex;padding-top:4px}
+}
