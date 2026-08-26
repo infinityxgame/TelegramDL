@@ -1,6 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import ListenerView from './views/ListenerView.vue'
+import FolderPicker from './components/FolderPicker.vue'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Radio, Save, Settings2, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -114,11 +116,11 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
 <template>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">↘</span><span>Telegram<span class="brand-accent">DL</span></span></div>
+      <div class="brand"><span class="brand-mark"><Download :size="18" /></span><span>Telegram<span class="brand-accent">DL</span></span></div>
       <p class="sidebar-copy">Centro de descargas personal</p>
       <nav class="sidebar-nav">
-        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'"><span>↓</span> Descargas</button>
-        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'"><span>◉</span> Escucha</button>
+        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'"><ArrowDownToLine :size="16" /> Descargas</button>
+        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'"><Radio :size="16" /> Escucha</button>
       </nav>
       <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
       <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
@@ -128,32 +130,33 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
       <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : 'Escucha' }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
 
       <template v-if="activeView === 'downloads'">
-      <div v-if="message" class="toast success">✓ {{ message }}</div>
+      <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
       <div v-if="error" class="toast danger">{{ error }}</div>
 
       <section class="hero-card">
         <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
-        <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><b>→</b></button></div>
+        <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><ArrowUpRight :size="18" /></button></div>
       </section>
 
       <section class="stats-grid">
-        <div class="stat-card"><span class="stat-icon blue">↓</span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
-        <div class="stat-card"><span class="stat-icon amber">◷</span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
-        <div class="stat-card"><span class="stat-icon green">✓</span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
+        <div class="stat-card"><span class="stat-icon blue"><Activity :size="19" /></span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
+        <div class="stat-card"><span class="stat-icon amber"><Clock3 :size="19" /></span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
+        <div class="stat-card"><span class="stat-icon green"><CheckCircle2 :size="19" /></span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
       </section>
 
       <div class="content-grid">
         <section class="panel activity-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div><span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span></div>
-          <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><span>✦</span><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
-          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol">▣</div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button @click="cancelDownload(item.id)">Cancelar</button></div></div>
+          <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
+          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
         </section>
 
-        <aside class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">PREFERENCIAS</span><h2>Configuración</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
+        <aside class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
           <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label><input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input"><div class="range-hints"><span>1</span><span>16</span></div>
           <div class="setting-line"><div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div><label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label></div>
           <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label><input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input"><div class="range-hints"><span>1</span><span>8</span></div>
           <div class="speed-setting"><label class="setting-label compact">Límite global</label><div class="speed-row"><input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5"><select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select><span>/s</span></div><small>Usa 0 para quitar el límite.</small></div>
-          <button class="save-button" :disabled="saving" @click="saveSettings">{{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+          <FolderPicker v-model="settings.download_folder" />
+          <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
         </aside>
       </div>
 

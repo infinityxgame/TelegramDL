@@ -4,6 +4,7 @@ import math
 import os
 import re
 import socket
+import string
 import sys
 import threading
 import time
@@ -171,6 +172,7 @@ def public_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "parallel_chunks": normalized["parallel_chunks"],
         "chunk_workers": normalized["chunk_workers"],
         "speed_limit": normalized["speed_limit"],
+        "download_folder": normalized["download_folder"],
         "listener_enabled": normalized["listener_enabled"],
         "listener_chat_ids": normalized["listener_chat_ids"],
     }
@@ -270,6 +272,63 @@ async def get_listener_items() -> List[Dict[str, Any]]:
     if not downloader_instance:
         return []
     return downloader_instance.get_listener_items()
+
+
+def _resolve_browse_path(raw_path: Optional[str]) -> Path:
+    if not raw_path:
+        raise ValueError("Ruta requerida")
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = BASE_DIR / path
+    return path.resolve()
+
+
+@app.get("/api/filesystem")
+async def browse_filesystem(path: Optional[str] = None) -> Dict[str, Any]:
+    if not path:
+        if os.name == "nt":
+            roots = [
+                f"{letter}:\\"
+                for letter in string.ascii_uppercase
+                if os.path.isdir(f"{letter}:\\")
+            ]
+        else:
+            roots = ["/"]
+        return {"status": "ok", "roots": roots, "path": None, "parent": None, "entries": []}
+
+    try:
+        current_path = _resolve_browse_path(path)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if not current_path.is_dir():
+        raise HTTPException(status_code=404, detail="La carpeta no existe o no es accesible")
+
+    entries = []
+    try:
+        children = sorted(current_path.iterdir(), key=lambda child: (not child.is_dir(), child.name.lower()))
+        for child in children:
+            try:
+                if child.is_dir():
+                    entries.append({"name": child.name, "path": str(child), "is_dir": True})
+            except OSError:
+                continue
+    except OSError as error:
+        raise HTTPException(status_code=403, detail=f"No se puede leer la carpeta: {error}") from error
+
+    parent = current_path.parent
+    if parent == current_path:
+        parent_path = None
+    elif os.name == "nt" and len(current_path.parts) <= 1:
+        parent_path = None
+    else:
+        parent_path = str(parent)
+    return {
+        "status": "ok",
+        "roots": [],
+        "path": str(current_path),
+        "parent": parent_path,
+        "entries": entries,
+    }
 
 
 async def apply_and_save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -542,6 +601,11 @@ class TelegramDownloader:
         self.chunk_workers = normalized["chunk_workers"]
         self.listener_enabled = normalized["listener_enabled"]
         self.watched_chat_ids = set(normalized["listener_chat_ids"])
+        folder = Path(normalized["download_folder"])
+        if not folder.is_absolute():
+            folder = BASE_DIR / folder
+        folder.mkdir(parents=True, exist_ok=True)
+        self.download_folder = folder
 
         async with self.limit_lock:
             self._set_speed_limit_from_config(normalized)
