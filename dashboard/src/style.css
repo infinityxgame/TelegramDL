@@ -9,7 +9,7 @@
 }
 @media (max-width: 900px) {
   .app-shell { display: block; }
-  .sidebar { width: 100%; min-height: 0; padding: 16px 20px; border-right: 0; border-bottom: 1px solid #1b3046; }
+  .sidebar { display: flex; width: 100%; min-height: 0; padding: 16px 20px; border-right: 0; border-bottom: 1px solid #1b3046; }
   .sidebar-copy, .sidebar-status, .sidebar-bottom { display: none; }
   .brand { margin-bottom: 14px; }
   .sidebar-nav { flex-direction: row; margin: 0; overflow-x: auto; }
