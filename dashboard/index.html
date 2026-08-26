@@ -79,6 +79,45 @@
             </div>
         </section>
 
+        <!-- Speed Limit Section -->
+        <section class="mb-8 card p-6 rounded-xl shadow-xl border-yellow-900/30">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+                <i class="fa-solid fa-gauge-high mr-2 text-yellow-400"></i> Límite de Velocidad Global
+            </h2>
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+                <div class="flex gap-2 w-full md:w-auto">
+                    <input
+                        v-model.number="speedValue"
+                        type="number"
+                        placeholder="Valor..."
+                        class="flex-1 md:w-24 bg-slate-800 border border-slate-700 rounded-lg p-3 text-slate-200"
+                    >
+                    <select v-model="speedUnit" class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-slate-200">
+                        <option value="KB">KB/s</option>
+                        <option value="MB">MB/s</option>
+                        <option value="GB">GB/s</option>
+                    </select>
+                </div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button
+                        @click="applySpeedLimit"
+                        class="flex-1 md:flex-none bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Aplicar
+                    </button>
+                    <button
+                        @click="removeSpeedLimit"
+                        class="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Quitar Límite
+                    </button>
+                </div>
+                <div v-if="currentLimitStr" class="text-sm text-yellow-500 font-medium">
+                    <i class="fa-solid fa-shield-halved mr-1"></i> Limitado a: {{ currentLimitStr }}/s
+                </div>
+            </div>
+        </section>
+
         <!-- Active Downloads -->
         <section class="mb-8">
             <h2 class="text-xl font-semibold mb-4 flex items-center">
@@ -183,6 +222,11 @@
                 const parallelMode = ref(true);
                 const loading = ref(false);
 
+                // Speed limit state
+                const speedValue = ref(1);
+                const speedUnit = ref('MB');
+                const currentLimitStr = ref('');
+
                 const fetchDownloads = async () => {
                     try {
                         const response = await fetch('/api/downloads');
@@ -234,6 +278,41 @@
                     }
                 };
 
+                const applySpeedLimit = async () => {
+                    try {
+                        const response = await fetch('/api/settings/speed', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                value: speedValue.value,
+                                unit: speedUnit.value
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.status === 'ok') {
+                            currentLimitStr.value = `${speedValue.value} ${speedUnit.value}`;
+                        }
+                    } catch (error) {
+                        console.error('Error applying speed limit:', error);
+                    }
+                };
+
+                const removeSpeedLimit = async () => {
+                    try {
+                        const response = await fetch('/api/settings/speed', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ value: 0 })
+                        });
+                        const data = await response.json();
+                        if (data.status === 'ok') {
+                            currentLimitStr.value = '';
+                        }
+                    } catch (error) {
+                        console.error('Error removing speed limit:', error);
+                    }
+                };
+
                 const activeDownloads = computed(() =>
                     downloads.value.filter(d => d.status === 'downloading' || d.status === 'waiting')
                 );
@@ -271,7 +350,12 @@
                     parallelMode,
                     loading,
                     startDownload,
-                    cancelDownload
+                    cancelDownload,
+                    speedValue,
+                    speedUnit,
+                    currentLimitStr,
+                    applySpeedLimit,
+                    removeSpeedLimit
                 };
             }
         }).mount('#app');

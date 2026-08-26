@@ -64,6 +64,28 @@ app.add_middleware(
 async def get_downloads():
     return list(downloads_state.values())
 
+@app.post("/api/settings/speed")
+async def set_speed_limit(data: dict = Body(...)):
+    if not downloader_instance:
+        return {"error": "Downloader not ready"}
+
+    value = data.get("value") # numero
+    unit = data.get("unit", "KB") # KB, MB, GB
+
+    if value is None or value <= 0:
+        downloader_instance.speed_limit = None
+        return {"status": "ok", "message": "Limite eliminado"}
+
+    multiplier = 1024
+    if unit == "MB": multiplier = 1024 * 1024
+    elif unit == "GB": multiplier = 1024 * 1024 * 1024
+
+    downloader_instance.speed_limit = value * multiplier
+    downloader_instance.bytes_downloaded_since_limit_set = 0
+    downloader_instance.limit_start_time = time.monotonic()
+
+    return {"status": "ok", "message": f"Limite establecido a {value} {unit}/s"}
+
 @app.post("/api/cancel")
 async def cancel_download(payload: dict):
     msg_id = payload.get("id")
@@ -179,6 +201,11 @@ class DownloadProgress:
 class TelegramDownloader:
     def __init__(self, api_id, api_hash):
         self.parallel_mode = True
+        self.speed_limit = None # bytes/s
+        self.bytes_downloaded_since_limit_set = 0
+        self.limit_start_time = None
+        self.limit_lock = asyncio.Lock()
+
         self.client = Client("downloader_session", api_id=api_id, api_hash=api_hash, no_updates=True, max_concurrent_transmissions=10)
         self.download_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "descargas")
         os.makedirs(self.download_folder, exist_ok=True)
@@ -195,6 +222,26 @@ class TelegramDownloader:
         m = re.match(p2, clean_url)
         if m: return m.group(1), int(m.group(2)), int(m.group(3)) if m.group(3) else int(m.group(2))
         raise ValueError("URL no válida")
+
+    async def throttle(self, bytes_count):
+        if not self.speed_limit: return
+
+        sleep_time = 0
+        async with self.limit_lock:
+            if not self.limit_start_time:
+                self.limit_start_time = time.monotonic()
+                self.bytes_downloaded_since_limit_set = 0
+
+            self.bytes_downloaded_since_limit_set += bytes_count
+            now = time.monotonic()
+            elapsed = now - self.limit_start_time
+            expected_time = self.bytes_downloaded_since_limit_set / self.speed_limit
+
+            if elapsed < expected_time:
+                sleep_time = expected_time - elapsed
+
+        if sleep_time > 0.001:
+            await asyncio.sleep(sleep_time)
 
     async def download_from_url(self, url):
         try:
@@ -293,8 +340,11 @@ class TelegramDownloader:
                         with open(temp_path, "r+b") as f:
                             f.seek(idx * CHUNK_SIZE)
                             f.write(chunk_data)
-                        downloaded += len(chunk_data)
+
+                        chunk_len = len(chunk_data)
+                        downloaded += chunk_len
                         progress.update(downloaded)
+                        await self.throttle(chunk_len)
                     finally:
                         queue.task_done()
             except (asyncio.CancelledError, FileNotFoundError):
