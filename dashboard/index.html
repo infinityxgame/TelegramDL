@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram DL Dashboard</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .progress-bar {
+            transition: width 0.3s ease-in-out;
+        }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+        }
+        input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div id="app" class="max-w-4xl mx-auto">
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">
+                    <i class="fa-brands fa-telegram mr-2"></i>Telegram DL
+                </h1>
+                <p class="text-slate-400">Panel de Control Remoto</p>
+            </div>
+            <div class="flex gap-4">
+                <div class="card p-3 rounded-lg text-center min-w-[100px]">
+                    <div class="text-xs text-slate-400 uppercase">Descargados</div>
+                    <div class="text-xl font-bold text-green-400">{{ stats.downloaded }}</div>
+                </div>
+                <div class="card p-3 rounded-lg text-center min-w-[100px]">
+                    <div class="text-xs text-slate-400 uppercase">En Cola</div>
+                    <div class="text-xl font-bold text-yellow-400">{{ stats.pending }}</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- New Download Section -->
+        <section class="mb-8 card p-6 rounded-xl shadow-xl">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+                <i class="fa-solid fa-plus-circle mr-2 text-blue-400"></i> Nueva Descarga
+            </h2>
+            <div class="flex flex-col gap-4">
+                <div class="flex flex-col md:flex-row gap-4">
+                    <input
+                        v-model="newUrl"
+                        type="text"
+                        placeholder="Pega el enlace de Telegram aquí..."
+                        class="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-3 text-slate-200"
+                        @keyup.enter="startDownload"
+                    >
+                    <button
+                        @click="startDownload"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50"
+                        :disabled="!newUrl || loading"
+                    >
+                        <i v-if="loading" class="fa-solid fa-spinner fa-spin mr-2"></i>
+                        Descargar
+                    </button>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-slate-400">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" v-model="parallelMode" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                        <span class="ml-3">Activar descarga en paralelo (Partes simultáneas)</span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- Active Downloads -->
+        <section class="mb-8">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+                <i class="fa-solid fa-arrow-down-long mr-2 text-blue-400"></i> Descargando Actualmente
+            </h2>
+            <div v-if="activeDownloads.length === 0" class="card p-8 rounded-xl text-center text-slate-500 italic">
+                No hay descargas activas.
+            </div>
+            <div class="grid gap-4">
+                <div v-for="dl in activeDownloads" :key="dl.id" class="card p-4 rounded-xl shadow-lg border-l-4 border-blue-500">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1 min-w-0 mr-4">
+                            <h3 class="font-medium truncate text-slate-200" :title="dl.file_name">
+                                {{ dl.file_name }}
+                            </h3>
+                            <div class="flex gap-3 text-xs text-slate-400 mt-1">
+                                <span><i class="fa-solid fa-file-invoice mr-1"></i>{{ dl.kind }}</span>
+                                <span><i class="fa-solid fa-bolt mr-1"></i>{{ dl.speed }}</span>
+                            </div>
+                        </div>
+                        <div class="text-right flex flex-col items-end">
+                            <span class="text-lg font-bold text-blue-400">{{ dl.progress.toFixed(1) }}%</span>
+                            <button @click="cancelDownload(dl.id)" class="text-slate-500 hover:text-red-500 transition-colors text-xs mt-1" title="Cancelar y borrar">
+                                <i class="fa-solid fa-trash-can mr-1"></i> Cancelar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="w-full bg-slate-700 rounded-full h-2.5 mb-2 overflow-hidden">
+                        <div class="bg-blue-500 h-2.5 rounded-full progress-bar" :style="{ width: dl.progress + '%' }"></div>
+                    </div>
+
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span>{{ dl.current_str }} / {{ dl.total_str }}</span>
+                        <span class="capitalize">{{ dl.status }}</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Queue / Recent -->
+        <div class="grid md:grid-cols-2 gap-8">
+            <section>
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <i class="fa-solid fa-list-ul mr-2 text-yellow-400"></i> En Cola
+                </h2>
+                <div class="card rounded-xl overflow-hidden">
+                    <div v-if="pendingDownloads.length === 0" class="p-4 text-center text-slate-500 text-sm">
+                        Cola vacía
+                    </div>
+                    <ul class="divide-y divide-slate-700">
+                        <li v-for="dl in pendingDownloads" :key="dl.id" class="p-3 hover:bg-slate-800 transition-colors flex justify-between items-center">
+                            <div class="flex-1 min-w-0 mr-2">
+                                <div class="text-sm truncate text-slate-300">{{ dl.file_name || 'ID: ' + dl.id }}</div>
+                                <div class="text-[10px] text-slate-500 flex justify-between mt-1">
+                                    <span>{{ dl.kind || 'Pendiente' }}</span>
+                                    <span class="text-yellow-600 uppercase font-bold">{{ dl.status }}</span>
+                                </div>
+                            </div>
+                            <button @click="cancelDownload(dl.id)" class="text-slate-600 hover:text-red-500 p-2" title="Quitar de la cola">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <i class="fa-solid fa-check-circle mr-2 text-green-400"></i> Completados
+                </h2>
+                <div class="card rounded-xl overflow-hidden">
+                    <div v-if="completedDownloads.length === 0" class="p-4 text-center text-slate-500 text-sm">
+                        Nada completado aún
+                    </div>
+                    <ul class="divide-y divide-slate-700">
+                        <li v-for="dl in completedDownloads" :key="dl.id" class="p-3 hover:bg-slate-800 transition-colors">
+                            <div class="text-sm truncate text-slate-300">{{ dl.file_name }}</div>
+                            <div class="text-[10px] text-slate-500 flex justify-between mt-1">
+                                <span>{{ dl.total_str }}</span>
+                                <span class="text-green-500 uppercase font-bold">Hecho</span>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+
+        <footer class="mt-12 pt-4 border-t border-slate-800 text-center text-slate-600 text-xs">
+            Servidor Local: {{ host }} | Refresco automático cada 1s
+        </footer>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, computed } = Vue;
+
+        createApp({
+            setup() {
+                const downloads = ref([]);
+                const host = ref(window.location.host);
+                const newUrl = ref('');
+                const parallelMode = ref(true);
+                const loading = ref(false);
+
+                const fetchDownloads = async () => {
+                    try {
+                        const response = await fetch('/api/downloads');
+                        const data = await response.json();
+                        downloads.value = data;
+                    } catch (error) {
+                        console.error('Error fetching downloads:', error);
+                    }
+                };
+
+                const startDownload = async () => {
+                    if (!newUrl.value) return;
+
+                    loading.value = true;
+                    try {
+                        const response = await fetch('/api/download', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                url: newUrl.value,
+                                parallel: Boolean(parallelMode.value)
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.status === 'ok') {
+                            newUrl.value = '';
+                        } else {
+                            alert('Error: ' + result.error);
+                        }
+                    } catch (error) {
+                        console.error('Error starting download:', error);
+                        alert('Error al conectar con el servidor');
+                    } finally {
+                        loading.value = false;
+                        fetchDownloads();
+                    }
+                };
+
+                const cancelDownload = async (id) => {
+                    try {
+                        await fetch('/api/cancel', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id })
+                        });
+                        fetchDownloads();
+                    } catch (error) {
+                        console.error('Error canceling download:', error);
+                    }
+                };
+
+                const activeDownloads = computed(() =>
+                    downloads.value.filter(d => d.status === 'downloading' || d.status === 'waiting')
+                );
+
+                const pendingDownloads = computed(() =>
+                    downloads.value.filter(d => d.status === 'pending' || d.status === 'queued').slice(0, 10)
+                );
+
+                const completedDownloads = computed(() =>
+                    downloads.value.filter(d => d.status === 'completed' || d.status === 'skipped')
+                        .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
+                        .slice(0, 10)
+                );
+
+                const stats = computed(() => {
+                    return {
+                        downloaded: downloads.value.filter(d => d.status === 'completed').length,
+                        pending: downloads.value.filter(d => d.status === 'pending' || d.status === 'queued').length
+                    };
+                });
+
+                onMounted(() => {
+                    fetchDownloads();
+                    setInterval(fetchDownloads, 1000);
+                });
+
+                return {
+                    downloads,
+                    activeDownloads,
+                    pendingDownloads,
+                    completedDownloads,
+                    stats,
+                    host,
+                    newUrl,
+                    parallelMode,
+                    loading,
+                    startDownload,
+                    cancelDownload
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
