@@ -1,15 +1,24 @@
 import asyncio
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Compatibilidad con Python 3.14
 asyncio.set_event_loop(asyncio.new_event_loop())
 
 from pyrogram import Client
 
-API_ID = 
-API_HASH = ""
+API_ID = os.getenv("TGDL_API_ID")
+API_HASH = os.getenv("TGDL_API_HASH")
 
 
 async def main():
+    if not API_ID or not API_HASH:
+        raise RuntimeError("Define TGDL_API_ID y TGDL_API_HASH antes de crear la sesión")
+
     # Asignamos el nombre exacto 'downloader_session' para que genere 'downloader_session.session'
     app = Client(
         "downloader_session",

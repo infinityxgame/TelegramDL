@@ -1,0 +1,157 @@
+<script setup>
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+
+const downloads = ref([])
+const newUrl = ref('')
+const loading = ref(false)
+const message = ref('')
+const error = ref('')
+const saving = ref(false)
+const hydrated = ref(false)
+const host = window.location.host
+const settings = reactive({
+  max_concurrent_downloads: 2,
+  parallel_chunks: true,
+  chunk_workers: 4,
+  speed_limit: { value: 0, unit: 'MB' }
+})
+
+let timer
+let saveTimer
+let syncingSettings = false
+
+const syncSettings = async nextSettings => {
+  syncingSettings = true
+  Object.assign(settings, nextSettings)
+  await nextTick()
+  syncingSettings = false
+}
+
+const api = async (url, options = {}) => {
+  const response = await fetch(url, options)
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.detail || data.error || 'Error en el servidor')
+  return data
+}
+
+const fetchDownloads = async () => {
+  try {
+    downloads.value = await api('/api/downloads')
+    error.value = ''
+  } catch (err) { error.value = err.message }
+}
+
+const fetchSettings = async () => {
+  try {
+    const data = await api('/api/settings')
+    await syncSettings(data.settings)
+    hydrated.value = true
+  } catch (err) { error.value = err.message }
+}
+
+const saveSettings = async () => {
+  saving.value = true
+  try {
+    const data = await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    })
+    await syncSettings(data.settings)
+    message.value = 'Configuración guardada'
+    setTimeout(() => { message.value = '' }, 2200)
+  } catch (err) { error.value = err.message } finally { saving.value = false }
+}
+
+watch(settings, () => {
+  if (!hydrated.value || syncingSettings) return
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveSettings, 450)
+}, { deep: true })
+
+const startDownload = async () => {
+  if (!newUrl.value.trim()) return
+  loading.value = true
+  try {
+    await api('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: newUrl.value.trim() })
+    })
+    newUrl.value = ''
+    message.value = 'Descarga añadida a la cola'
+    await fetchDownloads()
+  } catch (err) { error.value = err.message } finally { loading.value = false }
+}
+
+const cancelDownload = async (id) => {
+  try {
+    await api('/api/cancel', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
+    })
+    await fetchDownloads()
+  } catch (err) { error.value = err.message }
+}
+
+const activeDownloads = computed(() => downloads.value.filter(item => item.status === 'downloading'))
+const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
+const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
+const completedCount = computed(() => downloads.value.filter(item => item.status === 'completed').length)
+const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
+
+const statusText = status => ({ downloading: 'Descargando', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
+const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
+
+onMounted(async () => {
+  await Promise.all([fetchSettings(), fetchDownloads()])
+  timer = setInterval(fetchDownloads, 1000)
+})
+onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
+</script>
+
+<template>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">↘</span><span>Telegram<span class="brand-accent">DL</span></span></div>
+      <p class="sidebar-copy">Centro de descargas personal</p>
+      <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
+      <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>Descargas</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
+
+      <div v-if="message" class="toast success">✓ {{ message }}</div>
+      <div v-if="error" class="toast danger">{{ error }}</div>
+
+      <section class="hero-card">
+        <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
+        <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><b>→</b></button></div>
+      </section>
+
+      <section class="stats-grid">
+        <div class="stat-card"><span class="stat-icon blue">↓</span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
+        <div class="stat-card"><span class="stat-icon amber">◷</span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
+        <div class="stat-card"><span class="stat-icon green">✓</span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
+      </section>
+
+      <div class="content-grid">
+        <section class="panel activity-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div><span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span></div>
+          <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><span>✦</span><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
+          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol">▣</div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button @click="cancelDownload(item.id)">Cancelar</button></div></div>
+        </section>
+
+        <aside class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">PREFERENCIAS</span><h2>Configuración</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
+          <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label><input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input"><div class="range-hints"><span>1</span><span>16</span></div>
+          <div class="setting-line"><div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div><label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label></div>
+          <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label><input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input"><div class="range-hints"><span>1</span><span>8</span></div>
+          <div class="speed-setting"><label class="setting-label compact">Límite global</label><div class="speed-row"><input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5"><select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select><span>/s</span></div><small>Usa 0 para quitar el límite.</small></div>
+          <button class="save-button" :disabled="saving" @click="saveSettings">{{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+        </aside>
+      </div>
+
+      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span></div></section>
+      <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
+    </main>
+  </div>
+</template>
