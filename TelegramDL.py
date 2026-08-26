@@ -281,25 +281,34 @@ class TelegramDownloader:
         downloaded = 0
         async def worker():
             nonlocal downloaded
-            while not queue.empty():
-                idx = await queue.get()
-                try:
-                    chunk_data = b""
-                    async for chunk in self.client.get_file(file_id, file_size=file_size, limit=1, offset=idx):
-                        chunk_data = chunk
+            try:
+                while not queue.empty():
+                    idx = await queue.get()
+                    try:
+                        chunk_data = b""
+                        async for chunk in self.client.get_file(file_id, file_size=file_size, limit=1, offset=idx):
+                            chunk_data = chunk
 
-                    with open(temp_path, "r+b") as f:
-                        f.seek(idx * CHUNK_SIZE)
-                        f.write(chunk_data)
-                    downloaded += len(chunk_data)
-                    progress.update(downloaded)
-                finally:
-                    queue.task_done()
+                        if not os.path.exists(temp_path): return
+                        with open(temp_path, "r+b") as f:
+                            f.seek(idx * CHUNK_SIZE)
+                            f.write(chunk_data)
+                        downloaded += len(chunk_data)
+                        progress.update(downloaded)
+                    finally:
+                        queue.task_done()
+            except (asyncio.CancelledError, FileNotFoundError):
+                return
 
         w_tasks = [asyncio.create_task(worker()) for _ in range(min(workers_count, total_chunks))]
-        await queue.join()
-        for t in w_tasks: t.cancel()
-        os.replace(temp_path, file_path)
+        try:
+            await queue.join()
+        finally:
+            for t in w_tasks: t.cancel()
+            await asyncio.gather(*w_tasks, return_exceptions=True)
+
+        if os.path.exists(temp_path):
+            os.replace(temp_path, file_path)
 
     def _extract_media_info(self, m):
         media = m.document or m.video or m.audio or m.photo or m.voice or m.video_note or m.animation or m.sticker
