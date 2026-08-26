@@ -16,3 +16,4 @@ dashboard/node_modules/
 /__pycache__
 .env
 /dashboard/dist
+/dashboard/package-lock.json
