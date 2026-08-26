@@ -30,22 +30,28 @@ const load = async () => {
 const save = async () => {
   saving.value = true
   try {
-    await api('/api/listener/settings', {
+    const data = await api('/api/listener/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: enabled.value, chat_ids: chatIds.value })
     })
+    enabled.value = data.enabled
+    chatIds.value = data.chat_ids
+    error.value = ''
   } catch (err) { error.value = err.message } finally { saving.value = false }
 }
 
 const addChat = async () => {
   const value = Number(newChatId.value.trim())
   if (!Number.isInteger(value) || value === 0) { error.value = 'Escribe un ID de chat válido'; return }
-  if (!chatIds.value.includes(value)) chatIds.value.push(value)
+  if (!chatIds.value.includes(value)) chatIds.value = [...chatIds.value, value]
   newChatId.value = ''
   await save()
 }
 
-const removeChat = async id => { chatIds.value = chatIds.value.filter(item => item !== id); await save() }
+const removeChat = async id => {
+  chatIds.value = chatIds.value.filter(item => item !== id)
+  await save()
+}
 const toggle = async () => { await save() }
 const download = async item => {
   try { await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) }); await load() }
@@ -63,7 +69,7 @@ onUnmounted(() => clearInterval(timer))
     <div v-if="error" class="toast danger">{{ error }}</div>
     <section class="listener-hero"><div><span class="hero-kicker"><Radio :size="13" /> MONITOR DE MENSAJES</span><h2>Escucha multimedia en tiempo real</h2><p>Cuando llegue un archivo a uno de tus chats, aparecerá aquí listo para descargar.</p></div><label class="switch large"><input v-model="enabled" type="checkbox" @change="toggle"><span></span><b>{{ enabled ? 'Escucha activa' : 'Escucha pausada' }}</b></label></section>
     <div class="listener-grid">
-      <section class="panel listener-config"><div class="panel-heading"><div><span class="eyebrow"><MessageCircle :size="12" /> ORÍGENES</span><h2>Chats vigilados</h2></div><span class="count-pill">{{ chatIds.length }} configurados</span></div><p class="helper-text">Añade el ID numérico de un grupo o chat privado. El usuario debe pertenecer a ese chat.</p><div class="listener-add"><input v-model="newChatId" @keyup.enter="addChat" placeholder="Ej. -1001234567890"><button class="save-button" @click="addChat"><Plus :size="15" /> Añadir</button></div><div v-if="!chatIds.length" class="empty-small">No hay chats configurados.</div><div v-for="id in chatIds" :key="id" class="chat-chip"><MessageCircle :size="14" /><strong>{{ id }}</strong><button @click="removeChat(id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button></div><small class="save-hint">{{ saving ? 'Guardando cambios…' : 'Los cambios se guardan automáticamente.' }}</small></section>
+      <section class="panel listener-config"><div class="panel-heading"><div><span class="eyebrow"><MessageCircle :size="12" /> ORÍGENES</span><h2>Chats vigilados</h2></div><span class="count-pill">{{ chatIds.length }} configurados</span></div><p class="helper-text">Añade el ID numérico de un grupo o chat privado. El usuario debe pertenecer a ese chat.</p><div class="listener-add"><input v-model="newChatId" @keyup.enter="addChat" placeholder="Ej. -1001234567890"><button class="save-button" :disabled="saving" @click="addChat"><Plus :size="15" /> Añadir</button></div><div v-if="!chatIds.length" class="empty-small">No hay chats configurados.</div><div v-for="id in chatIds" :key="id" class="chat-chip"><MessageCircle :size="14" /><strong>{{ id }}</strong><button :disabled="saving" @click="removeChat(id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button></div><button class="save-button listener-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar chats' }}</button><small class="save-hint">Los cambios se guardan en config.json del servidor.</small></section>
       <section class="panel listener-feed"><div class="panel-heading"><div><span class="eyebrow"><Inbox :size="12" /> BANDEJA DE ENTRADA</span><h2>Multimedia detectada</h2></div><span class="count-pill">{{ availableCount }} nuevas</span></div><div v-if="!items.length" class="empty-state"><Inbox :size="28" /><p>Aún no se detectó multimedia</p><small>Deja esta vista abierta o vuelve cuando llegue un archivo.</small></div><div v-for="item in items" :key="item.id" class="listener-item"><div class="file-symbol"><Inbox :size="16" /></div><div class="file-info"><strong>{{ item.file_name }}</strong><span>Chat {{ item.chat_id }} · mensaje {{ item.message_id }} · {{ item.total_str }}</span></div><div class="row-side"><span class="listener-status">{{ statusText(item.status) }}</span><button v-if="item.status === 'available'" class="download-small" @click="download(item)"><Download :size="13" /> Descargar</button></div></div></section>
     </div>
   </section>
