@@ -36,7 +36,7 @@ cd ..
 ```env
 TGDL_API_ID=123456
 TGDL_API_HASH=tu_api_hash
-TGDL_BIND_HOST=127.0.0.1
+TGDL_BIND_HOST=0.0.0.0
 TGDL_PORT=8000
 ```
 
@@ -67,10 +67,10 @@ Desde la raíz, con el entorno virtual activo:
 .\.venv\Scripts\python.exe .\TelegramDL.py
 ```
 
-Abre el panel en:
+Abre el panel en el propio equipo usando `127.0.0.1`, o desde otro dispositivo usando la IP local del PC, por ejemplo `192.168.1.50`:
 
 ```text
-http://127.0.0.1:8000/dashboard/
+http://192.168.1.50:8000/dashboard/
 ```
 
 La primera vez que se conecte Telegram puede solicitar el número de teléfono, el código de acceso y, si está activada, la contraseña de verificación en dos pasos. La sesión se guarda localmente y está excluida de Git.
@@ -87,10 +87,10 @@ npm run dev
 Abre la URL que muestre Vite, normalmente:
 
 ```text
-http://127.0.0.1:8080/dashboard/
+http://192.168.1.50:8080/dashboard/
 ```
 
-El servidor de desarrollo redirige las peticiones `/api` al backend de `http://127.0.0.1:8000`. Por tanto, el backend debe estar ejecutándose en otra terminal.
+El servidor de desarrollo redirige las peticiones `/api` al backend de `http://127.0.0.1:8000`. Por tanto, el backend debe estar ejecutándose en otra terminal. Vite escucha en todas las interfaces para permitir el acceso desde la red local.
 
 ## Uso del panel
 
@@ -111,4 +111,6 @@ El servidor de desarrollo redirige las peticiones `/api` al backend de `http://1
 
 Si el navegador muestra una versión antigua del panel, detén el backend, ejecuta de nuevo `npm --prefix dashboard run build`, inicia `TelegramDL.py` y recarga con `Ctrl+F5`.
 
-Si el puerto `5173` falla en Windows por permisos, el desarrollo usa `127.0.0.1:8080`.
+Si el puerto `5173` falla en Windows por permisos, el desarrollo usa `0.0.0.0:8080`. Desde otro dispositivo se debe abrir la IP local del PC, por ejemplo `http://192.168.1.50:8080/dashboard/`.
+
+Para acceder desde otro dispositivo, permite el puerto `8000` en el Firewall de Windows si el sistema lo solicita y asegúrate de que ambos dispositivos estén en la misma red. No expongas el servidor directamente a Internet sin añadir autenticación y HTTPS.
