@@ -98,6 +98,8 @@ El servidor de desarrollo redirige las peticiones `/api` al backend de `http://1
 - **Configuración:** ajusta descargas simultáneas, partes por archivo, límite de velocidad y carpeta de destino.
 - **Escucha:** activa la escucha y añade IDs numéricos de grupos o chats privados. Cada ID puede eliminarse desde el propio panel y los cambios se guardan en `config.json`. Los archivos detectados aparecen en una lista donde pueden descargarse o eliminarse si no se desean.
 
+**Nota:** Si desean descargar de un grupo que tiene configurado los temas deben poner el grupo en modo mensajes y entonces copiar el enlace del archivo deseado o el rango deseado, si intentan copiar la url sin estar en modo mensaje les dará un error de URL inválida.
+
 ## Archivos importantes
 
 - `TelegramDL.py`: backend, API y lógica de descargas.
