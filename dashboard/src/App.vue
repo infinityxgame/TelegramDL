@@ -29,6 +29,7 @@ let reconnectTimer
 let saveTimer
 let disposed = false
 let syncingSettings = false
+const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
 
 const syncSettings = async nextSettings => {
@@ -103,11 +104,12 @@ const saveSettings = async () => {
     })
     await syncSettings(data.settings)
     showMessage('Configuración guardada')
-  } catch (err) { showMessage(err.message, true) } finally { saving.value = false }
+  } catch (err) { showMessage(err.message, true) } finally { saving.value = false; settingsSavePending.value = false }
 }
 
 watch(settings, () => {
   if (!hydrated.value || syncingSettings) return
+  settingsSavePending.value = true
   clearTimeout(saveTimer)
   saveTimer = setTimeout(saveSettings, 450)
 }, { deep: true })
@@ -180,7 +182,7 @@ const connectWebSocket = () => {
       const data = JSON.parse(event.data)
       if (data.type === 'state') {
         if (Array.isArray(data.downloads)) downloads.value = data.downloads
-        if (data.settings) syncSettings(data.settings)
+        if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
       }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
   }

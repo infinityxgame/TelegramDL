@@ -196,7 +196,7 @@ def websocket_snapshot() -> Dict[str, Any]:
         {key: value for key, value in item.items() if key != "file_path"}
         for item in sorted(
             downloads_state.values(),
-            key=lambda item: item.get("updated_at", 0),
+            key=lambda item: item.get("created_at", item.get("updated_at", 0)),
             reverse=True,
         )
     ]
@@ -257,7 +257,14 @@ def update_state(item_id: str, **kwargs: Any) -> None:
             "kind": "desconocido",
             "file_path": None,
             "updated_at": time.time(),
+            "created_at": time.time(),
         }
+    elif "created_at" not in downloads_state[item_id]:
+        # Mantener una posición estable también para estados creados antes de
+        # que se añadiera este campo.
+        downloads_state[item_id]["created_at"] = downloads_state[item_id].get(
+            "updated_at", time.time()
+        )
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
     _prune_state()
@@ -301,7 +308,7 @@ async def get_downloads() -> List[Dict[str, Any]]:
         {key: value for key, value in item.items() if key != "file_path"}
         for item in sorted(
             downloads_state.values(),
-            key=lambda item: item.get("updated_at", 0),
+            key=lambda item: item.get("created_at", item.get("updated_at", 0)),
             reverse=True,
         )
     ]
