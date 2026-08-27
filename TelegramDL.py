@@ -254,7 +254,7 @@ async def get_downloads() -> List[Dict[str, Any]]:
 
 
 @app.delete("/api/downloads/{item_id:path}")
-async def delete_download(item_id: str) -> Dict[str, Any]:
+async def delete_download(item_id: str, delete_file: bool = True) -> Dict[str, Any]:
     item_id = item_id.strip()
     state = downloads_state.get(item_id)
     if not state:
@@ -264,7 +264,7 @@ async def delete_download(item_id: str) -> Dict[str, Any]:
 
     file_path = state.get("file_path")
     deleted_file = False
-    if file_path:
+    if file_path and delete_file:
         target = Path(file_path).expanduser().resolve()
         download_root = Path(downloader_instance.download_folder if downloader_instance else runtime_config["download_folder"])
         if not download_root.is_absolute():
@@ -701,7 +701,7 @@ class TelegramDownloader:
                 (
                     item
                     for item in downloads_state.values()
-                    if item.get("source") == "listener"
+                    if item.get("source") == "listener" and item.get("status") == "available"
                 ),
                 key=lambda item: item.get("updated_at", 0),
                 reverse=True,

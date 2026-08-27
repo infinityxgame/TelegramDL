@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
+import ConfirmModal from './components/ConfirmModal.vue'
 import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Menu, Radio, Save, Settings2, Trash2, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
@@ -40,6 +41,29 @@ const showMessage = (txt, isError = false) => {
     message.value = txt
     setTimeout(() => { if (message.value === txt) message.value = '' }, 3500)
   }
+}
+
+const modal = reactive({
+  show: false,
+  title: '',
+  message: '',
+  confirmText: '',
+  type: 'primary',
+  action: null
+})
+
+const openConfirm = (config) => {
+  modal.title = config.title
+  modal.message = config.message
+  modal.confirmText = config.confirmText
+  modal.type = config.type || 'primary'
+  modal.action = config.action
+  modal.show = true
+}
+
+const handleConfirm = () => {
+  if (modal.action) modal.action()
+  modal.show = false
 }
 
 const api = async (url, options = {}) => {
@@ -108,12 +132,19 @@ const cancelDownload = async (id) => {
 }
 
 const deleteDownload = async item => {
-  if (!window.confirm(`¿Borrar el archivo "${item.file_name}" del servidor?`)) return
-  try {
-    await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
-    showMessage('Archivo borrado')
-    await fetchDownloads()
-  } catch (err) { showMessage(err.message, true) }
+  openConfirm({
+    title: 'Borrar archivo',
+    message: `¿Estás seguro de que quieres eliminar "${item.file_name}" del servidor? Esta acción no se puede deshacer.`,
+    confirmText: 'Sí, borrar archivo',
+    type: 'danger',
+    action: async () => {
+      try {
+        await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+        showMessage('Archivo borrado')
+        await fetchDownloads()
+      } catch (err) { showMessage(err.message, true) }
+    }
+  })
 }
 
 const activeDownloads = computed(() => downloads.value.filter(item => item.status === 'downloading'))
@@ -183,6 +214,15 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
       <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
       <ListenerView v-else :notify="showMessage" />
+      <ConfirmModal
+        :show="modal.show"
+        :title="modal.title"
+        :message="modal.message"
+        :confirmText="modal.confirmText"
+        :type="modal.type"
+        @confirm="handleConfirm"
+        @cancel="modal.show = false"
+      />
       <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
     </main>
   </div>
