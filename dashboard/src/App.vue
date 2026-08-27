@@ -13,6 +13,7 @@ const error = ref('')
 const saving = ref(false)
 const hydrated = ref(false)
 const host = window.location.host
+const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
 const settings = reactive({
@@ -166,7 +167,7 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
 <template>
   <div class="app-shell">
     <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
-      <div class="brand"><span class="brand-mark"><Download :size="18" /></span><span>Telegram<span class="brand-accent">DL</span></span><button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button></div>
+      <div class="brand"><span class="brand-mark"><img :src="logoUrl" alt="" /></span><span>Telegram<span class="brand-accent">DL</span></span><button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button></div>
       <p class="sidebar-copy">Centro de descargas personal</p>
       <nav class="sidebar-nav">
         <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>

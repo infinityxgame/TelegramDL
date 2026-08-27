@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="TelegramDL">
+  <rect width="1024" height="1024" rx="220" fill="#07111f"/>
+  <rect x="120" y="120" width="784" height="784" rx="170" fill="#102a43" stroke="#234765" stroke-width="24"/>
+  <path fill="#42aefa" d="M468 260h88v270h92L512 670 376 530h92z"/>
+  <rect x="300" y="700" width="424" height="64" rx="32" fill="#5ebbff"/>
+  <circle cx="790" cy="234" r="30" fill="#39db9a"/>
+</svg>
