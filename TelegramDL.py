@@ -881,6 +881,14 @@ class TelegramDownloader:
     async def _on_new_media(self, client: Client, message: Any) -> None:
         if not self.listener_enabled or not message.chat:
             return
+        # La escucha solo debe procesar contenido recibido de terceros.
+        # `outgoing` cubre los mensajes enviados por la sesión conectada y
+        # `is_self` añade protección para actualizaciones donde Pyrogram lo
+        # expone a través del remitente.
+        if getattr(message, "outgoing", False) or getattr(
+            getattr(message, "from_user", None), "is_self", False
+        ):
+            return
         chat_id = message.chat.id
         if chat_id not in self.watched_chat_ids:
             return
