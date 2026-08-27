@@ -45,6 +45,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "download_folder": "descargas",
     "listener_enabled": True,
     "listener_chat_ids": [],
+    "listener_chats": [],
 }
 SPEED_MULTIPLIERS = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
 MAX_STATE_ITEMS = 1000
@@ -95,15 +96,26 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
     folder = raw.get("download_folder", DEFAULT_CONFIG["download_folder"])
     folder = str(folder).strip() or DEFAULT_CONFIG["download_folder"]
 
-    raw_chat_ids = raw.get("listener_chat_ids", [])
-    if isinstance(raw_chat_ids, str):
-        raw_chat_ids = [part.strip() for part in raw_chat_ids.split(",") if part.strip()]
-    if not isinstance(raw_chat_ids, list):
+    raw_chats = raw.get("listener_chats")
+    if raw_chats is None:
+        raw_chats = raw.get("listener_chat_ids", [])
+    if isinstance(raw_chats, str):
+        raw_chats = [part.strip() for part in raw_chats.split(",") if part.strip()]
+    if not isinstance(raw_chats, list):
         if strict:
             raise ValueError("Los IDs de escucha deben ser una lista")
-        raw_chat_ids = []
+        raw_chats = []
+    listener_chats = []
     chat_ids = []
-    for raw_chat_id in raw_chat_ids:
+    for raw_chat in raw_chats:
+        if isinstance(raw_chat, dict):
+            raw_chat_id = raw_chat.get("id")
+            name = str(raw_chat.get("name", "")).strip()
+            auto_download = bool(raw_chat.get("auto_download", False))
+        else:
+            raw_chat_id = raw_chat
+            name = ""
+            auto_download = False
         try:
             chat_id = int(raw_chat_id)
         except (TypeError, ValueError):
@@ -112,6 +124,11 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
             continue
         if chat_id not in chat_ids:
             chat_ids.append(chat_id)
+            listener_chats.append({
+                "id": chat_id,
+                "name": name or str(chat_id),
+                "auto_download": auto_download,
+            })
 
     return {
         "max_concurrent_downloads": _bounded_int(
@@ -133,6 +150,7 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
         "download_folder": folder,
         "listener_enabled": bool(raw.get("listener_enabled", DEFAULT_CONFIG["listener_enabled"])),
         "listener_chat_ids": chat_ids,
+        "listener_chats": listener_chats,
     }
 
 
@@ -175,6 +193,7 @@ def public_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "download_folder": normalized["download_folder"],
         "listener_enabled": normalized["listener_enabled"],
         "listener_chat_ids": normalized["listener_chat_ids"],
+        "listener_chats": normalized["listener_chats"],
     }
 
 
@@ -374,6 +393,7 @@ async def get_listener_settings() -> Dict[str, Any]:
         "status": "ok",
         "enabled": runtime_config["listener_enabled"],
         "chat_ids": runtime_config["listener_chat_ids"],
+        "chats": runtime_config["listener_chats"],
     }
 
 
@@ -382,6 +402,28 @@ async def get_listener_items() -> List[Dict[str, Any]]:
     if not downloader_instance:
         return []
     return downloader_instance.get_listener_items()
+
+
+@app.get("/api/listener/chat/{chat_id}")
+async def resolve_listener_chat(chat_id: int) -> Dict[str, Any]:
+    if not downloader_instance:
+        raise HTTPException(status_code=503, detail="El cliente no está listo")
+    try:
+        chat = await downloader_instance.client.get_chat(chat_id)
+    except Exception as error:
+        raise HTTPException(status_code=404, detail=f"No se pudo encontrar el chat: {error}") from error
+    name = getattr(chat, "title", None) or getattr(chat, "first_name", None) or getattr(chat, "username", None)
+    if not name:
+        name = str(chat_id)
+    return {
+        "status": "ok",
+        "chat": {
+            "id": chat_id,
+            "name": str(name),
+            "type": str(getattr(chat, "type", "")),
+            "username": getattr(chat, "username", None),
+        },
+    }
 
 
 def _resolve_browse_path(raw_path: Optional[str]) -> Path:
@@ -468,16 +510,20 @@ async def set_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @app.put("/api/listener/settings")
 async def set_listener_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    chats = data.get("chats")
+    if chats is None:
+        chats = data.get("chat_ids", [])
     settings = await apply_and_save_settings(
         {
             "listener_enabled": data.get("enabled", True),
-            "listener_chat_ids": data.get("chat_ids", []),
+            "listener_chats": chats,
         }
     )
     return {
         "status": "ok",
         "enabled": settings["listener_enabled"],
         "chat_ids": settings["listener_chat_ids"],
+        "chats": settings["listener_chats"],
     }
 
 
@@ -711,6 +757,9 @@ class TelegramDownloader:
         self.max_concurrent_downloads = self.config["max_concurrent_downloads"]
         self.listener_enabled = self.config["listener_enabled"]
         self.watched_chat_ids = set(self.config["listener_chat_ids"])
+        self.auto_download_chat_ids = {
+            chat["id"] for chat in self.config["listener_chats"] if chat.get("auto_download")
+        }
         self.listener_messages: Dict[str, Tuple[Any, Any]] = {}
         self.pause_events: Dict[str, asyncio.Event] = {}
 
@@ -753,6 +802,9 @@ class TelegramDownloader:
         self.chunk_workers = normalized["chunk_workers"]
         self.listener_enabled = normalized["listener_enabled"]
         self.watched_chat_ids = set(normalized["listener_chat_ids"])
+        self.auto_download_chat_ids = {
+            chat["id"] for chat in normalized["listener_chats"] if chat.get("auto_download")
+        }
         folder = Path(normalized["download_folder"])
         if not folder.is_absolute():
             folder = BASE_DIR / folder
@@ -850,6 +902,15 @@ class TelegramDownloader:
             status="available",
             progress=0,
         )
+        if chat_id in self.auto_download_chat_ids:
+            update_state(item_id, status="queued")
+            task = asyncio.create_task(
+                self.download_file_from_message(message, chat_id, item_id)
+            )
+            active_tasks[item_id] = task
+            task.add_done_callback(
+                lambda finished, current_item=item_id: active_tasks.pop(current_item, None)
+            )
         if len(self.listener_messages) > 300:
             oldest = sorted(
                 self.listener_messages,
