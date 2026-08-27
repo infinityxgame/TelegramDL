@@ -156,7 +156,13 @@ const connectWebSocket = () => {
   socket.onmessage = event => {
     try {
       const data = JSON.parse(event.data)
-      if (data.type === 'state' && Array.isArray(data.listener)) items.value = data.listener
+      if (data.type === 'state') {
+        if (Array.isArray(data.listener)) items.value = data.listener
+        if (data.settings) {
+          enabled.value = data.settings.listener_enabled
+          chatIds.value = data.settings.listener_chat_ids || []
+        }
+      }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
   }
   socket.onclose = () => {

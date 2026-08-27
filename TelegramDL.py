@@ -188,6 +188,7 @@ active_jobs: Dict[str, asyncio.Task] = {}
 downloader_instance = None
 websocket_clients: Set[WebSocket] = set()
 websocket_broadcast_task: Optional[asyncio.Task] = None
+websocket_broadcast_dirty = False
 
 
 def websocket_snapshot() -> Dict[str, Any]:
@@ -200,27 +201,38 @@ def websocket_snapshot() -> Dict[str, Any]:
         )
     ]
     listener = downloader_instance.get_listener_items() if downloader_instance else []
-    return {"type": "state", "downloads": downloads, "listener": listener}
+    return {
+        "type": "state",
+        "downloads": downloads,
+        "listener": listener,
+        "settings": public_config(runtime_config),
+        "server_time": time.time(),
+    }
 
 
 async def broadcast_websocket_state() -> None:
-    global websocket_broadcast_task
+    global websocket_broadcast_task, websocket_broadcast_dirty
+    while websocket_clients:
+        websocket_broadcast_dirty = False
+        payload = websocket_snapshot()
+        disconnected = set()
+        for client in tuple(websocket_clients):
+            try:
+                await client.send_json(payload)
+            except Exception:
+                disconnected.add(client)
+        websocket_clients.difference_update(disconnected)
+        if not websocket_broadcast_dirty:
+            break
     websocket_broadcast_task = None
-    if not websocket_clients:
-        return
-    payload = websocket_snapshot()
-    disconnected = set()
-    for client in tuple(websocket_clients):
-        try:
-            await client.send_json(payload)
-        except Exception:
-            disconnected.add(client)
-    websocket_clients.difference_update(disconnected)
 
 
 def schedule_websocket_broadcast() -> None:
-    global websocket_broadcast_task
-    if not websocket_clients or websocket_broadcast_task is not None:
+    global websocket_broadcast_task, websocket_broadcast_dirty
+    if not websocket_clients:
+        return
+    if websocket_broadcast_task is not None:
+        websocket_broadcast_dirty = True
         return
     try:
         loop = asyncio.get_running_loop()
@@ -340,6 +352,7 @@ async def delete_download(item_id: str, delete_file: bool = True) -> Dict[str, A
     downloads_state.pop(item_id, None)
     if downloader_instance:
         downloader_instance.listener_messages.pop(item_id, None)
+    schedule_websocket_broadcast()
     return {"status": "ok", "id": item_id, "deleted_file": deleted_file}
 
 
@@ -434,6 +447,7 @@ async def apply_and_save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
 
     save_config(normalized)
     runtime_config = normalized
+    schedule_websocket_broadcast()
     if downloader_instance:
         await downloader_instance.apply_settings(normalized)
     return public_config(normalized)
