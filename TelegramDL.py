@@ -236,7 +236,7 @@ if cors_origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_methods=["GET", "PUT", "POST"],
+        allow_methods=["GET", "PUT", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
 
@@ -439,6 +439,46 @@ async def cancel_download(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"status": "ok"}
 
 
+async def _set_download_pause(item_id: str, paused: bool) -> Dict[str, Any]:
+    if not downloader_instance:
+        raise HTTPException(status_code=503, detail="El cliente no está listo")
+    state = downloads_state.get(item_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="La descarga no existe")
+    if state.get("status") in {"completed", "skipped", "failed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="La descarga ya terminó")
+    if state.get("status") == "pending":
+        raise HTTPException(status_code=409, detail="La descarga todavía no está preparada")
+
+    event = downloader_instance.pause_events.setdefault(item_id, asyncio.Event())
+    if not event.is_set() and not paused:
+        event.set()
+    elif event.is_set() and paused:
+        event.clear()
+
+    if paused:
+        update_state(item_id, status="paused")
+    else:
+        update_state(item_id, status="downloading")
+    return {"status": "ok", "id": item_id, "paused": paused}
+
+
+@app.post("/api/pause")
+async def pause_download(payload: Dict[str, Any]) -> Dict[str, Any]:
+    item_id = str(payload.get("id", "")).strip()
+    if not item_id:
+        raise HTTPException(status_code=422, detail="ID requerido")
+    return await _set_download_pause(item_id, True)
+
+
+@app.post("/api/resume")
+async def resume_download(payload: Dict[str, Any]) -> Dict[str, Any]:
+    item_id = str(payload.get("id", "")).strip()
+    if not item_id:
+        raise HTTPException(status_code=422, detail="ID requerido")
+    return await _set_download_pause(item_id, False)
+
+
 @app.post("/api/download")
 async def start_download(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     url = str(data.get("url", "")).strip()
@@ -595,6 +635,7 @@ class TelegramDownloader:
         self.listener_enabled = self.config["listener_enabled"]
         self.watched_chat_ids = set(self.config["listener_chat_ids"])
         self.listener_messages: Dict[str, Tuple[Any, Any]] = {}
+        self.pause_events: Dict[str, asyncio.Event] = {}
 
         self.speed_limit: Optional[float] = None
         self.bytes_downloaded_since_limit_set = 0
@@ -804,6 +845,12 @@ class TelegramDownloader:
             print(f"❌ Error en el trabajo {job_id}: {error}")
 
     async def download_file_from_message(self, message: Any, chat_id: Any, item_id: str) -> None:
+        pause_event = self.pause_events.get(item_id)
+        if pause_event is None:
+            pause_event = asyncio.Event()
+            pause_event.set()
+            self.pause_events[item_id] = pause_event
+        await pause_event.wait()
         await self._acquire_download_slot()
         reserved_path: Optional[str] = None
         try:
@@ -841,6 +888,7 @@ class TelegramDownloader:
             if reserved_path:
                 await self._release_download_path(reserved_path)
             await self._release_download_slot()
+            self.pause_events.pop(item_id, None)
 
     async def _fetch_chunk(self, file_id: FileId, file_size: int, index: int) -> bytes:
         expected_size = min(CHUNK_SIZE, file_size - index * CHUNK_SIZE)
@@ -912,7 +960,9 @@ class TelegramDownloader:
 
         async def worker() -> None:
             nonlocal downloaded
+            pause_event = self.pause_events.setdefault(item_id, asyncio.Event())
             while True:
+                await pause_event.wait()
                 try:
                     index = queue.get_nowait()
                 except asyncio.QueueEmpty:

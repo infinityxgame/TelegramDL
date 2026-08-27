@@ -132,6 +132,16 @@ const cancelDownload = async (id) => {
   } catch (err) { showMessage(err.message, true) }
 }
 
+const setDownloadPause = async (id, paused) => {
+  try {
+    await api(`/api/${paused ? 'pause' : 'resume'}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
+    })
+    showMessage(paused ? 'Descarga pausada' : 'Descarga reanudada')
+    await fetchDownloads()
+  } catch (err) { showMessage(err.message, true) }
+}
+
 const deleteDownload = async item => {
   openConfirm({
     title: 'Borrar archivo',
@@ -148,13 +158,13 @@ const deleteDownload = async item => {
   })
 }
 
-const activeDownloads = computed(() => downloads.value.filter(item => item.status === 'downloading'))
+const activeDownloads = computed(() => downloads.value.filter(item => ['downloading', 'paused'].includes(item.status)))
 const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
 const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
 const completedCount = computed(() => downloads.value.filter(item => item.status === 'completed').length)
 const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
 
-const statusText = status => ({ downloading: 'Descargando', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
+const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
 const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
 
 onMounted(async () => {
@@ -199,7 +209,7 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
       <div class="content-grid">
         <section class="panel activity-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div><span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span></div>
           <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
-          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
+          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button><button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
         </section>
 
         <aside class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>

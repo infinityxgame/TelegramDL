@@ -57,6 +57,7 @@
 .mobile-menu-toggle{display:none;margin-left:auto;border:1px solid #294963;background:#102b42;color:#a9cce2;width:38px;height:38px;border-radius:10px;place-items:center;cursor:pointer}
 .brand-mark img{width:100%;height:100%;display:block;border-radius:10px}
 .delete-button{display:grid;place-items:center;border:0;background:transparent;color:#d9828b;width:32px;height:32px;border-radius:8px;cursor:pointer}.delete-button:hover{background:#48252c;color:#ffb0b0}
+.row-side .pause-action{color:#ffc764}.row-side .pause-action:hover{color:#ffe09a}.row-side .resume-action{color:#69d2ac}.row-side .resume-action:hover{color:#a0f0ce}
 @media (max-width: 900px) {
   .sidebar { display: flex !important; }
   .mobile-menu-toggle{display:grid}
