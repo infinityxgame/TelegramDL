@@ -32,6 +32,16 @@ const syncSettings = async nextSettings => {
   syncingSettings = false
 }
 
+const showMessage = (txt, isError = false) => {
+  if (isError) {
+    error.value = txt
+    setTimeout(() => { if (error.value === txt) error.value = '' }, 5000)
+  } else {
+    message.value = txt
+    setTimeout(() => { if (message.value === txt) message.value = '' }, 3500)
+  }
+}
+
 const api = async (url, options = {}) => {
   const response = await fetch(url, options)
   const data = await response.json().catch(() => ({}))
@@ -43,7 +53,7 @@ const fetchDownloads = async () => {
   try {
     downloads.value = await api('/api/downloads')
     error.value = ''
-  } catch (err) { error.value = err.message }
+  } catch (err) { /* No mostramos error en poll constante para evitar molestia */ }
 }
 
 const fetchSettings = async () => {
@@ -51,7 +61,7 @@ const fetchSettings = async () => {
     const data = await api('/api/settings')
     await syncSettings(data.settings)
     hydrated.value = true
-  } catch (err) { error.value = err.message }
+  } catch (err) { showMessage(err.message, true) }
 }
 
 const saveSettings = async () => {
@@ -63,9 +73,8 @@ const saveSettings = async () => {
       body: JSON.stringify(settings)
     })
     await syncSettings(data.settings)
-    message.value = 'Configuración guardada'
-    setTimeout(() => { message.value = '' }, 2200)
-  } catch (err) { error.value = err.message } finally { saving.value = false }
+    showMessage('Configuración guardada')
+  } catch (err) { showMessage(err.message, true) } finally { saving.value = false }
 }
 
 watch(settings, () => {
@@ -84,9 +93,9 @@ const startDownload = async () => {
       body: JSON.stringify({ url: newUrl.value.trim() })
     })
     newUrl.value = ''
-    message.value = 'Descarga añadida a la cola'
+    showMessage('Descarga añadida a la cola')
     await fetchDownloads()
-  } catch (err) { error.value = err.message } finally { loading.value = false }
+  } catch (err) { showMessage(err.message, true) } finally { loading.value = false }
 }
 
 const cancelDownload = async (id) => {
@@ -95,16 +104,16 @@ const cancelDownload = async (id) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id })
     })
     await fetchDownloads()
-  } catch (err) { error.value = err.message }
+  } catch (err) { showMessage(err.message, true) }
 }
 
 const deleteDownload = async item => {
   if (!window.confirm(`¿Borrar el archivo "${item.file_name}" del servidor?`)) return
   try {
     await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
-    message.value = 'Archivo borrado'
+    showMessage('Archivo borrado')
     await fetchDownloads()
-  } catch (err) { error.value = err.message }
+  } catch (err) { showMessage(err.message, true) }
 }
 
 const activeDownloads = computed(() => downloads.value.filter(item => item.status === 'downloading'))
@@ -139,9 +148,10 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
     <main class="main-content">
       <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : 'Escucha' }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
 
-      <template v-if="activeView === 'downloads'">
       <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
       <div v-if="error" class="toast danger">{{ error }}</div>
+
+      <template v-if="activeView === 'downloads'">
 
       <section class="hero-card">
         <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
@@ -172,7 +182,7 @@ onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
 
       <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
-      <ListenerView v-else />
+      <ListenerView v-else :notify="showMessage" />
       <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
     </main>
   </div>

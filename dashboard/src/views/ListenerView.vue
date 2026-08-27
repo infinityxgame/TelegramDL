@@ -2,6 +2,10 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Download, Inbox, MessageCircle, Plus, Radio, Trash2 } from 'lucide-vue-next'
 
+const props = defineProps({
+  notify: { type: Function, default: () => {} }
+})
+
 const enabled = ref(true)
 const chatIds = ref([])
 const newChatId = ref('')
@@ -24,7 +28,8 @@ const load = async () => {
     chatIds.value = settings.chat_ids
     items.value = detected
     error.value = ''
-  } catch (err) { error.value = err.message }
+  } catch (err) {
+  }
 }
 
 const save = async () => {
@@ -37,7 +42,8 @@ const save = async () => {
     enabled.value = data.enabled
     chatIds.value = data.chat_ids
     error.value = ''
-  } catch (err) { error.value = err.message } finally { saving.value = false }
+    props.notify('Configuración de escucha guardada')
+  } catch (err) { props.notify(err.message, true) } finally { saving.value = false }
 }
 
 const addChat = async () => {
@@ -54,13 +60,19 @@ const removeChat = async id => {
 }
 const toggle = async () => { await save() }
 const download = async item => {
-  try { await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) }); await load() }
-  catch (err) { error.value = err.message }
+  try {
+    await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) })
+    props.notify('Descarga añadida a la cola')
+    await load()
+  } catch (err) { props.notify(err.message, true) }
 }
 
 const removeItem = async item => {
-  try { await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' }); await load() }
-  catch (err) { error.value = err.message }
+  try {
+    await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+    props.notify('Multimedia descartada')
+    await load()
+  } catch (err) { props.notify(err.message, true) }
 }
 const statusText = status => ({ available: 'Disponible', queued: 'En cola', downloading: 'Descargando', completed: 'Completado', failed: 'Fallido' }[status] || status)
 const availableCount = computed(() => items.value.filter(item => item.status === 'available').length)
@@ -71,7 +83,6 @@ onUnmounted(() => clearInterval(timer))
 
 <template>
   <section class="listener-view">
-    <div v-if="error" class="toast danger">{{ error }}</div>
     <section class="listener-hero"><div><span class="hero-kicker"><Radio :size="13" /> MONITOR DE MENSAJES</span><h2>Escucha multimedia en tiempo real</h2><p>Cuando llegue un archivo a uno de tus chats, aparecerá aquí listo para descargar.</p></div><label class="switch large"><input v-model="enabled" type="checkbox" @change="toggle"><span></span><b>{{ enabled ? 'Escucha activa' : 'Escucha pausada' }}</b></label></section>
     <div class="listener-grid">
       <section class="panel listener-config"><div class="panel-heading"><div><span class="eyebrow"><MessageCircle :size="12" /> ORÍGENES</span><h2>Chats vigilados</h2></div><span class="count-pill">{{ chatIds.length }} configurados</span></div><p class="helper-text">Añade el ID numérico de un grupo o chat privado. El usuario debe pertenecer a ese chat.</p><div class="listener-add"><input v-model="newChatId" @keyup.enter="addChat" placeholder="Ej. -1001234567890"><button class="save-button" :disabled="saving" @click="addChat"><Plus :size="15" /> Añadir</button></div><div v-if="!chatIds.length" class="empty-small">No hay chats configurados.</div><div v-for="id in chatIds" :key="id" class="chat-chip"><MessageCircle :size="14" /><strong>{{ id }}</strong><button :disabled="saving" @click="removeChat(id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button></div><button class="save-button listener-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar chats' }}</button><small class="save-hint">Los cambios se guardan en config.json del servidor.</small></section>
