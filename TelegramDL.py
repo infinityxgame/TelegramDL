@@ -951,6 +951,7 @@ class TelegramDownloader:
                     file_name=f"Mensaje {message_id}",
                 )
 
+            all_tasks: List[asyncio.Task] = []
             for batch_start in range(start_id, end_id + 1, MAX_GET_MESSAGES_BATCH):
                 batch_end = min(batch_start + MAX_GET_MESSAGES_BATCH - 1, end_id)
                 batch_ids = list(range(batch_start, batch_end + 1))
@@ -963,7 +964,6 @@ class TelegramDownloader:
                     if message and getattr(message, "id", None) is not None
                 }
 
-                tasks: List[asyncio.Task] = []
                 for message_id in batch_ids:
                     item_id = self._item_id(job_id, message_id)
                     message = message_map.get(message_id)
@@ -981,16 +981,28 @@ class TelegramDownloader:
                             current_item, None
                         )
                     )
-                    tasks.append(task)
+                    all_tasks.append(task)
 
-                if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+            if all_tasks:
+                await asyncio.gather(*all_tasks, return_exceptions=True)
         except asyncio.CancelledError:
             raise
         except Exception as error:
             print(f"❌ Error en el trabajo {job_id}: {error}")
 
     async def download_file_from_message(self, message: Any, chat_id: Any, item_id: str) -> None:
+        info = self._extract_media_info(message)
+        if not info:
+            update_state(item_id, status="skipped")
+            return
+
+        update_state(
+            item_id,
+            file_name=info.file_name,
+            kind=info.kind,
+            total_str=format_bytes(info.file_size),
+        )
+
         pause_event = self.pause_events.get(item_id)
         if pause_event is None:
             pause_event = asyncio.Event()
@@ -1000,14 +1012,21 @@ class TelegramDownloader:
         await self._acquire_download_slot()
         reserved_path: Optional[str] = None
         try:
-            info = self._extract_media_info(message)
-            if not info:
-                update_state(item_id, status="skipped")
+            file_path, file_name, already_exists = await self._reserve_download_path(
+                info.file_name, message.id, info.file_size
+            )
+            if already_exists:
+                update_state(
+                    item_id,
+                    file_name=file_name,
+                    kind=info.kind,
+                    total_str=format_bytes(info.file_size),
+                    file_path=file_path,
+                    status="completed",
+                    progress=100,
+                )
                 return
 
-            file_path, file_name = await self._reserve_download_path(
-                info.file_name, message.id
-            )
             reserved_path = file_path
             update_state(
                 item_id,
@@ -1015,6 +1034,7 @@ class TelegramDownloader:
                 kind=info.kind,
                 total_str=format_bytes(info.file_size),
                 file_path=file_path,
+                status="downloading",
             )
 
             workers = self.chunk_workers if self.parallel_chunks else 1
@@ -1160,9 +1180,35 @@ class TelegramDownloader:
         )
         if not media:
             return None
-        name = getattr(media, "file_name", None) or f"file_{message.id}"
-        if message.photo:
-            name = f"photo_{message.id}.jpg"
+
+        # 1. Obtener nombre base de Telegram
+        tg_name = getattr(media, "file_name", None)
+
+        # 2. Identificar si el nombre es genérico o nulo
+        is_generic = False
+        if not tg_name:
+            is_generic = True
+            if message.photo:
+                tg_name = f"photo_{message.id}.jpg"
+            else:
+                tg_name = f"file_{message.id}"
+
+        generic_prefixes = ("video_", "doc_", "music_", "audio_", "sticker_", "photo_", "file_")
+        if any(tg_name.lower().startswith(p) for p in generic_prefixes):
+            is_generic = True
+
+        # 3. Extraer extensión del nombre de Telegram
+        _, ext = os.path.splitext(tg_name)
+
+        # 4. Decidir el nombre final
+        name = tg_name
+        if is_generic and message.caption:
+            first_line = message.caption.split("\n")[0].strip()
+            if first_line:
+                if len(first_line) > 50:
+                    first_line = first_line[:50].strip()
+                name = f"{first_line}{ext}"
+
         return MediaInfo(
             media,
             name,
@@ -1170,7 +1216,9 @@ class TelegramDownloader:
             int(getattr(media, "file_size", 0) or 0),
         )
 
-    async def _reserve_download_path(self, name: str, message_id: int) -> Tuple[str, str]:
+    async def _reserve_download_path(
+        self, name: str, message_id: int, expected_size: int = 0
+    ) -> Tuple[str, str, bool]:
         safe_name = sanitize_file_name(name)
         if not safe_name:
             safe_name = f"file_{message_id}"
@@ -1180,9 +1228,17 @@ class TelegramDownloader:
         async with self._reserved_paths_lock:
             while True:
                 path = str(self.download_folder / candidate)
+                # Si el archivo existe físicamente y no está reservado por otra descarga activa
+                if os.path.exists(path) and path not in self._reserved_paths:
+                    try:
+                        if os.path.getsize(path) == expected_size:
+                            return path, candidate, True
+                    except OSError:
+                        pass
+
                 if not os.path.exists(path) and path not in self._reserved_paths:
                     self._reserved_paths.add(path)
-                    return path, candidate
+                    return path, candidate, False
                 counter += 1
                 candidate = f"{stem} ({counter}){extension}"
 
