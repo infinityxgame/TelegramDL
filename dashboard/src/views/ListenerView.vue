@@ -14,6 +14,10 @@ const items = ref([])
 const saving = ref(false)
 const error = ref('')
 let timer
+let socket
+let reconnectTimer
+let disposed = false
+const websocketConnected = ref(false)
 
 const api = async (url, options = {}) => {
   const response = await fetch(url, options)
@@ -145,8 +149,25 @@ const clearAll = async () => {
 const statusText = status => ({ available: 'Disponible', queued: 'En cola', downloading: 'Descargando', completed: 'Completado', failed: 'Fallido' }[status] || status)
 const availableCount = computed(() => items.value.filter(item => item.status === 'available').length)
 
-onMounted(async () => { await load(); timer = setInterval(load, 1500) })
-onUnmounted(() => clearInterval(timer))
+const connectWebSocket = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
+  socket.onopen = () => { websocketConnected.value = true }
+  socket.onmessage = event => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.type === 'state' && Array.isArray(data.listener)) items.value = data.listener
+    } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
+  }
+  socket.onclose = () => {
+    websocketConnected.value = false
+    if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2500)
+  }
+  socket.onerror = () => socket.close()
+}
+
+onMounted(async () => { disposed = false; await load(); connectWebSocket(); timer = setInterval(() => { if (!websocketConnected.value) load() }, 1500) })
+onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(reconnectTimer); socket?.close() })
 </script>
 
 <template>

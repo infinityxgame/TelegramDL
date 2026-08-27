@@ -24,8 +24,12 @@ const settings = reactive({
 })
 
 let timer
+let socket
+let reconnectTimer
 let saveTimer
+let disposed = false
 let syncingSettings = false
+const websocketConnected = ref(false)
 
 const syncSettings = async nextSettings => {
   syncingSettings = true
@@ -167,11 +171,30 @@ const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.sp
 const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
 const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
 
+const connectWebSocket = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
+  socket.onopen = () => { websocketConnected.value = true }
+  socket.onmessage = event => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.type === 'state' && Array.isArray(data.downloads)) downloads.value = data.downloads
+    } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
+  }
+  socket.onclose = () => {
+    websocketConnected.value = false
+    if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2500)
+  }
+  socket.onerror = () => socket.close()
+}
+
 onMounted(async () => {
+  disposed = false
   await Promise.all([fetchSettings(), fetchDownloads()])
-  timer = setInterval(fetchDownloads, 1000)
+  connectWebSocket()
+  timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
 })
-onUnmounted(() => { clearInterval(timer); clearTimeout(saveTimer) })
+onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTimer); clearTimeout(reconnectTimer); socket?.close() })
 </script>
 
 <template>

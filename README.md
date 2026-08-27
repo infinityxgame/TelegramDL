@@ -92,6 +92,8 @@ http://192.168.1.50:8080/dashboard/
 
 El servidor de desarrollo redirige las peticiones `/api` al backend de `http://127.0.0.1:8000`. Por tanto, el backend debe estar ejecutándose en otra terminal. Vite escucha en todas las interfaces para permitir el acceso desde la red local.
 
+El dashboard usa WebSocket en `/api/ws` para recibir el progreso en tiempo real. Si la conexión no está disponible, vuelve automáticamente al polling HTTP.
+
 ## Uso del panel
 
 - **Descargas:** añade enlaces de mensajes de Telegram y consulta el progreso.

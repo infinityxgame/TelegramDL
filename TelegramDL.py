@@ -21,7 +21,7 @@ from pyrogram.file_id import FileId
 from pyrogram.handlers import MessageHandler
 
 try:
-    from fastapi import Body, FastAPI, HTTPException
+    from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
@@ -186,6 +186,47 @@ downloads_state: Dict[str, Dict[str, Any]] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
 active_jobs: Dict[str, asyncio.Task] = {}
 downloader_instance = None
+websocket_clients: Set[WebSocket] = set()
+websocket_broadcast_task: Optional[asyncio.Task] = None
+
+
+def websocket_snapshot() -> Dict[str, Any]:
+    downloads = [
+        {key: value for key, value in item.items() if key != "file_path"}
+        for item in sorted(
+            downloads_state.values(),
+            key=lambda item: item.get("updated_at", 0),
+            reverse=True,
+        )
+    ]
+    listener = downloader_instance.get_listener_items() if downloader_instance else []
+    return {"type": "state", "downloads": downloads, "listener": listener}
+
+
+async def broadcast_websocket_state() -> None:
+    global websocket_broadcast_task
+    websocket_broadcast_task = None
+    if not websocket_clients:
+        return
+    payload = websocket_snapshot()
+    disconnected = set()
+    for client in tuple(websocket_clients):
+        try:
+            await client.send_json(payload)
+        except Exception:
+            disconnected.add(client)
+    websocket_clients.difference_update(disconnected)
+
+
+def schedule_websocket_broadcast() -> None:
+    global websocket_broadcast_task
+    if not websocket_clients or websocket_broadcast_task is not None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    websocket_broadcast_task = loop.create_task(broadcast_websocket_state())
 
 
 def update_state(item_id: str, **kwargs: Any) -> None:
@@ -208,6 +249,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
     _prune_state()
+    schedule_websocket_broadcast()
 
 
 def _prune_state() -> None:
@@ -251,6 +293,20 @@ async def get_downloads() -> List[Dict[str, Any]]:
             reverse=True,
         )
     ]
+
+
+@app.websocket("/api/ws")
+async def dashboard_websocket(websocket: WebSocket) -> None:
+    await websocket.accept()
+    websocket_clients.add(websocket)
+    try:
+        await websocket.send_json(websocket_snapshot())
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        websocket_clients.discard(websocket)
 
 
 @app.delete("/api/downloads/{item_id:path}")
