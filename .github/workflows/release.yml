@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build executable on ${{ matrix.os }}
@@ -34,7 +37,7 @@ jobs:
       - name: Build Vue Dashboard
         run: |
           cd dashboard
-          npm ci
+          npm install
           npm run build
           cd ..
 
