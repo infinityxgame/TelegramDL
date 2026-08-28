@@ -20,3 +20,4 @@ dashboard/node_modules/
 /build
 /dist
 *.spec
+downloads.json

@@ -49,7 +49,10 @@ else:
 
 load_dotenv(BASE_DIR / ".env")
 CONFIG_PATH = BASE_DIR / "config.json"
+STATE_PATH = BASE_DIR / "downloads.json"
 CONFIG_WRITE_LOCK = threading.Lock()
+STATE_WRITE_LOCK = threading.Lock()
+state_dirty = False
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "max_concurrent_downloads": 2,
@@ -224,6 +227,44 @@ websocket_broadcast_task: Optional[asyncio.Task] = None
 websocket_broadcast_dirty = False
 
 
+def save_downloads_state() -> None:
+    global state_dirty
+    if not state_dirty:
+        return
+    with STATE_WRITE_LOCK:
+        try:
+            temp_path = STATE_PATH.with_suffix(".tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(downloads_state, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, STATE_PATH)
+            state_dirty = False
+        except Exception as e:
+            print(f"⚠️ Error al guardar el estado: {e}")
+
+
+def load_downloads_state() -> None:
+    global downloads_state
+    if not STATE_PATH.exists():
+        return
+    try:
+        with open(STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                downloads_state = data
+                # Limpiar estados de "downloading" a "queued" para que se reanuden
+                for item in downloads_state.values():
+                    if item.get("status") == "downloading":
+                        item["status"] = "queued"
+    except Exception as e:
+        print(f"⚠️ Error al cargar el estado previo: {e}")
+
+
+async def auto_save_loop() -> None:
+    while True:
+        await asyncio.sleep(5)
+        save_downloads_state()
+
+
 def websocket_snapshot() -> Dict[str, Any]:
     downloads = [
         {key: value for key, value in item.items() if key != "file_path"}
@@ -275,6 +316,7 @@ def schedule_websocket_broadcast() -> None:
 
 
 def update_state(item_id: str, **kwargs: Any) -> None:
+    global state_dirty
     if item_id not in downloads_state:
         downloads_state[item_id] = {
             "id": item_id,
@@ -300,6 +342,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
         )
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
+    state_dirty = True
     _prune_state()
     schedule_websocket_broadcast()
 
@@ -1264,6 +1307,54 @@ class TelegramDownloader:
         except Exception as error:
             print(f"❌ Error en el trabajo {job_id}: {error}")
 
+    async def resume_all(self) -> None:
+        to_resume = []
+        for item_id, item in downloads_state.items():
+            if item.get("status") in {"pending", "queued", "downloading", "paused"}:
+                # Priorizar los que ya tienen progreso (archivos temporales existentes)
+                has_progress = False
+                file_path = item.get("file_path")
+                if file_path and os.path.exists(f"{file_path}.temp.state.json"):
+                    has_progress = True
+
+                to_resume.append({
+                    "id": item_id,
+                    "progress": has_progress,
+                    "created_at": item.get("created_at", 0)
+                })
+
+        if not to_resume:
+            return
+
+        # Ordenar: primero los que tienen progreso, luego por fecha de creación
+        to_resume.sort(key=lambda x: (not x["progress"], x["created_at"]))
+
+        print(f"🔄 Reanudando {len(to_resume)} tareas pendientes...")
+        for entry in to_resume:
+            item_id = entry["id"]
+            task = asyncio.create_task(self.resume_item(item_id))
+            active_tasks[item_id] = task
+            task.add_done_callback(lambda f, i=item_id: active_tasks.pop(i, None))
+
+    async def resume_item(self, item_id: str) -> None:
+        item = downloads_state.get(item_id)
+        if not item: return
+        chat_id = item.get("chat_id")
+        message_id = item.get("message_id")
+        if not chat_id or not message_id:
+            update_state(item_id, status="failed")
+            return
+
+        try:
+            message = await self.client.get_messages(chat_id, message_id)
+            if not message or message.empty:
+                update_state(item_id, status="skipped")
+                return
+            await self.download_file_from_message(message, chat_id, item_id)
+        except Exception as e:
+            print(f"❌ Error al reanudar {item_id}: {e}")
+            update_state(item_id, status="failed")
+
     async def download_file_from_message(self, message: Any, chat_id: Any, item_id: str) -> None:
         info = self._extract_media_info(message)
         if not info:
@@ -1315,13 +1406,9 @@ class TelegramDownloader:
             await self._download_manual(info, file_path, file_name, item_id, workers)
             update_state(item_id, status="completed", progress=100)
         except asyncio.CancelledError:
-            if reserved_path:
-                self._cleanup_files(reserved_path)
             update_state(item_id, status="cancelled", progress=0)
             raise
         except Exception as error:
-            if reserved_path:
-                self._cleanup_files(reserved_path)
             print(f"❌ Error en la descarga {item_id}: {error}")
             update_state(item_id, status="failed")
         finally:
@@ -1376,18 +1463,41 @@ class TelegramDownloader:
             raise ValueError("Tamaño de archivo inválido")
         file_id = FileId.decode(info.media.file_id)
         temp_path = f"{file_path}.temp"
+        state_path = f"{temp_path}.state.json"
         total_chunks = math.ceil(file_size / CHUNK_SIZE)
-        progress = DownloadProgress(item_id, file_name, file_size, kind=info.kind)
 
-        with open(temp_path, "w+b") as file_handle:
-            file_handle.truncate(file_size)
+        # Cargar o inicializar el estado de los chunks
+        downloaded_chunks = set()
+        if os.path.exists(temp_path) and os.path.exists(state_path):
+            try:
+                with open(state_path, "r") as f:
+                    data = json.load(f)
+                    downloaded_chunks = set(data.get("completed_chunks", []))
+            except Exception:
+                pass
+
+        progress = DownloadProgress(
+            item_id,
+            file_name,
+            file_size,
+            initial=len(downloaded_chunks) * CHUNK_SIZE,
+            kind=info.kind
+        )
+
+        # Si el archivo temporal no existe o tiene tamaño incorrecto, empezar de cero
+        if not os.path.exists(temp_path) or os.path.getsize(temp_path) != file_size:
+            with open(temp_path, "w+b") as file_handle:
+                file_handle.truncate(file_size)
+            downloaded_chunks = set()
 
         queue: asyncio.Queue[int] = asyncio.Queue()
         for index in range(total_chunks):
-            queue.put_nowait(index)
+            if index not in downloaded_chunks:
+                queue.put_nowait(index)
 
-        downloaded = 0
+        downloaded = len(downloaded_chunks) * CHUNK_SIZE
         errors: List[Exception] = []
+        state_lock = asyncio.Lock()
 
         def drain_queue() -> None:
             while True:
@@ -1412,8 +1522,15 @@ class TelegramDownloader:
                     with open(temp_path, "r+b") as file_handle:
                         file_handle.seek(index * CHUNK_SIZE)
                         file_handle.write(chunk_data)
-                    downloaded += len(chunk_data)
-                    progress.update(downloaded)
+
+                    async with state_lock:
+                        downloaded_chunks.add(index)
+                        downloaded += len(chunk_data)
+                        progress.update(downloaded)
+                        # Guardar progreso de chunks
+                        with open(state_path, "w") as f:
+                            json.dump({"completed_chunks": list(downloaded_chunks)}, f)
+
                     await self.throttle(len(chunk_data))
                 except asyncio.CancelledError:
                     raise
@@ -1440,6 +1557,8 @@ class TelegramDownloader:
         if not os.path.exists(temp_path):
             raise IOError("No se generó el archivo temporal")
         os.replace(temp_path, file_path)
+        if os.path.exists(state_path):
+            os.remove(state_path)
 
     def _extract_media_info(self, message: Any) -> Optional[MediaInfo]:
         media = (
@@ -1570,6 +1689,9 @@ async def main() -> None:
     global downloader_instance
     print("🤖 TG Downloader Pro")
 
+    load_downloads_state()
+    asyncio.create_task(auto_save_loop())
+
     server_task = asyncio.create_task(run_server())
     host = os.getenv("TGDL_BIND_HOST", "127.0.0.1")
     visible_host = get_local_ip() if host == "0.0.0.0" else host
@@ -1582,6 +1704,8 @@ async def main() -> None:
             status = await check_auth_status()
             if status.get("authenticated"):
                 print("✅ Conectado a Telegram. Esperando órdenes desde la web...")
+                if downloader_instance:
+                    asyncio.create_task(downloader_instance.resume_all())
             else:
                 print("🔑 Completa el inicio de sesión desde el panel web.")
         except Exception as err:
