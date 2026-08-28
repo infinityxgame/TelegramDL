@@ -17,3 +17,6 @@ dashboard/node_modules/
 .env
 /dashboard/dist
 /dashboard/package-lock.json
+/build
+/dist
+*.spec

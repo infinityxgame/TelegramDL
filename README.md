@@ -1,18 +1,38 @@
-# TelegramDL
+# TelegramDL 🤖
 
-Panel web para gestionar descargas multimedia de Telegram y escuchar chats configurados.
+Panel web moderno y aplicación portable para gestionar descargas multimedia de Telegram y automatizar la escucha de canales y grupos.
 
-## Requisitos
+---
 
+## 🌟 Características Principales
+
+- **Asistente de Instalación Web (Estilo CMS / WordPress):** Si no has iniciado sesión o faltan credenciales, el propio panel web te guía paso a paso para ingresar tu `API ID`, `API HASH`, número de teléfono, código de confirmación de Telegram y contraseña 2FA. ¡Sin tocar la consola!
+- **Distribución ejecutable (.exe):** Se puede empaquetar en un ejecutable autónomo para Windows que no requiere tener instalado Python ni Node.js.
+- **Identificación de Dispositivo:** Se registra en Telegram como `TGDown Desktop` para que puedas ver y gestionar la sesión desde *Ajustes > Dispositivos* en la app oficial de Telegram.
+- **Gestor de Descargas:** Permite descargar archivos individuales o lotes por enlace de mensaje con indicador de velocidad, progreso en tiempo real y soporte WebSocket.
+- **Escucha Automática:** Vigilancia continua de chats/canales privados o públicos para listar o descargar archivos automáticamente.
+
+---
+
+## 🚀 Opción 1: Usar la Versión Compilada (Portátil)
+
+Para distribuir la aplicación a usuarios que **no tienen Python ni Node.js instalados**:
+
+1. Descomprime la carpeta `TelegramDL`.
+2. Haz doble clic en `TelegramDL.exe`.
+3. Abre la dirección que aparece en la consola (por ejemplo, `http://localhost:8000/dashboard/`).
+4. Completa la configuración desde el panel web.
+
+---
+
+## 🛠️ Opción 2: Ejecución e Instalación desde Código Fuente
+
+### Requisitos
 - Windows 10/11
 - Python 3.10 o superior
 - Node.js 18 o superior y npm
-- Credenciales de Telegram: `api_id` y `api_hash`
 
-## Instalación desde cero
-
-Abre PowerShell en la raíz del proyecto:
-
+### 1. Preparar el entorno Python
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -20,101 +40,65 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Instala las dependencias del dashboard:
-
+### 2. Preparar e instalar dependencias del Dashboard (Vue 3)
 ```powershell
 cd dashboard
 npm install
 cd ..
 ```
 
-## Configuración
-
-1. Copia `.env.example` como `.env`.
-2. Edita `.env` y añade tus credenciales de Telegram:
-
-```env
-TGDL_API_ID=123456
-TGDL_API_HASH=tu_api_hash
-TGDL_BIND_HOST=0.0.0.0
-TGDL_PORT=8000
-```
-
-`config.json` se crea automáticamente al iniciar el programa. Guarda ahí las preferencias del dashboard, los chats vigilados y la carpeta de descargas. No se debe subir al repositorio.
-
-## Generar el dashboard
-
-Desde la raíz del proyecto:
-
+### 3. Compilar el Dashboard (Frontend)
 ```powershell
 npm --prefix dashboard run build
 ```
 
-O desde la carpeta `dashboard`:
-
+### 4. Iniciar la aplicación
 ```powershell
-cd dashboard
-npm run build
+.\.venv\Scripts\python.exe TelegramDL.py
 ```
 
-El resultado se genera en `dashboard/dist`. Esta carpeta está ignorada por Git y debe regenerarse en cada instalación o después de modificar el frontend.
-
-## Ejecutar la aplicación
-
-Desde la raíz, con el entorno virtual activo:
-
-```powershell
-.\.venv\Scripts\python.exe .\TelegramDL.py
-```
-
-Abre el panel en el propio equipo usando `127.0.0.1`, o desde otro dispositivo usando la IP local del PC, por ejemplo `192.168.1.50`:
-
+Abre en tu navegador:
 ```text
-http://192.168.1.50:8000/dashboard/
+http://127.0.0.1:8000/dashboard/
 ```
 
-La primera vez que se conecte Telegram puede solicitar el número de teléfono, el código de acceso y, si está activada, la contraseña de verificación en dos pasos. La sesión se guarda localmente y está excluida de Git.
+---
 
-## Desarrollo del frontend
+## 📦 Cómo Compilar tu propio `.exe` (PyInstaller)
 
-Para trabajar con recarga automática:
+Para generar una versión portable lista para distribuir con su propio ícono:
 
 ```powershell
-cd dashboard
-npm run dev
+# 1. Asegurarte de que el frontend está compilado
+npm --prefix dashboard run build
+
+# 2. Instalar herramientas de compilación
+pip install pyinstaller pillow
+
+# 3. Compilar la aplicación
+pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
 ```
 
-Abre la URL que muestre Vite, normalmente:
+El ejecutable resultante se guardará en `dist/TelegramDL/TelegramDL.exe`. Puedes comprimir esa carpeta en `.zip` y compartirla.
 
-```text
-http://192.168.1.50:8080/dashboard/
-```
+---
 
-El servidor de desarrollo redirige las peticiones `/api` al backend de `http://127.0.0.1:8000`. Por tanto, el backend debe estar ejecutándose en otra terminal. Vite escucha en todas las interfaces para permitir el acceso desde la red local.
+## 💡 Uso del Panel Web
 
-El dashboard usa WebSocket en `/api/ws` para recibir el progreso en tiempo real. Si la conexión no está disponible, vuelve automáticamente al polling HTTP.
+- **Descargas:** Pega enlaces de mensajes de Telegram y consulta el estado de las descargas activas.
+- **Configuración:** Ajusta descargas simultáneas, partes por archivo, límite de velocidad y carpeta de destino.
+- **Escucha:** Activa la escucha y añade IDs numéricos de grupos o chats privados. Los archivos detectados aparecerán en una lista interactiva.
+- **Usuario & Sesión:** Puedes ver tu perfil conectado y un botón para **Cerrar sesión** en Telegram si deseas cambiar de cuenta.
 
-## Uso del panel
+> **Nota:** Si deseas descargar de un grupo que tiene configurado temas, debes poner el grupo en modo mensajes antes de copiar el enlace del archivo deseado.
 
-- **Descargas:** añade enlaces de mensajes de Telegram y consulta el progreso.
-- **Configuración:** ajusta descargas simultáneas, partes por archivo, límite de velocidad y carpeta de destino.
-- **Escucha:** activa la escucha y añade IDs numéricos de grupos o chats privados. Cada ID puede eliminarse desde el propio panel y los cambios se guardan en `config.json`. Los archivos detectados aparecen en una lista donde pueden descargarse o eliminarse si no se desean.
+---
 
-**Nota:** Si desean descargar de un grupo que tiene configurado los temas deben poner el grupo en modo mensajes y entonces copiar el enlace del archivo deseado o el rango deseado, si intentan copiar la url sin estar en modo mensaje les dará un error de URL inválida.
+## 📁 Archivos Importantes
 
-## Archivos importantes
-
-- `TelegramDL.py`: backend, API y lógica de descargas.
-- `dashboard/src/`: código Vue del frontend.
-- `dashboard/dist/`: frontend compilado localmente, no versionado.
-- `.env`: credenciales y variables de ejecución, no versionado.
-- `config.json`: configuración persistente local, no versionado.
-- `descargas/`: archivos descargados, no versionado.
-
-## Problemas frecuentes
-
-Si el navegador muestra una versión antigua del panel, detén el backend, ejecuta de nuevo `npm --prefix dashboard run build`, inicia `TelegramDL.py` y recarga con `Ctrl+F5`.
-
-Si el puerto `5173` falla en Windows por permisos, el desarrollo usa `0.0.0.0:8080`. Desde otro dispositivo se debe abrir la IP local del PC, por ejemplo `http://192.168.1.50:8080/dashboard/`.
-
-Para acceder desde otro dispositivo, permite el puerto `8000` en el Firewall de Windows si el sistema lo solicita y asegúrate de que ambos dispositivos estén en la misma red. No expongas el servidor directamente a Internet sin añadir autenticación y HTTPS.
+- `TelegramDL.py`: Servidor backend FastAPI y lógica de descargas Pyrogram.
+- `dashboard/src/`: Código fuente de Vue 3 (Panel Web y Asistente de Autenticación).
+- `dashboard/dist/`: Bundle compilado del frontend.
+- `icon.ico`: Ícono oficial generado para la aplicación ejecutable.
+- `.env`: Credenciales locales (`TGDL_API_ID`, `TGDL_API_HASH`, puerto).
+- `config.json`: Configuración persistente del dashboard.

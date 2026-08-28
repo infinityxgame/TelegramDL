@@ -42,8 +42,10 @@ except ImportError:
 # --- Paths and persistent configuration ---
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys.executable).resolve().parent
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
 else:
     BASE_DIR = Path(__file__).resolve().parent
+    BUNDLE_DIR = BASE_DIR
 
 load_dotenv(BASE_DIR / ".env")
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -915,9 +917,14 @@ async def root() -> RedirectResponse:
     return RedirectResponse(url="/dashboard/")
 
 
-dashboard_path = BASE_DIR / "dashboard" / "dist"
+dashboard_path = BUNDLE_DIR / "dashboard" / "dist"
+if not dashboard_path.exists():
+    dashboard_path = BASE_DIR / "dashboard" / "dist"
+
 if dashboard_path.exists():
     app.mount("/dashboard", StaticFiles(directory=dashboard_path, html=True), name="dashboard")
+else:
+    print(f"⚠️ Advertencia: No se encontró la carpeta del panel web en {dashboard_path}")
 
 
 def get_local_ip() -> str:
@@ -1585,5 +1592,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\n👋 TG Downloader Pro finalizado.")
 
