@@ -16,7 +16,15 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 from pyrogram import Client, filters
-from pyrogram.errors import FloodWait
+from pyrogram.errors import (
+    ApiIdInvalid,
+    FloodWait,
+    PasswordHashInvalid,
+    PhoneCodeExpired,
+    PhoneCodeInvalid,
+    PhoneNumberInvalid,
+    SessionPasswordNeeded,
+)
 from pyrogram.file_id import FileId
 from pyrogram.handlers import MessageHandler
 
@@ -32,7 +40,11 @@ except ImportError:
 
 
 # --- Paths and persistent configuration ---
-BASE_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+
 load_dotenv(BASE_DIR / ".env")
 CONFIG_PATH = BASE_DIR / "config.json"
 CONFIG_WRITE_LOCK = threading.Lock()
@@ -305,6 +317,94 @@ def _prune_state() -> None:
         downloads_state.pop(item_id, None)
 
 
+# --- Auth & Session Manager ---
+auth_session: Dict[str, Any] = {
+    "state": "UNCONFIGURED",  # UNCONFIGURED | NOT_LOGGED_IN | WAITING_CODE | WAITING_2FA | LOGGED_IN
+    "phone_number": None,
+    "phone_code_hash": None,
+    "user": None,
+}
+
+
+def save_env_credentials(api_id: str, api_hash: str) -> None:
+    env_path = BASE_DIR / ".env"
+    lines = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    new_lines = []
+    has_id = False
+    has_hash = False
+    for line in lines:
+        if line.startswith("TGDL_API_ID="):
+            new_lines.append(f"TGDL_API_ID={api_id}")
+            has_id = True
+        elif line.startswith("TGDL_API_HASH="):
+            new_lines.append(f"TGDL_API_HASH={api_hash}")
+            has_hash = True
+        else:
+            new_lines.append(line)
+
+    if not has_id:
+        new_lines.append(f"TGDL_API_ID={api_id}")
+    if not has_hash:
+        new_lines.append(f"TGDL_API_HASH={api_hash}")
+
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    os.environ["TGDL_API_ID"] = str(api_id)
+    os.environ["TGDL_API_HASH"] = str(api_hash)
+
+
+async def check_auth_status() -> Dict[str, Any]:
+    global downloader_instance, auth_session
+    api_id = os.getenv("TGDL_API_ID")
+    api_hash = os.getenv("TGDL_API_HASH")
+
+    if not api_id or not api_hash:
+        auth_session["state"] = "UNCONFIGURED"
+        auth_session["user"] = None
+        return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False}
+
+    if not downloader_instance:
+        try:
+            downloader_instance = TelegramDownloader(api_id, api_hash)
+        except Exception as err:
+            return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False, "error": str(err)}
+
+    try:
+        if not downloader_instance.client.is_connected:
+            await downloader_instance.client.connect()
+        me = await downloader_instance.client.get_me()
+        if me:
+            user_info = {
+                "id": me.id,
+                "first_name": me.first_name or "",
+                "username": me.username or "",
+                "phone": getattr(me, "phone_number", ""),
+            }
+            auth_session["state"] = "LOGGED_IN"
+            auth_session["user"] = user_info
+            return {
+                "authenticated": True,
+                "state": "LOGGED_IN",
+                "has_credentials": True,
+                "user": user_info,
+            }
+    except Exception:
+        pass
+
+    if auth_session["state"] not in {"WAITING_CODE", "WAITING_2FA"}:
+        auth_session["state"] = "NOT_LOGGED_IN"
+        auth_session["user"] = None
+
+    return {
+        "authenticated": False,
+        "state": auth_session["state"],
+        "has_credentials": True,
+        "phone_number": auth_session.get("phone_number"),
+    }
+
+
 # --- Dashboard API ---
 app = FastAPI(title="Telegram DL API")
 cors_origins = [
@@ -319,6 +419,158 @@ if cors_origins:
         allow_methods=["GET", "PUT", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
+
+
+@app.get("/api/auth/status")
+async def get_auth_status() -> Dict[str, Any]:
+    return await check_auth_status()
+
+
+@app.post("/api/auth/credentials")
+async def set_auth_credentials(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    global downloader_instance
+    api_id = str(data.get("api_id", "")).strip()
+    api_hash = str(data.get("api_hash", "")).strip()
+
+    if not api_id or not api_hash:
+        raise HTTPException(status_code=422, detail="Debe ingresar tanto API ID como API HASH")
+
+    save_env_credentials(api_id, api_hash)
+
+    if downloader_instance and downloader_instance.client:
+        with suppress(Exception):
+            await downloader_instance.client.disconnect()
+        downloader_instance = None
+
+    try:
+        downloader_instance = TelegramDownloader(api_id, api_hash)
+        await downloader_instance.client.connect()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Credenciales de API inválidas: {error}") from error
+
+    return await check_auth_status()
+
+
+@app.post("/api/auth/send-code")
+async def auth_send_code(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    global downloader_instance, auth_session
+    phone = str(data.get("phone_number", "")).strip().replace(" ", "").replace("-", "")
+    if not phone:
+        raise HTTPException(status_code=422, detail="Número de teléfono requerido")
+
+    status = await check_auth_status()
+    if not status["has_credentials"]:
+        raise HTTPException(status_code=400, detail="Faltan credenciales API ID / API HASH")
+
+    try:
+        if not downloader_instance.client.is_connected:
+            await downloader_instance.client.connect()
+        sent_code = await downloader_instance.client.send_code(phone)
+        auth_session["phone_number"] = phone
+        auth_session["phone_code_hash"] = sent_code.phone_code_hash
+        auth_session["state"] = "WAITING_CODE"
+        return {
+            "status": "ok",
+            "state": "WAITING_CODE",
+            "phone_number": phone,
+            "phone_code_hash": sent_code.phone_code_hash,
+        }
+    except PhoneNumberInvalid:
+        raise HTTPException(status_code=400, detail="El número de teléfono introducido no es válido.")
+    except ApiIdInvalid:
+        raise HTTPException(status_code=400, detail="El API ID o API HASH configurados no son válidos.")
+    except FloodWait as e:
+        raise HTTPException(status_code=429, detail=f"Telegram ha limitado las peticiones. Intenta de nuevo en {e.value} segundos.")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Error al enviar código: {error}") from error
+
+
+@app.post("/api/auth/verify-code")
+async def auth_verify_code(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    global downloader_instance, auth_session
+    code = str(data.get("code", "")).strip().replace(" ", "")
+    phone = str(data.get("phone_number", "")).strip().replace(" ", "").replace("-", "") or auth_session.get("phone_number")
+    phone_code_hash = auth_session.get("phone_code_hash")
+
+    if not code:
+        raise HTTPException(status_code=422, detail="Código de verificación requerido")
+    if not phone or not phone_code_hash:
+        raise HTTPException(status_code=400, detail="No se ha iniciado un proceso de login previo. Solicita un nuevo código.")
+
+    try:
+        if not downloader_instance.client.is_connected:
+            await downloader_instance.client.connect()
+        await downloader_instance.client.sign_in(phone, phone_code_hash, code)
+        me = await downloader_instance.client.get_me()
+        user_info = {
+            "id": me.id,
+            "first_name": me.first_name or "",
+            "username": me.username or "",
+            "phone": getattr(me, "phone_number", ""),
+        }
+        auth_session["state"] = "LOGGED_IN"
+        auth_session["user"] = user_info
+        return {"status": "ok", "state": "LOGGED_IN", "user": user_info}
+    except SessionPasswordNeeded:
+        auth_session["state"] = "WAITING_2FA"
+        return {"status": "2fa_required", "state": "WAITING_2FA"}
+    except (PhoneCodeInvalid, PhoneCodeExpired):
+        raise HTTPException(status_code=400, detail="El código ingresado es incorrecto o ha expirado.")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Error al verificar código: {error}") from error
+
+
+@app.post("/api/auth/verify-2fa")
+async def auth_verify_2fa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    global downloader_instance, auth_session
+    password = str(data.get("password", ""))
+    if not password:
+        raise HTTPException(status_code=422, detail="Contraseña requerida")
+
+    try:
+        if not downloader_instance.client.is_connected:
+            await downloader_instance.client.connect()
+        await downloader_instance.client.check_password(password)
+        me = await downloader_instance.client.get_me()
+        user_info = {
+            "id": me.id,
+            "first_name": me.first_name or "",
+            "username": me.username or "",
+            "phone": getattr(me, "phone_number", ""),
+        }
+        auth_session["state"] = "LOGGED_IN"
+        auth_session["user"] = user_info
+        return {"status": "ok", "state": "LOGGED_IN", "user": user_info}
+    except PasswordHashInvalid:
+        raise HTTPException(status_code=400, detail="La contraseña 2FA ingresada es incorrecta.")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Error en verificación 2FA: {error}") from error
+
+
+@app.post("/api/auth/logout")
+async def auth_logout() -> Dict[str, Any]:
+    global downloader_instance, auth_session
+    if downloader_instance and downloader_instance.client:
+        with suppress(Exception):
+            await downloader_instance.client.log_out()
+        with suppress(Exception):
+            await downloader_instance.client.disconnect()
+        downloader_instance = None
+
+    session_file = BASE_DIR / "downloader_session.session"
+    if session_file.exists():
+        with suppress(OSError):
+            session_file.unlink()
+    session_journal = BASE_DIR / "downloader_session.session-journal"
+    if session_journal.exists():
+        with suppress(OSError):
+            session_journal.unlink()
+
+    auth_session["state"] = "NOT_LOGGED_IN"
+    auth_session["phone_number"] = None
+    auth_session["phone_code_hash"] = None
+    auth_session["user"] = None
+    return {"status": "ok", "state": "NOT_LOGGED_IN"}
 
 
 @app.get("/api/downloads")
@@ -774,6 +1026,11 @@ class TelegramDownloader:
             "downloader_session",
             api_id=api_id,
             api_hash=api_hash,
+            workdir=str(BASE_DIR),
+            app_version="1.0.0",
+            device_model="TGDown Desktop",
+            system_version="Windows 11",
+            lang_code="es",
             no_updates=False,
             max_concurrent_transmissions=10,
         )
@@ -1295,30 +1552,38 @@ def format_bytes(size: float) -> str:
 async def main() -> None:
     global downloader_instance
     print("🤖 TG Downloader Pro")
-    api_id = os.getenv("TGDL_API_ID")
-    api_hash = os.getenv("TGDL_API_HASH")
-    if not api_id or not api_hash:
-        print("❌ Define TGDL_API_ID y TGDL_API_HASH antes de iniciar.")
-        return
 
-    downloader_instance = TelegramDownloader(api_id, api_hash)
     server_task = asyncio.create_task(run_server())
     host = os.getenv("TGDL_BIND_HOST", "127.0.0.1")
     visible_host = get_local_ip() if host == "0.0.0.0" else host
     print(f"🌐 Dashboard: http://{visible_host}:{os.getenv('TGDL_PORT', '8000')}/dashboard/")
 
+    api_id = os.getenv("TGDL_API_ID")
+    api_hash = os.getenv("TGDL_API_HASH")
+    if api_id and api_hash:
+        try:
+            status = await check_auth_status()
+            if status.get("authenticated"):
+                print("✅ Conectado a Telegram. Esperando órdenes desde la web...")
+            else:
+                print("🔑 Completa el inicio de sesión desde el panel web.")
+        except Exception as err:
+            print(f"⚠️ Atención: {err}")
+    else:
+        print("⚠️ No hay API_ID / API_HASH configurados. Configúralos directamente en el panel web.")
+
     try:
-        await downloader_instance.client.start()
-        print("✅ Conectado. Esperando órdenes desde la web...")
         while True:
             await asyncio.sleep(3600)
     finally:
         server_task.cancel()
         with suppress(asyncio.CancelledError):
             await server_task
-        with suppress(Exception):
-            await downloader_instance.client.stop()
+        if downloader_instance and downloader_instance.client:
+            with suppress(Exception):
+                await downloader_instance.client.disconnect()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

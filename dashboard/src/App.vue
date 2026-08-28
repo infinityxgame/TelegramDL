@@ -3,7 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, Menu, Radio, Save, Settings2, Trash2, X, Zap } from 'lucide-vue-next'
+import AuthWizard from './components/AuthWizard.vue'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, LogOut, Menu, Radio, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -16,6 +17,14 @@ const host = window.location.host
 const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
+
+const authStatus = ref({
+  authenticated: false,
+  state: 'UNCONFIGURED',
+  has_credentials: false,
+  user: null
+})
+
 const settings = reactive({
   max_concurrent_downloads: 2,
   parallel_chunks: true,
@@ -77,6 +86,39 @@ const api = async (url, options = {}) => {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.detail || data.error || 'Error en el servidor')
   return data
+}
+
+const fetchAuthStatus = async () => {
+  try {
+    authStatus.value = await api('/api/auth/status')
+  } catch (err) {
+    console.error('Error verificando estado de sesión:', err)
+  }
+}
+
+const logoutTelegram = async () => {
+  openConfirm({
+    title: 'Cerrar sesión de Telegram',
+    message: '¿Estás seguro de que deseas cerrar sesión? Tendrás que volver a autenticarte desde la web.',
+    confirmText: 'Sí, cerrar sesión',
+    type: 'danger',
+    action: async () => {
+      try {
+        await api('/api/auth/logout', { method: 'POST' })
+        await fetchAuthStatus()
+        showMessage('Sesión cerrada con éxito')
+      } catch (err) { showMessage(err.message, true) }
+    }
+  })
+}
+
+const onAuthSuccess = async (newStatus) => {
+  authStatus.value = newStatus
+  if (newStatus && (newStatus.authenticated || newStatus.state === 'LOGGED_IN')) {
+    await fetchAuthStatus()
+    await fetchSettings()
+    await fetchDownloads()
+  }
 }
 
 const fetchDownloads = async () => {
@@ -195,6 +237,7 @@ const connectWebSocket = () => {
 
 onMounted(async () => {
   disposed = false
+  await fetchAuthStatus()
   await Promise.all([fetchSettings(), fetchDownloads()])
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
@@ -203,6 +246,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 </script>
 
 <template>
+  <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
   <div class="app-shell">
     <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
       <div class="brand"><span class="brand-mark"><img :src="logoUrl" alt="" /></span><span>Telegram<span class="brand-accent">DL</span></span><button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button></div>
@@ -211,6 +255,17 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
         <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
       </nav>
+
+      <div v-if="authStatus.user" class="sidebar-user-badge">
+        <div class="user-info">
+          <UserCheck :size="14" class="user-icon" />
+          <span class="user-name">{{ authStatus.user.first_name }}</span>
+        </div>
+        <button class="logout-btn" title="Cerrar sesión de Telegram" @click="logoutTelegram">
+          <LogOut :size="13" />
+        </button>
+      </div>
+
       <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
       <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
     </aside>
@@ -269,4 +324,10 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 
 <style>
 .sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
+.sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
+.sidebar-user-badge .user-info{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
+.sidebar-user-badge .user-icon{color:#39db9a;flex:none}
+.sidebar-user-badge .user-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.sidebar-user-badge .logout-btn{background:transparent;border:0;color:#e88888;cursor:pointer;display:grid;place-items:center;padding:4px;border-radius:6px;flex:none}
+.sidebar-user-badge .logout-btn:hover{background:#3d171d;color:#ff9e9e}
 </style>
