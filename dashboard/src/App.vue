@@ -4,7 +4,7 @@ import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
 import AuthWizard from './components/AuthWizard.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileDown, Gauge, LogOut, Menu, Radio, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileCheck, FileDown, Gauge, LogOut, Menu, Radio, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -222,6 +222,7 @@ const activeDownloads = computed(() => downloads.value.filter(item => ['download
 const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
 const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
 const completedCount = computed(() => downloads.value.filter(item => item.status === 'completed').length)
+const skippedCount = computed(() => downloads.value.filter(item => item.status === 'skipped').length)
 const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
 
 const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
@@ -305,6 +306,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         <div class="stat-card"><span class="stat-icon blue"><Activity :size="19" /></span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
         <div class="stat-card"><span class="stat-icon amber"><Clock3 :size="19" /></span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
         <div class="stat-card"><span class="stat-icon green"><CheckCircle2 :size="19" /></span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
+        <div class="stat-card"><span class="stat-icon gray"><FileCheck :size="19" /></span><div><span class="stat-label">OMITIDAS</span><strong>{{ skippedCount }}</strong><small>ya existían</small></div></div>
       </section>
 
       <div class="content-grid">

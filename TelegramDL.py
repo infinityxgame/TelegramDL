@@ -1296,7 +1296,7 @@ class TelegramDownloader:
                     kind=info.kind,
                     total_str=format_bytes(info.file_size),
                     file_path=file_path,
-                    status="completed",
+                    status="skipped",
                     progress=100,
                 )
                 return
