@@ -64,9 +64,23 @@ http://127.0.0.1:8000/dashboard/
 
 ---
 
-## 📦 Cómo Compilar tu propio `.exe` (PyInstaller)
+## 📦 Compilación y Distribución
 
-Para generar una versión portable lista para distribuir con su propio ícono:
+### Compilación Automática (GitHub Actions) ⚡
+El repositorio cuenta con un flujo de **GitHub Actions** automatizado (`.github/workflows/release.yml`). 
+Cada vez que creas y subes un **Tag de versión** (ej. `v1.0.0`), GitHub compilará automáticamente los ejecutables portátiles para **Windows**, **Linux** y **macOS** y creará un **GitHub Release** con los archivos descargables.
+
+Para publicar una nueva versión:
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+---
+
+### Compilación Manual en tu equipo (PyInstaller)
+
+Para generar manualmente una versión portable local en Windows:
 
 ```powershell
 # 1. Asegurarte de que el frontend está compilado
@@ -79,7 +93,7 @@ pip install pyinstaller pillow
 pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
 ```
 
-El ejecutable resultante se guardará en `dist/TelegramDL/TelegramDL.exe`. Puedes comprimir esa carpeta en `.zip` y compartirla.
+El ejecutable resultante se guardará en `dist/TelegramDL/TelegramDL.exe`.
 
 ---
 

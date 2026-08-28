@@ -1,0 +1,89 @@
+name: Build and Release TGDown
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build executable on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: TelegramDL-Windows
+            asset_extension: .zip
+          - os: ubuntu-latest
+            artifact_name: TelegramDL-Linux
+            asset_extension: .tar.gz
+          - os: macos-latest
+            artifact_name: TelegramDL-macOS
+            asset_extension: .tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Vue Dashboard
+        run: |
+          cd dashboard
+          npm ci
+          npm run build
+          cd ..
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Generate Icon
+        run: |
+          python -c "
+          from PIL import Image, ImageDraw
+          scale = 4
+          w, h = 256 * scale, 256 * scale
+          img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(img)
+          def S(val): return int(val * scale)
+          draw.rounded_rectangle([0, 0, w, h], radius=S(220), fill='#07111f')
+          draw.rounded_rectangle([S(120), S(120), S(904), S(904)], radius=S(170), fill='#102a43', outline='#234765', width=S(24))
+          arrow_pts = [(S(468), S(260)), (S(556), S(260)), (S(556), S(530)), (S(648), S(530)), (S(512), S(670)), (S(376), S(530)), (S(468), S(530))]
+          draw.polygon(arrow_pts, fill='#42aefa')
+          draw.rounded_rectangle([S(300), S(700), S(724), S(764)], radius=S(32), fill='#5ebbff')
+          draw.ellipse([S(760), S(204), S(820), S(264)], fill='#39db9a')
+          sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+          frames = [img.resize(sz, Image.Resampling.LANCZOS) for sz in sizes]
+          frames[0].save('icon.ico', format='ICO', append_images=frames[1:], sizes=sizes)
+          "
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
+          Compress-Archive -Path dist/TelegramDL/* -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
+
+      - name: Build with PyInstaller (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --name "TelegramDL" --add-data "dashboard/dist:dashboard/dist" TelegramDL.py
+          tar -czvf "${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" -C dist/TelegramDL .
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_name }}-${{ github.ref_name }}${{ matrix.asset_extension }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
