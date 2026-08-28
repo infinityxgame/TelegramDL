@@ -19,10 +19,10 @@ const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
 
 const authStatus = ref({
-  authenticated: false,
-  state: 'UNCONFIGURED',
-  has_credentials: false,
-  user: null
+  authenticated: localStorage.getItem('tgdl_auth') === 'true',
+  state: localStorage.getItem('tgdl_auth') === 'true' ? 'LOGGED_IN' : 'UNCONFIGURED',
+  has_credentials: true,
+  user: JSON.parse(localStorage.getItem('tgdl_user') || 'null')
 })
 
 const settings = reactive({
@@ -90,7 +90,15 @@ const api = async (url, options = {}) => {
 
 const fetchAuthStatus = async () => {
   try {
-    authStatus.value = await api('/api/auth/status')
+    const data = await api('/api/auth/status')
+    authStatus.value = data
+    if (data.authenticated) {
+      localStorage.setItem('tgdl_auth', 'true')
+      localStorage.setItem('tgdl_user', JSON.stringify(data.user))
+    } else {
+      localStorage.removeItem('tgdl_auth')
+      localStorage.removeItem('tgdl_user')
+    }
   } catch (err) {
     console.error('Error verificando estado de sesión:', err)
   }
@@ -105,6 +113,8 @@ const logoutTelegram = async () => {
     action: async () => {
       try {
         await api('/api/auth/logout', { method: 'POST' })
+        localStorage.removeItem('tgdl_auth')
+        localStorage.removeItem('tgdl_user')
         await fetchAuthStatus()
         showMessage('Sesión cerrada con éxito')
       } catch (err) { showMessage(err.message, true) }
@@ -115,6 +125,8 @@ const logoutTelegram = async () => {
 const onAuthSuccess = async (newStatus) => {
   authStatus.value = newStatus
   if (newStatus && (newStatus.authenticated || newStatus.state === 'LOGGED_IN')) {
+    localStorage.setItem('tgdl_auth', 'true')
+    localStorage.setItem('tgdl_user', JSON.stringify(newStatus.user))
     await fetchAuthStatus()
     await fetchSettings()
     await fetchDownloads()
@@ -237,8 +249,14 @@ const connectWebSocket = () => {
 
 onMounted(async () => {
   disposed = false
-  await fetchAuthStatus()
-  await Promise.all([fetchSettings(), fetchDownloads()])
+  // Lanzamos la verificación y la carga de datos en paralelo
+  const promises = [fetchAuthStatus()]
+  if (authStatus.value.authenticated) {
+    promises.push(fetchSettings(), fetchDownloads())
+  }
+
+  await Promise.all(promises)
+
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
 })

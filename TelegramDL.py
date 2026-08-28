@@ -376,6 +376,16 @@ async def check_auth_status() -> Dict[str, Any]:
     try:
         if not downloader_instance.client.is_connected:
             await downloader_instance.client.connect()
+
+        # Si ya tenemos al usuario y estamos conectados, no hace falta pedirlo a Telegram de nuevo
+        if auth_session["state"] == "LOGGED_IN" and auth_session["user"]:
+            return {
+                "authenticated": True,
+                "state": "LOGGED_IN",
+                "has_credentials": True,
+                "user": auth_session["user"],
+            }
+
         me = await downloader_instance.client.get_me()
         if me:
             user_info = {
