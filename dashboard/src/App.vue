@@ -466,7 +466,19 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .update-progress-fill { height: 100%; background: #3b82f6; transition: width 0.3s ease; }
 .update-progress-stats { display: flex; justify-content: space-between; color: #94a3b8; font-size: 12px; }
 .update-warning { color: #e88888; font-size: 13px; margin-bottom: 20px; font-style: italic; }
-.update-btn { width: 100%; justify-content: center; padding: 14px; font-size: 16px; margin-bottom: 16px; }
+.update-btn {
+  width: fit-content !important;
+  min-width: 220px !important;
+  height: 56px !important;
+  padding: 0 32px !important;
+  font-size: 16px !important;
+  margin: 0 auto 20px auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 14px !important;
+  gap: 12px !important;
+}
 .update-card small { color: #475569; display: block; }
 .sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
 .sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}

@@ -127,72 +127,65 @@ class AppUpdater:
                 shutil.rmtree(self.temp_dir)
 
     def _create_finish_script(self, src_path):
-        script_path = self.base_dir / "finish_update.py"
         is_windows = platform.system() == "Windows"
 
-        # Convertir a strings seguras para el script
-        base_str = str(self.base_dir).replace('\\', '\\\\')
-        src_str = str(src_path).replace('\\', '\\\\')
+        if is_windows:
+            script_path = self.base_dir / "finish_update.bat"
+            exe_name = "TelegramDL.exe"
+            exe_path = self.base_dir / exe_name
 
-        script_content = f"""
-import os
-import shutil
-import time
-import sys
-import subprocess
+            # Lista de exclusiones para Robocopy
+            exclude_files = " ".join(self.preserve_files)
 
-time.sleep(2)  # Esperar a que la app principal se cierre
+            # Script usando Robocopy (mucho más robusto)
+            script_content = f"""@echo off
+setlocal
+title Actualizando TelegramDL...
+echo Esperando a que la aplicacion se cierre...
+timeout /t 3 /nobreak > nul
 
-base = r"{base_str}"
-src = r"{src_str}"
-keep = {json.dumps(self.preserve_files)}
+:: Asegurar que el proceso este muerto
+taskkill /f /im "{exe_name}" >nul 2>&1
 
-try:
-    # Recorrer archivos extraídos
-    for root, dirs, files in os.walk(src):
-        rel = os.path.relpath(root, src)
-        target_dir = os.path.join(base, rel)
+echo Instalando archivos nuevos...
+:: /e = subdirectorios (incl. vacios)
+:: /move = mueve archivos (los borra del origen)
+:: /y = sobreescribe sin preguntar
+:: /xf = excluye los archivos de configuracion para no borrarlos ni pisarlos
+robocopy "{src_path}" "{self.base_dir}" /e /move /y /xf {exclude_files} /r:3 /w:2 > nul
 
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
+echo Limpiando...
+rd /s /q "{self.temp_dir}" 2>nul
 
-        for f in files:
-            # Omitir archivos protegidos en la raíz
-            if rel == "." and f in keep:
-                continue
-
-            target_file = os.path.join(target_dir, f)
-            src_file = os.path.join(root, f)
-
-            try:
-                if os.path.exists(target_file):
-                    os.remove(target_file)
-                shutil.move(src_file, target_file)
-            except Exception as e:
-                print(f"Error moviendo {{f}}: {{e}}")
-
-    print("Actualización completada.")
-except Exception as e:
-    print(f"Error general en el script: {{e}}")
-finally:
-    # Intentar reiniciar la aplicación
-    exe_name = "TelegramDL.exe" if {is_windows} else "TelegramDL"
-    exe_path = os.path.join(base, exe_name)
-
-    if os.path.exists(exe_path):
-        subprocess.Popen([exe_path])
-    else:
-        # Si no hay exe, intentar con el script python (desarrollo)
-        main_py = os.path.join(base, "TelegramDL.py")
-        if os.path.exists(main_py):
-            subprocess.Popen([sys.executable, main_py])
-
-    # Autodestruirse
-    sys.exit(0)
+echo Reiniciando aplicacion...
+start "" "{exe_path}"
+endlocal
+(goto) 2>nul & del "%~f0"
 """
-        with open(script_path, "w", encoding="utf-8") as f:
-            f.write(script_content)
+            with open(script_path, "w", encoding="cp1252") as f:
+                f.write(script_content)
 
-        # Ejecutar el script y cerrar la app actual
-        subprocess.Popen([sys.executable, str(script_path)])
+            os.startfile(script_path)
+        else:
+            # Linux / Mac (usando rsync si está disponible, es el equivalente a robocopy)
+            script_path = self.base_dir / "finish_update.sh"
+            exe_name = "TelegramDL"
+            exe_path = self.base_dir / exe_name
+            exclude_args = " ".join([f'--exclude="{f}"' for f in self.preserve_files])
+
+            script_content = f"""#!/bin/bash
+sleep 3
+pkill -f "{exe_name}"
+rsync -a --remove-source-files {exclude_args} "{src_path}/" "{self.base_dir}/"
+rm -rf "{self.temp_dir}"
+chmod +x "{exe_path}"
+"{exe_path}" &
+rm "$0"
+"""
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(script_content)
+
+            os.chmod(script_path, 0o755)
+            subprocess.Popen(["/bin/bash", str(script_path)], start_new_session=True)
+
         os._exit(0)
