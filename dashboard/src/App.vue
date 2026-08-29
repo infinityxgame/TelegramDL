@@ -250,13 +250,14 @@ const connectWebSocket = () => {
 
 onMounted(async () => {
   disposed = false
-  // Lanzamos la verificación y la carga de datos en paralelo
-  const promises = [fetchAuthStatus()]
-  if (authStatus.value.authenticated) {
-    promises.push(fetchSettings(), fetchDownloads())
-  }
+  // Lanzamos la verificación inicial
+  await fetchAuthStatus()
 
-  await Promise.all(promises)
+  // Si estamos autenticados (ya sea por localStorage o por la respuesta del servidor),
+  // cargamos la configuración y las descargas.
+  if (authStatus.value.authenticated) {
+    await Promise.all([fetchSettings(), fetchDownloads()])
+  }
 
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)

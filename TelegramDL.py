@@ -1861,7 +1861,7 @@ def check_webview2_runtime() -> bool:
 
 async def main(server_mode: bool = False) -> None:
     global downloader_instance
-    print("TG Downloader Pro")
+    print("TG Downloader")
 
     load_downloads_state()
     asyncio.create_task(auto_save_loop())
