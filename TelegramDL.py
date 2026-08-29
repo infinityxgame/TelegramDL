@@ -12,10 +12,40 @@ import uuid
 import argparse
 import webbrowser
 import ctypes
+
+# --- Redirección temprana de flujos para evitar bloqueos en modo --noconsole ---
+if os.name == "nt" and getattr(sys, "frozen", False):
+    try:
+        import ctypes
+        if not ctypes.windll.kernel32.AttachConsole(-1):
+            # Usar os.devnull es más compatible que una clase personalizada
+            # ya que proporciona fileno() y otros métodos que librerías como uvicorn esperan.
+            null_file = open(os.devnull, "w")
+            sys.stdout = null_file
+            sys.stderr = null_file
+        else:
+            sys.stdout = open("CONOUT$", "w", buffering=1)
+            sys.stderr = open("CONOUT$", "w", buffering=1)
+    except Exception:
+        pass
+elif sys.stdout is None:
+    try:
+        null_file = open(os.devnull, "w")
+        sys.stdout = null_file
+        sys.stderr = null_file
+    except Exception:
+        pass
+
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+import logging
+
+# Silenciar logs que puedan escribir en stdout/stderr
+logging.getLogger("pyrogram").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 from dotenv import load_dotenv
 from pyrogram import Client, filters
@@ -998,7 +1028,8 @@ async def run_server() -> None:
         port = int(os.getenv("TGDL_PORT", "8000"))
     except ValueError:
         port = 8000
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    # Desactivar access_log y subir log_level para evitar bloqueos por I/O
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False)
     server = uvicorn.Server(config)
     await server.serve()
 
@@ -1055,11 +1086,17 @@ class DownloadProgress:
         if not force and now - self.last_print < 1.5:
             return
         self.last_print = now
-        with PRINT_LOCK:
-            print(
-                f"📥 {self.file_name} - {percentage:5.1f}% "
-                f"({format_bytes(speed_value)}/s)"
-            )
+
+        # Solo intentar imprimir si el flujo es válido y no estamos en un entorno bloqueado
+        try:
+            if sys.stdout and hasattr(sys.stdout, "write"):
+                with PRINT_LOCK:
+                    print(
+                        f"📥 {self.file_name} - {percentage:5.1f}% "
+                        f"({format_bytes(speed_value)}/s)"
+                    )
+        except Exception:
+            pass
 
 
 class TelegramDownloader:
@@ -1886,14 +1923,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.server:
-        
-        if os.name == "nt" and getattr(sys, "frozen", False):
-            import ctypes
-            if ctypes.windll.kernel32.AttachConsole(-1):
-                sys.stdout = open("CONOUT$", "w", buffering=1)
-                sys.stderr = open("CONOUT$", "w", buffering=1)
-                print("\n") 
-
         try:
             asyncio.run(main(server_mode=True))
         except (KeyboardInterrupt, SystemExit):
