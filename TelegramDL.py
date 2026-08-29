@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 import uuid
+import argparse
+import webbrowser
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,8 +36,9 @@ try:
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
     import uvicorn
+    import webview
 except ImportError:
-    print("❌ Faltan dependencias. Ejecuta: pip install -r requirements.txt")
+    print("❌ Faltan dependencias. Ejecuta: pip install -r requirements.txt pywebview")
     sys.exit(1)
 
 
@@ -1685,7 +1688,63 @@ def format_bytes(size: float) -> str:
     return f"{value:.1f} TB"
 
 
-async def main() -> None:
+def check_webview2_runtime() -> bool:
+    """Verifica si WebView2 está instalado y tiene una versión compatible."""
+    if os.name != "nt":
+        return True
+
+    import winreg
+    import ctypes
+
+    version = None
+    try:
+        # Intentar buscar en HKLM (64-bit y 32-bit)
+        paths = [
+            r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3C4FE00-EFD5-403b-9569-398A20F1BA4A}",
+            r"Software\Microsoft\EdgeUpdate\Clients\{F3C4FE00-EFD5-403b-9569-398A20F1BA4A}"
+        ]
+
+        for path in paths:
+            for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+                try:
+                    with winreg.OpenKey(root, path) as key:
+                        version, _ = winreg.QueryValueEx(key, "pv")
+                        if version: break
+                except OSError: continue
+            if version: break
+    except Exception:
+        pass
+
+    # Si no se encuentra versión o es menor a la 101
+    is_valid = False
+    if version:
+        try:
+            major = int(version.split('.')[0])
+            if major >= 101:
+                is_valid = True
+        except (ValueError, IndexError):
+            pass
+
+    if not is_valid:
+        title = "Actualización Necesaria - TelegramDL Pro"
+        message = (
+            "Para funcionar correctamente como aplicación nativa, se requiere el componente "
+            "'Microsoft Edge WebView2 Runtime' (versión 101 o superior).\n\n"
+            "Parece que no está instalado o debe actualizarse.\n\n"
+            "¿Desea abrir la página de descarga oficial de Microsoft ahora?"
+        )
+        # 0x4 (Yes/No) | 0x30 (Warning) | 0x10000 (SetForeground)
+        res = ctypes.windll.user32.MessageBoxW(0, message, title, 0x4 | 0x30 | 0x10000)
+
+        if res == 6: # IDYES
+            webbrowser.open("https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section")
+
+        return False
+
+    return True
+
+
+async def main(server_mode: bool = False) -> None:
     global downloader_instance
     print("🤖 TG Downloader Pro")
 
@@ -1693,9 +1752,13 @@ async def main() -> None:
     asyncio.create_task(auto_save_loop())
 
     server_task = asyncio.create_task(run_server())
+
+    port = os.getenv('TGDL_PORT', '8000')
     host = os.getenv("TGDL_BIND_HOST", "127.0.0.1")
     visible_host = get_local_ip() if host == "0.0.0.0" else host
-    print(f"🌐 Dashboard: http://{visible_host}:{os.getenv('TGDL_PORT', '8000')}/dashboard/")
+
+    dashboard_url = f"http://{visible_host}:{port}/dashboard/"
+    print(f"🌐 Dashboard: {dashboard_url}")
 
     api_id = os.getenv("TGDL_API_ID")
     api_hash = os.getenv("TGDL_API_HASH")
@@ -1713,6 +1776,9 @@ async def main() -> None:
     else:
         print("⚠️ No hay API_ID / API_HASH configurados. Configúralos directamente en el panel web.")
 
+    if not server_mode:
+        print("🖥️ Iniciando interfaz nativa...")
+
     try:
         while True:
             await asyncio.sleep(3600)
@@ -1726,8 +1792,66 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        print("\n👋 TG Downloader Pro finalizado.")
+    parser = argparse.ArgumentParser(description="Telegram DL - Gestor de descargas nativo")
+    parser.add_argument(
+        "--server", "-s",
+        action="store_true",
+        help="Ejecuta solo el servidor backend sin abrir la ventana nativa"
+    )
+    args = parser.parse_args()
+
+    if args.server:
+        # Si es un EXE compilado con --noconsole, intentamos recuperar la salida en el CMD
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            import ctypes
+            if ctypes.windll.kernel32.AttachConsole(-1):
+                sys.stdout = open("CONOUT$", "w", buffering=1)
+                sys.stderr = open("CONOUT$", "w", buffering=1)
+                print("\n") # Salto de línea inicial para limpiar el prompt
+
+        try:
+            asyncio.run(main(server_mode=True))
+        except (KeyboardInterrupt, SystemExit):
+            print("\n👋 TG Downloader Pro finalizado.")
+    else:
+        # Verificar WebView2 antes de proceder con el modo GUI
+        if not check_webview2_runtime():
+            sys.exit(0)
+
+        # Modo GUI con pywebview
+        def start_backend():
+            asyncio.run(main(server_mode=False))
+
+        # Iniciar backend en un hilo separado
+        t = threading.Thread(target=start_backend, daemon=True)
+        t.start()
+
+        # Configurar y lanzar la ventana nativa
+        try:
+            port = os.getenv("TGDL_PORT", "8000")
+
+            # Ajuste de logs de uvicorn para modo GUI (silencioso)
+            os.environ["WDM_LOG_LEVEL"] = "0"
+
+            webview.create_window(
+                "TelegramDL Pro",
+                f"http://127.0.0.1:{port}/dashboard/",
+                width=1000,
+                height=650,
+                min_size=(800, 600),
+                resizable=True,
+                background_color="#ffffff"
+            )
+
+            # Si falla WebView2, pywebview intentará usar otros motores disponibles
+            webview.start(storage_path=os.path.join(os.getcwd(), "cache"))
+
+        except Exception as e:
+            # Si hay un error crítico de UI, intentamos rescatar el proceso en modo terminal
+            import traceback
+            print(f"❌ Error al iniciar la interfaz gráfica: {e}")
+            traceback.print_exc()
+            print("\n💡 Tip: Asegúrate de tener instalado 'WebView2 Runtime' de Microsoft.")
+            print("💡 Iniciando modo servidor como alternativa...")
+            asyncio.run(main(server_mode=True))
 

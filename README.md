@@ -6,8 +6,9 @@ Panel web moderno y aplicación portable para gestionar descargas multimedia de 
 
 ## 🌟 Características Principales
 
+- **Interfaz Nativa (Modo Desktop):** Utiliza `pywebview` para abrir una ventana propia sin necesidad de usar el navegador, ofreciendo una experiencia de aplicación de escritorio real.
 - **Asistente de Instalación Web (Estilo CMS / WordPress):** Si no has iniciado sesión o faltan credenciales, el propio panel web te guía paso a paso para ingresar tu `API ID`, `API HASH`, número de teléfono, código de confirmación de Telegram y contraseña 2FA. ¡Sin tocar la consola!
-- **Distribución ejecutable (.exe):** Se puede empaquetar en un ejecutable autónomo para Windows que no requiere tener instalado Python ni Node.js.
+- **Distribución ejecutable (.exe):** Se puede empaquetar en un ejecutable autónomo para Windows que incluye tanto el backend Python como el frontend Vue 3.
 - **Identificación de Dispositivo:** Se registra en Telegram como `TGDown Desktop` para que puedas ver y gestionar la sesión desde *Ajustes > Dispositivos* en la app oficial de Telegram.
 - **Gestor de Descargas:** Permite descargar archivos individuales o lotes por enlace de mensaje con indicador de velocidad, progreso en tiempo real y soporte WebSocket.
 - **Escucha Automática:** Vigilancia continua de chats/canales privados o públicos para listar o descargar archivos automáticamente.
@@ -53,11 +54,18 @@ npm --prefix dashboard run build
 ```
 
 ### 4. Iniciar la aplicación
+
+#### Modo Desktop (Ventana Nativa)
 ```powershell
 .\.venv\Scripts\python.exe TelegramDL.py
 ```
 
-Abre en tu navegador:
+#### Modo Servidor (Solo consola, acceso vía navegador)
+```powershell
+.\.venv\Scripts\python.exe TelegramDL.py --server
+```
+
+Abre en tu navegador (solo si usas `--server`):
 ```text
 http://127.0.0.1:8000/dashboard/
 ```
@@ -87,9 +95,11 @@ Para generar manualmente una versión portable local en Windows:
 npm --prefix dashboard run build
 
 # 2. Instalar herramientas de compilación
-pip install pyinstaller pillow
+pip install pyinstaller pillow pywebview
 
 # 3. Compilar la aplicación
+# Nota: --noconsole se puede usar si no quieres ver la terminal detrás de la ventana nativa,
+# pero se recomienda --console inicialmente para depuración.
 pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
 ```
 

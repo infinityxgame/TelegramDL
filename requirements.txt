@@ -5,3 +5,4 @@ uvicorn
 websockets
 jinja2
 python-dotenv
+pywebview
