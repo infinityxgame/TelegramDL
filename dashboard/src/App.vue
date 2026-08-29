@@ -329,27 +329,33 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       <h2>Actualización Obligatoria</h2>
       <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
 
-      <div v-if="isUpdating" class="update-progress-container">
-        <div class="update-status-text">
-          {{ updateProgress.status === 'downloading' ? 'Descargando actualización...' :
-             updateProgress.status === 'extracting' ? 'Extrayendo archivos...' :
-             updateProgress.status === 'finishing' ? 'Finalizando e iniciando...' : 'Iniciando...' }}
-        </div>
-        <div class="update-progress-bar">
-          <div class="update-progress-fill" :style="{ width: updateProgress.percentage + '%' }"></div>
-        </div>
-        <div class="update-progress-stats">
-          <span>{{ formatSize(updateProgress.downloaded) }} / {{ formatSize(updateProgress.total) }}</span>
-          <span>{{ updateProgress.percentage }}%</span>
+      <div class="update-action-area" :class="{ 'is-loading': isUpdating }">
+        <button v-if="!isUpdating" class="primary-button update-btn" @click="modal.action()">
+          <span>Actualizar ahora</span>
+          <ArrowUpRight :size="18" />
+        </button>
+
+        <div v-else class="update-progress-container">
+          <div class="update-status-text">
+            {{ updateProgress.status === 'downloading' ? 'Descargando actualización...' :
+               updateProgress.status === 'extracting' ? 'Extrayendo archivos...' :
+               updateProgress.status === 'finishing' ? 'Finalizando e iniciando...' : 'Iniciando...' }}
+          </div>
+          <div class="update-progress-bar">
+            <div class="update-progress-fill" :style="{ width: updateProgress.percentage + '%' }">
+              <div class="nitro-wind">
+                <span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+          <div class="update-progress-stats">
+            <span>{{ formatSize(updateProgress.downloaded) }} / {{ formatSize(updateProgress.total) }}</span>
+            <span>{{ updateProgress.percentage }}%</span>
+          </div>
         </div>
       </div>
 
-      <button v-if="!isUpdating" class="primary-button update-btn" @click="modal.action()">
-        <span>Actualizar ahora</span>
-        <ArrowUpRight :size="18" />
-      </button>
-
-      <div v-else class="update-warning">
+      <div v-if="isUpdating" class="update-warning">
         Por favor, no cierres la aplicación.
       </div>
 
@@ -460,26 +466,69 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .update-icon { color: #3b82f6; margin-bottom: 20px; }
 .update-card h2 { color: #f8fafc; margin-bottom: 12px; font-size: 24px; }
 .update-card p { color: #94a3b8; margin-bottom: 30px; line-height: 1.6; }
-.update-progress-container { margin-bottom: 30px; text-align: left; }
-.update-status-text { color: #f8fafc; font-size: 14px; margin-bottom: 10px; font-weight: 500; }
-.update-progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
-.update-progress-fill { height: 100%; background: #3b82f6; transition: width 0.3s ease; }
-.update-progress-stats { display: flex; justify-content: space-between; color: #94a3b8; font-size: 12px; }
-.update-warning { color: #e88888; font-size: 13px; margin-bottom: 20px; font-style: italic; }
+.update-action-area { transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); min-height: 80px; display: flex; flex-direction: column; justify-content: center; position: relative; }
+.update-action-area.is-loading { transform: translateY(-5px); }
+.update-progress-container { width: 100%; text-align: left; animation: morphReveal 0.8s cubic-bezier(0.19, 1, 0.22, 1); }
+.update-status-text { color: #f8fafc; font-size: 14px; margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.update-progress-bar { height: 16px; background: #0f172a; border-radius: 20px; overflow: hidden; margin-bottom: 10px; position: relative; border: 1px solid #1e293b; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.update-progress-fill { height: 100%; background: linear-gradient(90deg, #1d4ed8, #3b82f6, #60a5fa); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); position: relative; display: flex; align-items: center; justify-content: flex-end; }
+
+/* Efecto Nitro-Wind (Destellos hacia ATRÁS) */
+.nitro-wind { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; }
+.nitro-wind span { position: absolute; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent); height: 2px; border-radius: 2px; animation: windBackwards 0.6s linear infinite; }
+.nitro-wind span:nth-child(1) { top: 25%; width: 40px; animation-duration: 0.4s; }
+.nitro-wind span:nth-child(2) { top: 50%; width: 60px; animation-duration: 0.7s; animation-delay: 0.1s; }
+.nitro-wind span:nth-child(3) { top: 75%; width: 30px; animation-duration: 0.5s; animation-delay: 0.2s; }
+.nitro-wind span:nth-child(4) { top: 40%; width: 50px; animation-duration: 0.8s; animation-delay: 0.3s; }
+
+.update-progress-stats { display: flex; justify-content: space-between; color: #64748b; font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 600; }
+.update-warning { color: #f87171; font-size: 13px; margin-top: 15px; font-weight: 500; text-align: center; animation: pulseWarning 2s infinite; }
+
 .update-btn {
   width: fit-content !important;
-  min-width: 220px !important;
-  height: 56px !important;
-  padding: 0 32px !important;
-  font-size: 16px !important;
-  margin: 0 auto 20px auto !important;
+  min-width: 240px !important;
+  height: 60px !important;
+  padding: 0 40px !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  margin: 0 auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 14px !important;
+  border-radius: 30px !important;
   gap: 12px !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  color: white !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+.update-btn:hover { transform: scale(1.05) translateY(-3px) !important; box-shadow: 0 15px 30px rgba(37, 99, 235, 0.4) !important; }
+.update-btn:active { transform: scale(0.98) !important; }
+
+@keyframes windBackwards {
+  from { transform: translateX(300px); opacity: 0; }
+  50% { opacity: 1; }
+  to { transform: translateX(-100px); opacity: 0; }
+}
+@keyframes morphReveal {
+  from { opacity: 0; transform: scaleX(0.5); filter: blur(5px); }
+  to { opacity: 1; transform: scaleX(1); filter: blur(0); }
 }
 .update-card small { color: #475569; display: block; }
+
+@keyframes nitro {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@keyframes morphIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pulseWarning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 .sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
 .sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
 .sidebar-user-badge .user-info{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
