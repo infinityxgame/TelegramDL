@@ -11,6 +11,7 @@ import time
 import uuid
 import argparse
 import webbrowser
+import ctypes
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -221,6 +222,7 @@ runtime_config = load_config()
 
 
 # --- Runtime state ---
+stop_event = threading.Event()
 downloads_state: Dict[str, Dict[str, Any]] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
 active_jobs: Dict[str, asyncio.Task] = {}
@@ -254,7 +256,6 @@ def load_downloads_state() -> None:
             data = json.load(f)
             if isinstance(data, dict):
                 downloads_state = data
-                # Limpiar estados de "downloading" a "queued" para que se reanuden
                 for item in downloads_state.values():
                     if item.get("status") == "downloading":
                         item["status"] = "queued"
@@ -338,8 +339,6 @@ def update_state(item_id: str, **kwargs: Any) -> None:
             "created_at": time.time(),
         }
     elif "created_at" not in downloads_state[item_id]:
-        # Mantener una posición estable también para estados creados antes de
-        # que se añadiera este campo.
         downloads_state[item_id]["created_at"] = downloads_state[item_id].get(
             "updated_at", time.time()
         )
@@ -423,7 +422,6 @@ async def check_auth_status() -> Dict[str, Any]:
         if not downloader_instance.client.is_connected:
             await downloader_instance.client.connect()
 
-        # Si ya tenemos al usuario y estamos conectados, no hace falta pedirlo a Telegram de nuevo
         if auth_session["state"] == "LOGGED_IN" and auth_session["user"]:
             return {
                 "authenticated": True,
@@ -1201,10 +1199,6 @@ class TelegramDownloader:
     async def _on_new_media(self, client: Client, message: Any) -> None:
         if not self.listener_enabled or not message.chat:
             return
-        # La escucha solo debe procesar contenido recibido de terceros.
-        # `outgoing` cubre los mensajes enviados por la sesión conectada y
-        # `is_self` añade protección para actualizaciones donde Pyrogram lo
-        # expone a través del remitente.
         if getattr(message, "outgoing", False) or getattr(
             getattr(message, "from_user", None), "is_self", False
         ):
@@ -1314,7 +1308,6 @@ class TelegramDownloader:
         to_resume = []
         for item_id, item in downloads_state.items():
             if item.get("status") in {"pending", "queued", "downloading", "paused"}:
-                # Priorizar los que ya tienen progreso (archivos temporales existentes)
                 has_progress = False
                 file_path = item.get("file_path")
                 if file_path and os.path.exists(f"{file_path}.temp.state.json"):
@@ -1329,7 +1322,6 @@ class TelegramDownloader:
         if not to_resume:
             return
 
-        # Ordenar: primero los que tienen progreso, luego por fecha de creación
         to_resume.sort(key=lambda x: (not x["progress"], x["created_at"]))
 
         print(f"🔄 Reanudando {len(to_resume)} tareas pendientes...")
@@ -1469,7 +1461,6 @@ class TelegramDownloader:
         state_path = f"{temp_path}.state.json"
         total_chunks = math.ceil(file_size / CHUNK_SIZE)
 
-        # Cargar o inicializar el estado de los chunks
         downloaded_chunks = set()
         if os.path.exists(temp_path) and os.path.exists(state_path):
             try:
@@ -1487,7 +1478,6 @@ class TelegramDownloader:
             kind=info.kind
         )
 
-        # Si el archivo temporal no existe o tiene tamaño incorrecto, empezar de cero
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) != file_size:
             with open(temp_path, "w+b") as file_handle:
                 file_handle.truncate(file_size)
@@ -1530,7 +1520,7 @@ class TelegramDownloader:
                         downloaded_chunks.add(index)
                         downloaded += len(chunk_data)
                         progress.update(downloaded)
-                        # Guardar progreso de chunks
+                        
                         with open(state_path, "w") as f:
                             json.dump({"completed_chunks": list(downloaded_chunks)}, f)
 
@@ -1577,10 +1567,8 @@ class TelegramDownloader:
         if not media:
             return None
 
-        # 1. Obtener nombre base de Telegram
         tg_name = getattr(media, "file_name", None)
 
-        # 2. Identificar si el nombre es genérico o nulo
         is_generic = False
         if not tg_name:
             is_generic = True
@@ -1593,10 +1581,8 @@ class TelegramDownloader:
         if any(tg_name.lower().startswith(p) for p in generic_prefixes):
             is_generic = True
 
-        # 3. Extraer extensión del nombre de Telegram
         _, ext = os.path.splitext(tg_name)
 
-        # 4. Decidir el nombre final
         name = tg_name
         if is_generic and message.caption:
             first_line = message.caption.split("\n")[0].strip()
@@ -1624,7 +1610,6 @@ class TelegramDownloader:
         async with self._reserved_paths_lock:
             while True:
                 path = str(self.download_folder / candidate)
-                # Si el archivo existe físicamente y no está reservado por otra descarga activa
                 if os.path.exists(path) and path not in self._reserved_paths:
                     try:
                         if os.path.getsize(path) == expected_size:
@@ -1694,28 +1679,61 @@ def check_webview2_runtime() -> bool:
         return True
 
     import winreg
-    import ctypes
 
-    version = None
+    # Lista para almacenar todas las versiones encontradas
+    found_versions = []
+
+    # 1. Intentar buscar en el Registro de Windows (Rutas de Runtime y Navegador)
     try:
-        # Intentar buscar en HKLM (64-bit y 32-bit)
-        paths = [
-            r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3C4FE00-EFD5-403b-9569-398A20F1BA4A}",
-            r"Software\Microsoft\EdgeUpdate\Clients\{F3C4FE00-EFD5-403b-9569-398A20F1BA4A}"
+        guids = [
+            "{F3C4FE00-EFD5-403b-9569-398A20F1BA4A}", # Evergreen Runtime
+            "{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}", # Edge Stable
+            "{2CD8A007-E189-409D-A2C8-9AFAD3EF3D72}", # Edge Beta
+            "{0D5074D7-3D0A-4ca1-8D04-80C6190F693D}"  # Edge Dev
         ]
 
-        for path in paths:
+        for guid in guids:
+            # Probar en HKLM y HKCU, y en ramas de 32 y 64 bits
             for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
-                try:
-                    with winreg.OpenKey(root, path) as key:
-                        version, _ = winreg.QueryValueEx(key, "pv")
-                        if version: break
-                except OSError: continue
-            if version: break
-    except Exception:
-        pass
+                for base_path in [r"SOFTWARE\Microsoft\EdgeUpdate\Clients", r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients"]:
+                    try:
+                        path = f"{base_path}\\{guid}"
+                        with winreg.OpenKey(root, path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+                            v, _ = winreg.QueryValueEx(key, "pv")
+                            if v and not v.startswith("1.3."): # Omitir el versionado del Updater
+                                found_versions.append(v)
+                    except OSError: continue
+    except Exception: pass
 
-    # Si no se encuentra versión o es menor a la 101
+    # 2. Intentar buscar en las carpetas de instalación por defecto
+    search_dirs = [
+        os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)") + "\\Microsoft\\EdgeWebView\\Application",
+        os.environ.get("ProgramFiles", "C:\\Program Files") + "\\Microsoft\\EdgeWebView\\Application",
+        os.environ.get("LocalAppData", "") + "\\Microsoft\\EdgeWebView\\Application"
+    ]
+
+    for sdir in search_dirs:
+        if os.path.exists(sdir):
+            try:
+                # Buscar carpetas que tengan formato de versión (ej. 120.0.2210.91)
+                for entry in os.listdir(sdir):
+                    if entry[0].isdigit() and "." in entry:
+                        found_versions.append(entry)
+            except Exception: continue
+
+    # Determinar la versión más alta encontrada
+    version = None
+    if found_versions:
+        # Limpiar y ordenar versiones (ignorando las que empiezan por 1.3 que son del updater)
+        valid_vs = [v for v in found_versions if v.split('.')[0].isdigit() and int(v.split('.')[0]) > 5]
+        if valid_vs:
+            version = sorted(valid_vs, key=lambda x: [int(i) for i in x.split('.')], reverse=True)[0]
+
+    if version:
+        print(f"[WebView2] Detectado: v{version}")
+    else:
+        print("[WebView2] No detectado directamente.")
+
     is_valid = False
     if version:
         try:
@@ -1726,18 +1744,78 @@ def check_webview2_runtime() -> bool:
             pass
 
     if not is_valid:
-        title = "Actualización Necesaria - TelegramDL Pro"
-        message = (
-            "Para funcionar correctamente como aplicación nativa, se requiere el componente "
-            "'Microsoft Edge WebView2 Runtime' (versión 101 o superior).\n\n"
-            "Parece que no está instalado o debe actualizarse.\n\n"
-            "¿Desea abrir la página de descarga oficial de Microsoft ahora?"
-        )
-        # 0x4 (Yes/No) | 0x30 (Warning) | 0x10000 (SetForeground)
-        res = ctypes.windll.user32.MessageBoxW(0, message, title, 0x4 | 0x30 | 0x10000)
+        try:
+            import tkinter as tk
+            from tkinter import font as tkfont
 
-        if res == 6: # IDYES
-            webbrowser.open("https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section")
+            root = tk.Tk()
+            root.withdraw() 
+
+            try:
+                from ctypes import windll
+                windll.shcore.SetProcessDpiAwareness(1)
+            except Exception:
+                pass
+
+            dialog = tk.Toplevel(root)
+            dialog.title("TelegramDL")
+            dialog.configure(bg='#0f172a') 
+            dialog.geometry("500x320")
+            dialog.resizable(False, False)
+
+            sw = dialog.winfo_screenwidth()
+            sh = dialog.winfo_screenheight()
+            dialog.geometry(f"+{(sw-500)//2}+{(sh-320)//2}")
+            dialog.overrideredirect(True) 
+
+            main_frame = tk.Frame(dialog, bg='#1e293b', highlightbackground='#334155', highlightthickness=1)
+            main_frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+            title_f = tkfont.Font(family="Segoe UI", size=18, weight="bold")
+            header_f = tkfont.Font(family="Segoe UI", size=13, weight="bold")
+            body_f = tkfont.Font(family="Segoe UI", size=10)
+
+            tk.Label(main_frame, text="TelegramDL", bg='#1e293b', fg='#3b82f6', font=title_f, pady=20).pack()
+            tk.Label(main_frame, text="Componente de Sistema Requerido", bg='#1e293b', fg='#f8fafc', font=header_f).pack()
+
+            msg = (
+                "\nPara funcionar correctamente como aplicación nativa, se requiere el componente\n"
+                "'Microsoft Edge WebView2 Runtime' (versión 101 o superior).\n\n"
+                "Parece que no está instalado o debe actualizarse en su sistema.\n\n"
+                "¿Desea abrir la página de descarga oficial ahora?"
+            )
+            tk.Label(main_frame, text=msg, bg='#1e293b', fg='#94a3b8', font=body_f, justify="center").pack(padx=40)
+
+            btn_frame = tk.Frame(main_frame, bg='#1e293b', pady=30)
+            btn_frame.pack()
+
+            def on_yes():
+                webbrowser.open("https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section")
+                root.destroy()
+                sys.exit(0)
+
+            def on_no():
+                root.destroy()
+                sys.exit(0)
+
+            btn_dl = tk.Button(btn_frame, text="SÍ, DESCARGAR", command=on_yes, bg='#3b82f6', fg='white',
+                               font=("Segoe UI", 9, "bold"), padx=25, pady=8, border=0, cursor="hand2",
+                               activebackground='#2563eb', activeforeground='white')
+            btn_dl.pack(side="left", padx=10)
+
+            btn_close = tk.Button(btn_frame, text="NO, CERRAR", command=on_no, bg='#334155', fg='white',
+                                  font=("Segoe UI", 9, "bold"), padx=25, pady=8, border=0, cursor="hand2",
+                                  activebackground='#475569', activeforeground='white')
+            btn_close.pack(side="left", padx=10)
+
+            dialog.attributes("-topmost", True)
+            root.mainloop()
+        except Exception:
+            title = "TelegramDL"
+            message = "Se requiere WebView2 Runtime. ¿Desea descargarlo?"
+            res = ctypes.windll.user32.MessageBoxW(0, message, title, 0x4 | 0x40)
+            if res == 6:
+                webbrowser.open("https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section")
 
         return False
 
@@ -1746,7 +1824,7 @@ def check_webview2_runtime() -> bool:
 
 async def main(server_mode: bool = False) -> None:
     global downloader_instance
-    print("🤖 TG Downloader Pro")
+    print("TG Downloader Pro")
 
     load_downloads_state()
     asyncio.create_task(auto_save_loop())
@@ -1758,7 +1836,7 @@ async def main(server_mode: bool = False) -> None:
     visible_host = get_local_ip() if host == "0.0.0.0" else host
 
     dashboard_url = f"http://{visible_host}:{port}/dashboard/"
-    print(f"🌐 Dashboard: {dashboard_url}")
+    print(f"Dashboard: {dashboard_url}")
 
     api_id = os.getenv("TGDL_API_ID")
     api_hash = os.getenv("TGDL_API_HASH")
@@ -1766,29 +1844,36 @@ async def main(server_mode: bool = False) -> None:
         try:
             status = await check_auth_status()
             if status.get("authenticated"):
-                print("✅ Conectado a Telegram. Esperando órdenes desde la web...")
+                print("Conectado a Telegram. Esperando órdenes desde la web...")
                 if downloader_instance:
                     asyncio.create_task(downloader_instance.resume_all())
             else:
-                print("🔑 Completa el inicio de sesión desde el panel web.")
+                print("Completa el inicio de sesión desde el panel web.")
         except Exception as err:
-            print(f"⚠️ Atención: {err}")
+            print(f"Atencion: {err}")
     else:
-        print("⚠️ No hay API_ID / API_HASH configurados. Configúralos directamente en el panel web.")
+        print("No hay API_ID / API_HASH configurados. Configúralos directamente en el panel web.")
 
     if not server_mode:
-        print("🖥️ Iniciando interfaz nativa...")
+        print("Iniciando interfaz nativa...")
 
     try:
-        while True:
-            await asyncio.sleep(3600)
+        while not stop_event.is_set():
+            await asyncio.sleep(0.5)
     finally:
+        print("Cerrando aplicacion de forma segura...")
         server_task.cancel()
         with suppress(asyncio.CancelledError):
             await server_task
+
+        # Guardar estado final antes de salir
+        save_downloads_state()
+
         if downloader_instance and downloader_instance.client:
+            print("Desconectando de Telegram...")
             with suppress(Exception):
                 await downloader_instance.client.disconnect()
+        print("Proceso finalizado correctamente.")
 
 
 if __name__ == "__main__":
@@ -1801,40 +1886,37 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.server:
-        # Si es un EXE compilado con --noconsole, intentamos recuperar la salida en el CMD
+        
         if os.name == "nt" and getattr(sys, "frozen", False):
             import ctypes
             if ctypes.windll.kernel32.AttachConsole(-1):
                 sys.stdout = open("CONOUT$", "w", buffering=1)
                 sys.stderr = open("CONOUT$", "w", buffering=1)
-                print("\n") # Salto de línea inicial para limpiar el prompt
+                print("\n") 
 
         try:
             asyncio.run(main(server_mode=True))
         except (KeyboardInterrupt, SystemExit):
-            print("\n👋 TG Downloader Pro finalizado.")
+            print("\nTG Downloader finalizado.")
     else:
-        # Verificar WebView2 antes de proceder con el modo GUI
+        
         if not check_webview2_runtime():
             sys.exit(0)
 
-        # Modo GUI con pywebview
+        
         def start_backend():
             asyncio.run(main(server_mode=False))
 
-        # Iniciar backend en un hilo separado
         t = threading.Thread(target=start_backend, daemon=True)
         t.start()
 
-        # Configurar y lanzar la ventana nativa
         try:
             port = os.getenv("TGDL_PORT", "8000")
 
-            # Ajuste de logs de uvicorn para modo GUI (silencioso)
             os.environ["WDM_LOG_LEVEL"] = "0"
 
             webview.create_window(
-                "TelegramDL Pro",
+                "TelegramDL",
                 f"http://127.0.0.1:{port}/dashboard/",
                 width=1000,
                 height=650,
@@ -1843,15 +1925,17 @@ if __name__ == "__main__":
                 background_color="#ffffff"
             )
 
-            # Si falla WebView2, pywebview intentará usar otros motores disponibles
             webview.start(storage_path=os.path.join(os.getcwd(), "cache"))
 
+            # Al salir de la ventana, avisar al backend y esperar cierre limpio
+            stop_event.set()
+            t.join(timeout=5)
+
         except Exception as e:
-            # Si hay un error crítico de UI, intentamos rescatar el proceso en modo terminal
             import traceback
-            print(f"❌ Error al iniciar la interfaz gráfica: {e}")
+            print(f"Error al iniciar la interfaz gráfica: {e}")
             traceback.print_exc()
-            print("\n💡 Tip: Asegúrate de tener instalado 'WebView2 Runtime' de Microsoft.")
-            print("💡 Iniciando modo servidor como alternativa...")
+            print("\nTip: Asegúrate de tener instalado 'WebView2 Runtime' de Microsoft.")
+            print("Iniciando modo servidor como alternativa...")
             asyncio.run(main(server_mode=True))
 
