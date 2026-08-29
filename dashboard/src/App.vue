@@ -40,6 +40,17 @@ let disposed = false
 let syncingSettings = false
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
+const updateInfo = ref(null)
+const isUpdating = ref(false)
+const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
+
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
 
 const syncSettings = async nextSettings => {
   syncingSettings = true
@@ -218,6 +229,51 @@ const deleteDownload = async item => {
   })
 }
 
+const checkForUpdates = async () => {
+  try {
+    const data = await api('/api/update/check')
+    if (data.update_available) {
+      updateInfo.value = data
+      openConfirm({
+        title: 'Actualización Disponible',
+        message: `Se ha encontrado una nueva versión (${data.latest}). La actualización es obligatoria para continuar usando la aplicación. Tamaño: ${formatSize(data.size_bytes)}`,
+        confirmText: 'Actualizar Ahora',
+        cancelText: 'Salir',
+        type: 'primary',
+        action: async () => {
+          try {
+            isUpdating.value = true
+            await api('/api/update/install', { method: 'POST' })
+
+            const pollProgress = async () => {
+              try {
+                const res = await api('/api/update/progress')
+                updateProgress.value = res
+                if (res.status.startsWith('error')) {
+                  isUpdating.value = false
+                  showMessage('Error: ' + res.status, true)
+                  return
+                }
+                if (res.status !== 'finishing') {
+                  setTimeout(pollProgress, 500)
+                }
+              } catch (e) {
+                setTimeout(pollProgress, 1000)
+              }
+            }
+            pollProgress()
+          } catch (err) {
+            isUpdating.value = false
+            showMessage('Error al iniciar la actualización: ' + err.message, true)
+          }
+        }
+      })
+    }
+  } catch (err) {
+    console.error('Error al buscar actualizaciones:', err)
+  }
+}
+
 const activeDownloads = computed(() => downloads.value.filter(item => ['downloading', 'paused'].includes(item.status)))
 const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
 const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
@@ -259,6 +315,7 @@ onMounted(async () => {
     await Promise.all([fetchSettings(), fetchDownloads()])
   }
 
+  checkForUpdates()
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
 })
@@ -266,6 +323,39 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 </script>
 
 <template>
+  <div v-if="updateInfo" class="update-required-overlay">
+    <div class="update-card">
+      <Zap :size="48" class="update-icon" />
+      <h2>Actualización Obligatoria</h2>
+      <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
+
+      <div v-if="isUpdating" class="update-progress-container">
+        <div class="update-status-text">
+          {{ updateProgress.status === 'downloading' ? 'Descargando actualización...' :
+             updateProgress.status === 'extracting' ? 'Extrayendo archivos...' :
+             updateProgress.status === 'finishing' ? 'Finalizando e iniciando...' : 'Iniciando...' }}
+        </div>
+        <div class="update-progress-bar">
+          <div class="update-progress-fill" :style="{ width: updateProgress.percentage + '%' }"></div>
+        </div>
+        <div class="update-progress-stats">
+          <span>{{ formatSize(updateProgress.downloaded) }} / {{ formatSize(updateProgress.total) }}</span>
+          <span>{{ updateProgress.percentage }}%</span>
+        </div>
+      </div>
+
+      <button v-if="!isUpdating" class="primary-button update-btn" @click="modal.action()">
+        <span>Actualizar ahora</span>
+        <ArrowUpRight :size="18" />
+      </button>
+
+      <div v-else class="update-warning">
+        Por favor, no cierres la aplicación.
+      </div>
+
+      <small>Versión actual: {{ updateInfo.current }}</small>
+    </div>
+  </div>
   <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
   <div class="app-shell">
     <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
@@ -344,6 +434,40 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 </template>
 
 <style>
+.update-required-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.update-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 24px;
+  padding: 40px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+.update-icon { color: #3b82f6; margin-bottom: 20px; }
+.update-card h2 { color: #f8fafc; margin-bottom: 12px; font-size: 24px; }
+.update-card p { color: #94a3b8; margin-bottom: 30px; line-height: 1.6; }
+.update-progress-container { margin-bottom: 30px; text-align: left; }
+.update-status-text { color: #f8fafc; font-size: 14px; margin-bottom: 10px; font-weight: 500; }
+.update-progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+.update-progress-fill { height: 100%; background: #3b82f6; transition: width 0.3s ease; }
+.update-progress-stats { display: flex; justify-content: space-between; color: #94a3b8; font-size: 12px; }
+.update-warning { color: #e88888; font-size: 13px; margin-bottom: 20px; font-style: italic; }
+.update-btn { width: 100%; justify-content: center; padding: 14px; font-size: 16px; margin-bottom: 16px; }
+.update-card small { color: #475569; display: block; }
 .sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
 .sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
 .sidebar-user-badge .user-info{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}

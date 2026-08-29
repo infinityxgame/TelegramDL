@@ -68,6 +68,7 @@ try:
     from fastapi.staticfiles import StaticFiles
     import uvicorn
     import webview
+    from updater import AppUpdater
 except ImportError:
     print("❌ Faltan dependencias. Ejecuta: pip install -r requirements.txt pywebview")
     sys.exit(1)
@@ -80,6 +81,10 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
+
+APP_VERSION = "2.0.2"
+GITHUB_REPO = "infinityxgame/tgdown"
+updater = AppUpdater(APP_VERSION, GITHUB_REPO, BASE_DIR)
 
 load_dotenv(BASE_DIR / ".env")
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -493,6 +498,43 @@ async def check_auth_status() -> Dict[str, Any]:
 
 # --- Dashboard API ---
 app = FastAPI(title="Telegram DL API")
+
+@app.get("/api/update/check")
+async def check_update():
+    latest = updater.check_for_update()
+    size = 0
+    if latest:
+        asset = updater.get_asset_for_platform(latest)
+        if asset:
+            size = asset.get('size', 0)
+
+    return {
+        "update_available": latest is not None,
+        "latest": latest["tag_name"] if latest else None,
+        "current": APP_VERSION,
+        "size_bytes": size
+    }
+
+@app.get("/api/update/progress")
+async def get_update_progress():
+    return updater.progress
+
+@app.post("/api/update/install")
+async def install_update():
+    latest = updater.check_for_update()
+    if not latest:
+        raise HTTPException(status_code=400, detail="No hay actualizaciones disponibles")
+
+    asset = updater.get_asset_for_platform(latest)
+    if not asset:
+        raise HTTPException(status_code=400, detail="No se encontró un instalador para tu sistema")
+
+    # Ejecutar descarga e instalación en un hilo separado
+    if updater.progress["status"] not in ["starting", "downloading", "extracting"]:
+        threading.Thread(target=updater.download_and_install, args=(asset,), daemon=True).start()
+
+    return {"status": "ok", "message": "Iniciando descarga e instalación"}
+
 cors_origins = [
     origin.strip()
     for origin in os.getenv("TGDL_CORS_ORIGINS", "").split(",")
@@ -1125,7 +1167,7 @@ class TelegramDownloader:
             api_id=api_id,
             api_hash=api_hash,
             workdir=str(BASE_DIR),
-            app_version="1.0.0",
+            app_version=APP_VERSION,
             device_model="TGDown Desktop",
             system_version="Windows 11",
             lang_code="es",
