@@ -20,13 +20,25 @@ const mobileMenuOpen = ref(false)
 const version = ref('')
 
 const themeMap = {
-  0: { primary: '#fb6169', accent: '#ff8a8f', bgBase: '#0f0505', bgTop: '#3d161a', surface: '#1a0b0b', surfaceLight: '#250f0f', border: '#4b1b1b', borderLight: '#652323', iconBg: '#5b1118', glow: 'rgba(251, 97, 105, 0.2)' },
-  1: { primary: '#faa357', accent: '#ffc694', bgBase: '#0f0a05', bgTop: '#3d2a16', surface: '#1a120b', surfaceLight: '#251a0f', border: '#4b341b', borderLight: '#654723', iconBg: '#5b3d11', glow: 'rgba(250, 163, 87, 0.2)' },
-  2: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#0a050f', bgTop: '#2a163d', surface: '#120b1a', surfaceLight: '#1a0f25', border: '#341b4b', borderLight: '#472365', iconBg: '#3d115b', glow: 'rgba(180, 139, 242, 0.2)' },
-  3: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#050f05', bgTop: '#163d1a', surface: '#0b1a0b', surfaceLight: '#0f250f', border: '#1b4b1b', borderLight: '#236523', iconBg: '#115b18', glow: 'rgba(133, 222, 133, 0.2)' },
-  4: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#050f0f', bgTop: '#16383d', surface: '#0b1a1a', surfaceLight: '#0f2525', border: '#1b4b4b', borderLight: '#236565', iconBg: '#114b5b', glow: 'rgba(98, 212, 227, 0.2)' },
-  5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#07111f', bgTop: '#163557', surface: '#0b1a2a', surfaceLight: '#0e2032', border: '#1b344b', borderLight: '#234765', iconBg: '#11385b', glow: 'rgba(73, 182, 255, 0.2)' },
-  6: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0f050a', bgTop: '#3d162a', surface: '#1a0b12', surfaceLight: '#250f1a', border: '#4b1b34', borderLight: '#652347', iconBg: '#5b1138', glow: 'rgba(255, 125, 181, 0.2)' }
+  // --- Fila Superior: Sólidos ---
+  0: { primary: '#fb6169', accent: '#ff8a8f', bgBase: '#0d0404', bgTop: '#2d0a0a', surface: '#160808', surfaceLight: '#1f0b0b', border: '#3a1212', borderLight: '#4d1818', iconBg: '#2d0a0a', glow: 'rgba(251, 97, 105, 0.2)', textDim: '#8a6464', gradient: '#fb6169' },
+  1: { primary: '#faa357', accent: '#ffc694', bgBase: '#0d0804', bgTop: '#2d1a0a', surface: '#161108', surfaceLight: '#1f180b', border: '#3a2712', borderLight: '#4d3418', iconBg: '#2d1a0a', glow: 'rgba(250, 163, 87, 0.2)', textDim: '#8a7964', gradient: '#faa357' },
+  2: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#08040d', bgTop: '#1a0a2d', surface: '#110816', surfaceLight: '#180b1f', border: '#27123a', borderLight: '#34184d', iconBg: '#1a0a2d', glow: 'rgba(180, 139, 242, 0.2)', textDim: '#78648a', gradient: '#b48bf2' },
+  3: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#040d04', bgTop: '#0a2d0a', surface: '#081608', surfaceLight: '#0b1f0b', border: '#123a12', borderLight: '#184d18', iconBg: '#0a2d0a', glow: 'rgba(133, 222, 133, 0.2)', textDim: '#648a64', gradient: '#85de85' },
+  4: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#040d0d', bgTop: '#0a2a2d', surface: '#081616', surfaceLight: '#0b1f1f', border: '#12373a', borderLight: '#18484d', iconBg: '#0a2a2d', glow: 'rgba(98, 212, 227, 0.2)', textDim: '#64888a', gradient: '#62d4e3' },
+  5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#04080d', bgTop: '#0a1a2d', surface: '#081116', surfaceLight: '#0b181f', border: '#12273a', borderLight: '#18344d', iconBg: '#0a1a2d', glow: 'rgba(73, 182, 255, 0.2)', textDim: '#64788a', gradient: '#38a7ff' },
+  6: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0d0408', bgTop: '#2d0a1a', surface: '#160811', surfaceLight: '#1f0b18', border: '#3a1227', borderLight: '#4d1834', iconBg: '#2d0a1a', glow: 'rgba(255, 125, 181, 0.2)', textDim: '#8a6478', gradient: '#ff7db5' },
+  7: { primary: '#a0a0a0', accent: '#e0e0e0', bgBase: '#0a0a0a', bgTop: '#1a1a1a', surface: '#111111', surfaceLight: '#161616', border: '#222222', borderLight: '#333333', iconBg: '#1a1a1a', glow: 'rgba(160, 160, 160, 0.15)', textDim: '#777777', gradient: '#a0a0a0' },
+
+  // --- Fila Inferior: Degradados ---
+  8: { primary: '#fb6169', accent: '#ff8a8f', bgBase: '#0d0404', bgTop: '#2d0a0a', surface: '#160808', surfaceLight: '#1f0b0b', border: '#3a1212', borderLight: '#4d1818', iconBg: '#2d0a0a', glow: 'rgba(251, 97, 105, 0.2)', textDim: '#8a6464', gradient: 'linear-gradient(135deg, #fb6169 0%, #faa357 100%)' },
+  9: { primary: '#faa357', accent: '#ffc694', bgBase: '#0d0804', bgTop: '#2d1a0a', surface: '#161108', surfaceLight: '#1f180b', border: '#3a2712', borderLight: '#4d3418', iconBg: '#2d1a0a', glow: 'rgba(250, 163, 87, 0.2)', textDim: '#8a7964', gradient: 'linear-gradient(135deg, #faa357 0%, #fcd34d 100%)' },
+  10: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#08040d', bgTop: '#1a0a2d', surface: '#110816', surfaceLight: '#180b1f', border: '#27123a', borderLight: '#34184d', iconBg: '#1a0a2d', glow: 'rgba(180, 139, 242, 0.2)', textDim: '#78648a', gradient: 'linear-gradient(135deg, #b48bf2 0%, #ff7db5 100%)' },
+  11: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#040d04', bgTop: '#0a2d0a', surface: '#081608', surfaceLight: '#0b1f0b', border: '#123a12', borderLight: '#184d18', iconBg: '#0a2d0a', glow: 'rgba(133, 222, 133, 0.2)', textDim: '#648a64', gradient: 'linear-gradient(135deg, #85de85 0%, #62d4e3 100%)' },
+  12: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#040d0d', bgTop: '#0a2a2d', surface: '#081616', surfaceLight: '#0b1f1f', border: '#12373a', borderLight: '#18484d', iconBg: '#0a2a2d', glow: 'rgba(98, 212, 227, 0.2)', textDim: '#64888a', gradient: 'linear-gradient(135deg, #62d4e3 0%, #38a7ff 100%)' },
+  13: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#04080d', bgTop: '#0a1a2d', surface: '#081116', surfaceLight: '#0b181f', border: '#12273a', borderLight: '#18344d', iconBg: '#0a1a2d', glow: 'rgba(73, 182, 255, 0.2)', textDim: '#64788a', gradient: 'linear-gradient(135deg, #38a7ff 0%, #b48bf2 100%)' },
+  14: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0d0408', bgTop: '#2d0a1a', surface: '#160811', surfaceLight: '#1f0b18', border: '#3a1227', borderLight: '#4d1834', iconBg: '#2d0a1a', glow: 'rgba(255, 125, 181, 0.2)', textDim: '#8a6478', gradient: 'linear-gradient(135deg, #ff7db5 0%, #faa357 100%)' },
+  15: { primary: '#a0a0a0', accent: '#e0e0e0', bgBase: '#0a0a0a', bgTop: '#1a1a1a', surface: '#111111', surfaceLight: '#161616', border: '#222222', borderLight: '#333333', iconBg: '#1a1a1a', glow: 'rgba(160, 160, 160, 0.15)', textDim: '#777777', gradient: 'linear-gradient(135deg, #a0a0a0 0%, #d1d5db 100%)' }
 }
 
 const applyTheme = (colorId) => {
@@ -42,6 +54,8 @@ const applyTheme = (colorId) => {
   root.style.setProperty('--user-border-light', theme.borderLight)
   root.style.setProperty('--user-icon-bg', theme.iconBg)
   root.style.setProperty('--user-glow', theme.glow)
+  root.style.setProperty('--user-text-dim', theme.textDim)
+  root.style.setProperty('--user-gradient', theme.gradient)
 }
 
 // Aplicar tema inmediatamente si existe en localStorage para evitar el flash
@@ -498,8 +512,8 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   padding: 20px;
 }
 .update-card {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: var(--user-surface);
+  border: 1px solid var(--user-border);
   border-radius: 24px;
   padding: 40px;
   max-width: 400px;
@@ -572,8 +586,8 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
-.sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:var(--user-accent)}
-.sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
+.sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}
+.sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:var(--user-bg-base);border:1px solid var(--user-border);border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
 .sidebar-user-badge .user-info{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
 .sidebar-user-badge .user-icon{color:#39db9a;flex:none}
 .sidebar-user-badge .user-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}

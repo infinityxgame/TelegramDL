@@ -2,6 +2,7 @@
 :root {
   font-family: 'DM Sans', sans-serif;
   color: #dbe7f5;
+  background: #07111f;
   font-synthesis: none;
   /* Variables de Tema Dinámicas */
   --user-primary: #38a7ff;
@@ -15,7 +16,7 @@
   --user-icon-bg: #11385b;
   --user-glow: rgba(73, 182, 255, 0.15);
   --user-text-dim: #728ba2;
-  --glow: var(--user-accent);
+  --user-gradient: var(--user-primary);
 }
 * { box-sizing: border-box }
 body { margin: 0; min-width: 320px; background: var(--user-bg-base); background-image: radial-gradient(circle at 70% -10%, var(--user-bg-top) 0, var(--user-bg-base) 42%); min-height: 100vh }
@@ -27,8 +28,8 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .brand { display: flex; align-items: center; gap: 10px; font: 700 20px 'Space Grotesk'; color: #f3f8ff }
 .brand-text { display: flex; flex-direction: column; line-height: 1.1 }
 .version-tag { font-size: 10px; color: var(--user-text-dim); font-weight: 500; letter-spacing: .05em; margin-top: 2px; opacity: .8 }
-.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--user-primary); color: var(--user-bg-base); animation: brandFloat 5s ease-in-out infinite }
-.brand-mark img { width: 100%; height: 100%; display: block; border-radius: 10px }
+.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--user-gradient); color: var(--user-bg-base); animation: brandFloat 5s ease-in-out infinite }
+.brand-mark img { width: 100%; height: 100%; display: block; border-radius: 10px; filter: grayscale(1) brightness(0.2) } /* El icono se adapta al fondo */
 .brand-mark svg { filter: drop-shadow(0 0 8px var(--user-accent)) }
 .brand-accent { color: var(--user-accent) }
 
@@ -37,7 +38,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .sidebar-nav button { border: 0; background: transparent; color: var(--user-text-dim); text-align: left; padding: 11px 12px; border-radius: 9px; font: 500 12px 'DM Sans'; cursor: pointer; display: flex; align-items: center; gap: 10px }
 .sidebar-nav button svg { flex: none }
 .sidebar-nav button:hover { background: var(--user-surface-light); color: #eef7ff; transform: translateX(3px) }
-.sidebar-nav button.selected { background: var(--user-icon-bg); color: #eef7ff; box-shadow: inset 3px 0 var(--user-primary), 0 6px 20px rgba(0,0,0,0.2) }
+.sidebar-nav button.selected { background: var(--user-icon-bg) !important; color: #eef7ff; box-shadow: inset 3px 0 var(--user-primary), 0 6px 20px rgba(0,0,0,0.2) }
 .sidebar-nav button.selected span { color: var(--user-accent) }
 
 .sidebar-status { display: flex; gap: 8px; align-items: center; color: #95aabd; font-size: 12px; padding: 11px 12px; background: var(--user-surface-light); border-radius: 10px }
@@ -63,7 +64,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .download-form input:focus, .speed-row input:focus, .speed-row select:focus { border-color: var(--user-primary); box-shadow: 0 0 0 3px var(--user-glow) }
 .download-form input::placeholder { color: #5f7890 }
 .download-form input { flex: 1 }
-.primary-button, .save-button { border: 0; border-radius: 10px; background: var(--user-primary); color: var(--user-bg-base); font-weight: 700; padding: 0 18px; cursor: pointer; display: flex; align-items: center; gap: 18px }
+.primary-button, .save-button { border: 0; border-radius: 10px; background: var(--user-gradient); color: var(--user-bg-base); font-weight: 700; padding: 0 18px; cursor: pointer; display: flex; align-items: center; gap: 18px }
 .primary-button:hover:not(:disabled), .save-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 9px 24px var(--user-glow) }
 .primary-button:active:not(:disabled), .save-button:active:not(:disabled) { transform: translateY(0) }
 .primary-button:disabled, .save-button:disabled { opacity: .55; cursor: wait }
@@ -89,7 +90,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .panel-heading h2 { font: 600 17px 'Space Grotesk'; margin: 6px 0 0; color: #edf5fc }
 .panel-heading .eyebrow { display: flex; align-items: center; gap: 5px }
 .count-pill, .save-state { font-size: 10px; color: var(--user-accent); background: var(--user-icon-bg); border-radius: 20px; padding: 6px 9px }
-.save-state { color: #69d2ac; background: #10362e }
+.save-state { color: #39db9a; background: rgba(57, 219, 154, 0.1) }
 
 .download-row { display: flex; gap: 13px; padding: 14px 0; border-top: 1px solid var(--user-border) }
 .file-symbol, .recent-icon { display: grid; place-items: center; width: 31px; height: 31px; border-radius: 9px; background: var(--user-icon-bg); color: var(--user-primary); flex: none }
@@ -97,7 +98,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .file-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px }
 .file-info span { font-size: 11px; color: var(--user-text-dim) }
 .progress-track { height: 5px; background: var(--user-icon-bg); border-radius: 8px; margin-top: 9px; overflow: hidden }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--user-primary), #6de3c1); border-radius: 8px; background-size: 200% 100%; animation: progressSheen 2.3s linear infinite }
+.progress-fill { height: 100%; background: var(--user-gradient); border-radius: 8px; background-size: 200% 100%; animation: progressSheen 2.3s linear infinite }
 .row-side { display: flex; align-items: flex-end; flex-direction: column; gap: 3px; min-width: 72px }
 .row-side b { font-size: 13px; color: var(--user-accent) }
 .row-side span { font-size: 10px; color: var(--user-text-dim) }
@@ -138,11 +139,11 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .recent-row { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--user-border); padding: 11px 0; font-size: 12px }
 .recent-row strong { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500 }
 .recent-size { color: var(--user-text-dim) }
-.badge { font-size: 10px; padding: 4px 8px; border-radius: 20px; background: #15352d; color: #67d7ae }
+.badge { font-size: 10px; padding: 4px 8px; border-radius: 20px; background: rgba(57, 219, 154, 0.1); color: #39db9a; border: 1px solid rgba(57, 219, 154, 0.2) }
 .delete-button { display: grid; place-items: center; border: 0; background: transparent; color: #d9828b; width: 32px; height: 32px; border-radius: 8px; cursor: pointer }
 .delete-button:hover { background: #48252c; color: #ffb0b0 }
 
-.toast { position: fixed; right: 28px; top: 24px; z-index: 5; padding: 11px 15px; border-radius: 9px; font-size: 12px; display: flex; align-items: center; gap: 7px; animation: toastIn .25s ease-out }
+.toast { position: fixed; right: 28px; top: 24px; z-index: 5; padding: 11px 15px; border-radius: 9px; font-size: 12px; display: flex; align-items: center; gap: 7px; animation: toastIn .25s ease-out; border: 1px solid rgba(255,255,255,0.1) }
 .toast.success { background: #113a31; color: #73e0b7; border: 1px solid #286e5a }
 .toast.danger { background: #48252c; color: #ffadad; border: 1px solid #8c4550 }
 
