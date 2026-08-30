@@ -100,7 +100,7 @@ pip install pyinstaller pillow pywebview
 # 3. Compilar la aplicación
 # Nota: --noconsole se puede usar si no quieres ver la terminal detrás de la ventana nativa,
 # pero se recomienda --console inicialmente para depuración.
-pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
+pyinstaller --noconfirm --onedir --noconsole --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
 ```
 
 El ejecutable resultante se guardará en `dist/TelegramDL/TelegramDL.exe`.

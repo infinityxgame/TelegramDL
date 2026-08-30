@@ -329,7 +329,7 @@ const resetFlow = async () => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(4, 11, 20, 0.92);
+  background: color-mix(in srgb, var(--user-bg-base), transparent 8%);
   backdrop-filter: blur(12px);
   display: grid;
   place-items: center;
@@ -338,8 +338,8 @@ const resetFlow = async () => {
 
 .auth-card {
   width: min(480px, 100%);
-  background: #0b1a2a;
-  border: 1px solid #1f3d5a;
+  background: var(--user-surface);
+  border: 1px solid var(--user-border);
   border-radius: 20px;
   padding: 30px;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
@@ -404,8 +404,8 @@ const resetFlow = async () => {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #18324a;
-  color: #8da4be;
+  background: var(--user-bg-base);
+  color: var(--user-text-dim);
   font-size: 11px;
   font-weight: 700;
   display: grid;
@@ -413,8 +413,8 @@ const resetFlow = async () => {
 }
 
 .step-item.active .step-num {
-  background: #38a7ff;
-  color: #061425;
+  background: var(--user-primary);
+  color: var(--user-bg-base);
 }
 
 .step-item.done .step-num {
@@ -431,7 +431,7 @@ const resetFlow = async () => {
 .step-divider {
   flex: 1;
   height: 2px;
-  background: #18324a;
+  background: var(--user-border);
   margin: 0 8px;
 }
 
@@ -469,16 +469,16 @@ const resetFlow = async () => {
   display: flex;
   gap: 10px;
   align-items: center;
-  background: #0d273f;
-  border: 1px solid #1e456a;
+  background: var(--user-surface-light);
+  border: 1px solid var(--user-border);
   padding: 10px 14px;
   border-radius: 10px;
   font-size: 12px;
-  color: #8db5d9;
+  color: var(--user-text-dim);
 }
 
 .info-banner a {
-  color: #42aefa;
+  color: var(--user-accent);
   text-decoration: underline;
 }
 
@@ -497,8 +497,8 @@ const resetFlow = async () => {
 }
 
 .form-group input {
-  background: #081725;
-  border: 1px solid #23435e;
+  background: var(--user-bg-base);
+  border: 1px solid var(--user-border);
   border-radius: 10px;
   padding: 12px 14px;
   color: #dbe7f5;
@@ -508,8 +508,8 @@ const resetFlow = async () => {
 }
 
 .form-group input:focus {
-  border-color: #38a7ff;
-  box-shadow: 0 0 0 3px rgba(56, 167, 255, 0.15);
+  border-color: var(--user-primary);
+  box-shadow: 0 0 0 3px var(--user-glow);
 }
 
 .code-input {
@@ -557,8 +557,8 @@ const resetFlow = async () => {
 }
 
 .auth-button.primary {
-  background: #38a7ff;
-  color: #041322;
+  background: var(--user-gradient);
+  color: var(--user-bg-base);
 }
 
 .auth-button.primary:hover:not(:disabled) {
@@ -568,9 +568,9 @@ const resetFlow = async () => {
 }
 
 .auth-button.secondary {
-  background: #142a3f;
-  color: #8da4be;
-  border: 1px solid #23435e;
+  background: var(--user-surface-light);
+  color: var(--user-text-dim);
+  border: 1px solid var(--user-border);
 }
 
 .auth-button.secondary:hover:not(:disabled) {

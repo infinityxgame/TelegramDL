@@ -557,7 +557,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.95);
+  background: color-mix(in srgb, var(--user-bg-base), transparent 5%);
   backdrop-filter: blur(8px);
   z-index: 9999;
   display: flex;
@@ -576,12 +576,12 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 }
 .update-icon { color: var(--user-primary); margin-bottom: 20px; }
 .update-card h2 { color: #f8fafc; margin-bottom: 12px; font-size: 24px; }
-.update-card p { color: #94a3b8; margin-bottom: 30px; line-height: 1.6; }
+.update-card p { color: var(--user-text-dim); margin-bottom: 30px; line-height: 1.6; }
 .update-action-area { transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); min-height: 80px; display: flex; flex-direction: column; justify-content: center; position: relative; }
 .update-action-area.is-loading { transform: translateY(-5px); }
 .update-progress-container { width: 100%; text-align: left; animation: morphReveal 0.8s cubic-bezier(0.19, 1, 0.22, 1); }
 .update-status-text { color: #f8fafc; font-size: 14px; margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.update-progress-bar { height: 16px; background: #0f172a; border-radius: 20px; overflow: hidden; margin-bottom: 10px; position: relative; border: 1px solid #1e293b; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.update-progress-bar { height: 16px; background: var(--user-bg-base); border-radius: 20px; overflow: hidden; margin-bottom: 10px; position: relative; border: 1px solid var(--user-border); box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
 .update-progress-fill { height: 100%; background: linear-gradient(90deg, var(--user-bg-top), var(--user-primary), var(--user-accent)); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); position: relative; display: flex; align-items: center; justify-content: flex-end; }
 
 /* Efecto Nitro-Wind (Destellos hacia ATRÁS) */
@@ -592,7 +592,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .nitro-wind span:nth-child(3) { top: 75%; width: 30px; animation-duration: 0.5s; animation-delay: 0.2s; }
 .nitro-wind span:nth-child(4) { top: 40%; width: 50px; animation-duration: 0.8s; animation-delay: 0.3s; }
 
-.update-progress-stats { display: flex; justify-content: space-between; color: #64748b; font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 600; }
+.update-progress-stats { display: flex; justify-content: space-between; color: var(--user-text-dim); font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 600; }
 .update-warning { color: #f87171; font-size: 13px; margin-top: 15px; font-weight: 500; text-align: center; animation: pulseWarning 2s infinite; }
 
 .update-btn {
@@ -626,7 +626,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   from { opacity: 0; transform: scaleX(0.5); filter: blur(5px); }
   to { opacity: 1; transform: scaleX(1); filter: blur(0); }
 }
-.update-card small { color: #475569; display: block; }
+.update-card small { color: var(--user-text-dim); opacity: 0.8; display: block; }
 
 @keyframes nitro {
   from { transform: translateX(-100%); }
