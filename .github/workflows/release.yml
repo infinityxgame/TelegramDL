@@ -50,27 +50,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller pillow
-
-      - name: Generate Icon
-        run: |
-          python -c "
-          from PIL import Image, ImageDraw
-          scale = 4
-          w, h = 256 * scale, 256 * scale
-          img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-          draw = ImageDraw.Draw(img)
-          def S(val): return int(val * scale)
-          draw.rounded_rectangle([0, 0, w, h], radius=S(220), fill='#07111f')
-          draw.rounded_rectangle([S(120), S(120), S(904), S(904)], radius=S(170), fill='#102a43', outline='#234765', width=S(24))
-          arrow_pts = [(S(468), S(260)), (S(556), S(260)), (S(556), S(530)), (S(648), S(530)), (S(512), S(670)), (S(376), S(530)), (S(468), S(530))]
-          draw.polygon(arrow_pts, fill='#42aefa')
-          draw.rounded_rectangle([S(300), S(700), S(724), S(764)], radius=S(32), fill='#5ebbff')
-          draw.ellipse([S(760), S(204), S(820), S(264)], fill='#39db9a')
-          sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-          frames = [img.resize(sz, Image.Resampling.LANCZOS) for sz in sizes]
-          frames[0].save('icon.ico', format='ICO', append_images=frames[1:], sizes=sizes)
-          "
+          pip install pyinstaller
 
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
