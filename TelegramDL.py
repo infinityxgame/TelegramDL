@@ -460,6 +460,13 @@ async def check_auth_status() -> Dict[str, Any]:
         if not downloader_instance.client.is_connected:
             await downloader_instance.client.connect()
 
+        # Asegurar que el despachador de Pyrogram esté iniciado si ya estamos autenticados
+        if await downloader_instance.client.get_me():
+            try:
+                await downloader_instance.client.initialize()
+            except Exception:
+                pass
+
         if auth_session["state"] == "LOGGED_IN" and auth_session["user"]:
             return {
                 "authenticated": True,
@@ -640,6 +647,13 @@ async def auth_verify_code(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         if not downloader_instance.client.is_connected:
             await downloader_instance.client.connect()
         await downloader_instance.client.sign_in(phone, phone_code_hash, code)
+
+        # Iniciar el despachador tras el inicio de sesión exitoso
+        try:
+            await downloader_instance.client.initialize()
+        except Exception:
+            pass
+
         me = await downloader_instance.client.get_me()
         user_info = {
             "id": me.id,
@@ -670,6 +684,13 @@ async def auth_verify_2fa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         if not downloader_instance.client.is_connected:
             await downloader_instance.client.connect()
         await downloader_instance.client.check_password(password)
+
+        # Iniciar el despachador tras verificar 2FA
+        try:
+            await downloader_instance.client.initialize()
+        except Exception:
+            pass
+
         me = await downloader_instance.client.get_me()
         user_info = {
             "id": me.id,
@@ -809,7 +830,7 @@ async def resolve_listener_chat(chat_id: int) -> Dict[str, Any]:
     return {
         "status": "ok",
         "chat": {
-            "id": chat_id,
+            "id": chat.id,
             "name": str(name),
             "type": str(getattr(chat, "type", "")),
             "username": getattr(chat, "username", None),
