@@ -102,6 +102,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "listener_enabled": True,
     "listener_chat_ids": [],
     "listener_chats": [],
+    "color_id": None,
 }
 SPEED_MULTIPLIERS = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
 MAX_STATE_ITEMS = 1000
@@ -207,6 +208,7 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
         "listener_enabled": bool(raw.get("listener_enabled", DEFAULT_CONFIG["listener_enabled"])),
         "listener_chat_ids": chat_ids,
         "listener_chats": listener_chats,
+        "color_id": raw.get("color_id", DEFAULT_CONFIG["color_id"]),
     }
 
 
@@ -250,6 +252,7 @@ def public_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "listener_enabled": normalized["listener_enabled"],
         "listener_chat_ids": normalized["listener_chat_ids"],
         "listener_chats": normalized["listener_chats"],
+        "color_id": normalized["color_id"],
     }
 
 
@@ -467,12 +470,19 @@ async def check_auth_status() -> Dict[str, Any]:
 
         me = await downloader_instance.client.get_me()
         if me:
+            account_color_id = getattr(me.color, "color_id", 5) if hasattr(me, "color") and me.color else 5
+
+            # Si no hay color configurado, usamos el de la cuenta y guardamos
+            if runtime_config.get("color_id") is None:
+                runtime_config["color_id"] = account_color_id
+                save_config(runtime_config)
+
             user_info = {
                 "id": me.id,
                 "first_name": me.first_name or "",
                 "username": me.username or "",
                 "phone": getattr(me, "phone_number", ""),
-                "color_id": 15
+                "color_id": account_color_id
             }
             auth_session["state"] = "LOGGED_IN"
             auth_session["user"] = user_info

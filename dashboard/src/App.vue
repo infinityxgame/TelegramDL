@@ -26,7 +26,7 @@ const themeMap = {
   2: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#08040d', bgTop: '#1a0a2d', surface: '#110816', surfaceLight: '#180b1f', border: '#27123a', borderLight: '#34184d', iconBg: '#1a0a2d', glow: 'rgba(180, 139, 242, 0.2)', textDim: '#78648a', gradient: '#b48bf2' },
   3: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#040d04', bgTop: '#0a2d0a', surface: '#081608', surfaceLight: '#0b1f0b', border: '#123a12', borderLight: '#184d18', iconBg: '#0a2d0a', glow: 'rgba(133, 222, 133, 0.2)', textDim: '#648a64', gradient: '#85de85' },
   4: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#040d0d', bgTop: '#0a2a2d', surface: '#081616', surfaceLight: '#0b1f1f', border: '#12373a', borderLight: '#18484d', iconBg: '#0a2a2d', glow: 'rgba(98, 212, 227, 0.2)', textDim: '#64888a', gradient: '#62d4e3' },
-  5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#04080d', bgTop: '#0a1a2d', surface: '#081116', surfaceLight: '#0b181f', border: '#12273a', borderLight: '#18344d', iconBg: '#0a1a2d', glow: 'rgba(73, 182, 255, 0.2)', textDim: '#64788a', gradient: '#38a7ff' },
+  5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#07111f', bgTop: '#163557', surface: '#0b1a2a', surfaceLight: '#0e2032', border: '#1b344b', borderLight: '#234765', iconBg: '#11385b', glow: 'rgba(73, 182, 255, 0.15)', textDim: '#728ba2', gradient: '#38a7ff' },
   6: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0d0408', bgTop: '#2d0a1a', surface: '#160811', surfaceLight: '#1f0b18', border: '#3a1227', borderLight: '#4d1834', iconBg: '#2d0a1a', glow: 'rgba(255, 125, 181, 0.2)', textDim: '#8a6478', gradient: '#ff7db5' },
   7: { primary: '#a0a0a0', accent: '#e0e0e0', bgBase: '#0a0a0a', bgTop: '#1a1a1a', surface: '#111111', surfaceLight: '#161616', border: '#222222', borderLight: '#333333', iconBg: '#1a1a1a', glow: 'rgba(160, 160, 160, 0.15)', textDim: '#777777', gradient: '#a0a0a0' },
 
@@ -36,7 +36,7 @@ const themeMap = {
   10: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#08040d', bgTop: '#1a0a2d', surface: '#110816', surfaceLight: '#180b1f', border: '#27123a', borderLight: '#34184d', iconBg: '#1a0a2d', glow: 'rgba(180, 139, 242, 0.2)', textDim: '#78648a', gradient: 'linear-gradient(135deg, #b48bf2 0%, #ff7db5 100%)' },
   11: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#040d04', bgTop: '#0a2d0a', surface: '#081608', surfaceLight: '#0b1f0b', border: '#123a12', borderLight: '#184d18', iconBg: '#0a2d0a', glow: 'rgba(133, 222, 133, 0.2)', textDim: '#648a64', gradient: 'linear-gradient(135deg, #85de85 0%, #62d4e3 100%)' },
   12: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#040d0d', bgTop: '#0a2a2d', surface: '#081616', surfaceLight: '#0b1f1f', border: '#12373a', borderLight: '#18484d', iconBg: '#0a2a2d', glow: 'rgba(98, 212, 227, 0.2)', textDim: '#64888a', gradient: 'linear-gradient(135deg, #62d4e3 0%, #38a7ff 100%)' },
-  13: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#04080d', bgTop: '#0a1a2d', surface: '#081116', surfaceLight: '#0b181f', border: '#12273a', borderLight: '#18344d', iconBg: '#0a1a2d', glow: 'rgba(73, 182, 255, 0.2)', textDim: '#64788a', gradient: 'linear-gradient(135deg, #38a7ff 0%, #b48bf2 100%)' },
+  13: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#07111f', bgTop: '#163557', surface: '#0b1a2a', surfaceLight: '#0e2032', border: '#1b344b', borderLight: '#234765', iconBg: '#11385b', glow: 'rgba(73, 182, 255, 0.15)', textDim: '#728ba2', gradient: 'linear-gradient(135deg, #38a7ff 0%, #b48bf2 100%)' },
   14: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0d0408', bgTop: '#2d0a1a', surface: '#160811', surfaceLight: '#1f0b18', border: '#3a1227', borderLight: '#4d1834', iconBg: '#2d0a1a', glow: 'rgba(255, 125, 181, 0.2)', textDim: '#8a6478', gradient: 'linear-gradient(135deg, #ff7db5 0%, #faa357 100%)' },
   15: { primary: '#a0a0a0', accent: '#e0e0e0', bgBase: '#0a0a0a', bgTop: '#1a1a1a', surface: '#111111', surfaceLight: '#161616', border: '#222222', borderLight: '#333333', iconBg: '#1a1a1a', glow: 'rgba(160, 160, 160, 0.15)', textDim: '#777777', gradient: 'linear-gradient(135deg, #a0a0a0 0%, #d1d5db 100%)' }
 }
@@ -75,7 +75,20 @@ const settings = reactive({
   max_concurrent_downloads: 2,
   parallel_chunks: true,
   chunk_workers: 4,
-  speed_limit: { value: 0, unit: 'MB' }
+  speed_limit: { value: 0, unit: 'MB' },
+  color_id: 5
+})
+
+const resetColor = () => {
+  if (authStatus.value.user && authStatus.value.user.color_id !== undefined) {
+    settings.color_id = authStatus.value.user.color_id
+  } else {
+    settings.color_id = 5
+  }
+}
+
+watch(() => settings.color_id, (newVal) => {
+  if (newVal !== undefined) applyTheme(newVal)
 })
 
 let timer
@@ -427,6 +440,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       <nav class="sidebar-nav">
         <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
         <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
+        <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
       </nav>
 
       <div v-if="authStatus.user" class="sidebar-user-badge">
@@ -444,7 +458,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
     </aside>
 
     <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : 'Escucha' }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
+      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : (activeView === 'listener' ? 'Escucha' : 'Ajustes') }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
 
       <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
       <div v-if="error" class="toast danger">{{ error }}</div>
@@ -463,25 +477,65 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         <div class="stat-card"><span class="stat-icon gray"><FileCheck :size="19" /></span><div><span class="stat-label">OMITIDAS</span><strong>{{ skippedCount }}</strong><small>ya existían</small></div></div>
       </section>
 
-      <div class="content-grid">
+      <div class="content-grid-single">
         <section class="panel activity-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div><span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span></div>
           <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
           <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button><button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
         </section>
-
-        <aside class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
-          <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label><input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input"><div class="range-hints"><span>1</span><span>16</span></div>
-          <div class="setting-line"><div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div><label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label></div>
-          <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label><input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input"><div class="range-hints"><span>1</span><span>8</span></div>
-          <div class="speed-setting"><label class="setting-label compact">Límite global</label><div class="speed-row"><input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5"><select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select><span>/s</span></div><small>Usa 0 para quitar el límite.</small></div>
-          <FolderPicker v-model="settings.download_folder" />
-          <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
-        </aside>
       </div>
 
       <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
-      <ListenerView v-else :notify="showMessage" />
+      <ListenerView v-else-if="activeView === 'listener'" :notify="showMessage" />
+      <template v-else-if="activeView === 'settings'">
+        <div class="content-grid-single">
+          <aside class="panel settings-panel-full"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración General</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
+            <div class="settings-sections-grid">
+              <div class="settings-group">
+                <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label><input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input"><div class="range-hints"><span>1</span><span>16</span></div>
+                <div class="setting-line"><div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div><label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label></div>
+                <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label><input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input"><div class="range-hints"><span>1</span><span>8</span></div>
+              </div>
+
+              <div class="settings-group">
+                <div class="speed-setting"><label class="setting-label compact">Límite global de velocidad</label><div class="speed-row"><input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5"><select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select><span>/s</span></div><small>Usa 0 para quitar el límite.</small></div>
+                <FolderPicker v-model="settings.download_folder" />
+              </div>
+
+              <div class="settings-group color-group">
+                <span class="setting-label">Color de Acento y Tema</span>
+                <div class="color-selector-container">
+                  <div class="color-row">
+                    <button
+                      v-for="id in [0,1,2,3,4,5,6,7]"
+                      :key="id"
+                      class="color-dot"
+                      :class="{ active: settings.color_id === id }"
+                      :style="{ background: themeMap[id].gradient }"
+                      @click="settings.color_id = id"
+                    ></button>
+                  </div>
+                  <div class="color-row">
+                    <button
+                      v-for="id in [8,9,10,11,12,13,14,15]"
+                      :key="id"
+                      class="color-dot gradient-dot"
+                      :class="{ active: settings.color_id === id }"
+                      :style="{ background: themeMap[id].gradient }"
+                      @click="settings.color_id = id"
+                    ></button>
+                  </div>
+                </div>
+                <button class="reset-button-alt" @click="resetColor">
+                  <Zap :size="14" /> Restablecer color de la cuenta
+                </button>
+              </div>
+            </div>
+
+            <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+          </aside>
+        </div>
+      </template>
       <ConfirmModal
         :show="modal.show"
         :title="modal.title"
@@ -593,4 +647,50 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .sidebar-user-badge .user-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .sidebar-user-badge .logout-btn{background:transparent;border:0;color:#e88888;cursor:pointer;display:grid;place-items:center;padding:4px;border-radius:6px;flex:none}
 .sidebar-user-badge .logout-btn:hover{background:#3d171d;color:#ff9e9e}
+
+/* Estilos adicionales para Ajustes y Selector de Color */
+.content-grid-single { display: grid; grid-template-columns: 1fr; gap: 18px; animation: riseIn .55s ease both; }
+.settings-panel-full { padding: 30px; }
+.settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; }
+.settings-group { display: flex; flex-direction: column; gap: 15px; }
+.color-group { padding-top: 5px; }
+.color-selector-container { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 20px; }
+.color-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+}
+.color-dot:hover { transform: scale(1.15); }
+.color-dot.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--user-primary), 0 0 15px var(--user-glow);
+  transform: scale(1.1);
+}
+.gradient-dot { position: relative; }
+.reset-button-alt {
+  background: var(--user-surface-light);
+  border: 1px solid var(--user-border);
+  color: var(--user-text-dim);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  transition: all 0.2s;
+}
+.reset-button-alt:hover {
+  background: var(--user-icon-bg);
+  color: var(--user-accent);
+  border-color: var(--user-primary);
+}
 </style>
