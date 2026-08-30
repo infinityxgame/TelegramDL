@@ -82,7 +82,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 GITHUB_REPO = "infinityxgame/tgdown"
 updater = AppUpdater(APP_VERSION, GITHUB_REPO, BASE_DIR)
 
