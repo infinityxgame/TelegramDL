@@ -19,6 +19,37 @@ const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
 const version = ref('')
 
+const themeMap = {
+  0: { primary: '#fb6169', accent: '#ff8a8f', bgBase: '#0f0505', bgTop: '#3d161a', surface: '#1a0b0b', surfaceLight: '#250f0f', border: '#4b1b1b', borderLight: '#652323', iconBg: '#5b1118', glow: 'rgba(251, 97, 105, 0.2)' },
+  1: { primary: '#faa357', accent: '#ffc694', bgBase: '#0f0a05', bgTop: '#3d2a16', surface: '#1a120b', surfaceLight: '#251a0f', border: '#4b341b', borderLight: '#654723', iconBg: '#5b3d11', glow: 'rgba(250, 163, 87, 0.2)' },
+  2: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#0a050f', bgTop: '#2a163d', surface: '#120b1a', surfaceLight: '#1a0f25', border: '#341b4b', borderLight: '#472365', iconBg: '#3d115b', glow: 'rgba(180, 139, 242, 0.2)' },
+  3: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#050f05', bgTop: '#163d1a', surface: '#0b1a0b', surfaceLight: '#0f250f', border: '#1b4b1b', borderLight: '#236523', iconBg: '#115b18', glow: 'rgba(133, 222, 133, 0.2)' },
+  4: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#050f0f', bgTop: '#16383d', surface: '#0b1a1a', surfaceLight: '#0f2525', border: '#1b4b4b', borderLight: '#236565', iconBg: '#114b5b', glow: 'rgba(98, 212, 227, 0.2)' },
+  5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#07111f', bgTop: '#163557', surface: '#0b1a2a', surfaceLight: '#0e2032', border: '#1b344b', borderLight: '#234765', iconBg: '#11385b', glow: 'rgba(73, 182, 255, 0.2)' },
+  6: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0f050a', bgTop: '#3d162a', surface: '#1a0b12', surfaceLight: '#250f1a', border: '#4b1b34', borderLight: '#652347', iconBg: '#5b1138', glow: 'rgba(255, 125, 181, 0.2)' }
+}
+
+const applyTheme = (colorId) => {
+  const theme = themeMap[colorId] || themeMap[5]
+  const root = document.documentElement
+  root.style.setProperty('--user-primary', theme.primary)
+  root.style.setProperty('--user-accent', theme.accent)
+  root.style.setProperty('--user-bg-base', theme.bgBase)
+  root.style.setProperty('--user-bg-top', theme.bgTop)
+  root.style.setProperty('--user-surface', theme.surface)
+  root.style.setProperty('--user-surface-light', theme.surfaceLight)
+  root.style.setProperty('--user-border', theme.border)
+  root.style.setProperty('--user-border-light', theme.borderLight)
+  root.style.setProperty('--user-icon-bg', theme.iconBg)
+  root.style.setProperty('--user-glow', theme.glow)
+}
+
+// Aplicar tema inmediatamente si existe en localStorage para evitar el flash
+const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
+if (storedUser && storedUser.color_id !== undefined) {
+  applyTheme(storedUser.color_id)
+}
+
 const authStatus = ref({
   authenticated: localStorage.getItem('tgdl_auth') === 'true',
   state: localStorage.getItem('tgdl_auth') === 'true' ? 'LOGGED_IN' : 'UNCONFIGURED',
@@ -107,9 +138,11 @@ const fetchAuthStatus = async () => {
     if (data.authenticated) {
       localStorage.setItem('tgdl_auth', 'true')
       localStorage.setItem('tgdl_user', JSON.stringify(data.user))
+      if (data.user.color_id !== undefined) applyTheme(data.user.color_id)
     } else {
       localStorage.removeItem('tgdl_auth')
       localStorage.removeItem('tgdl_user')
+      applyTheme(5) // Reset a azul
     }
   } catch (err) {
     console.error('Error verificando estado de sesión:', err)
@@ -139,6 +172,7 @@ const onAuthSuccess = async (newStatus) => {
   if (newStatus && (newStatus.authenticated || newStatus.state === 'LOGGED_IN')) {
     localStorage.setItem('tgdl_auth', 'true')
     localStorage.setItem('tgdl_user', JSON.stringify(newStatus.user))
+    if (newStatus.user && newStatus.user.color_id !== undefined) applyTheme(newStatus.user.color_id)
     await fetchAuthStatus()
     await fetchSettings()
     await fetchDownloads()
@@ -472,7 +506,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   text-align: center;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
-.update-icon { color: #3b82f6; margin-bottom: 20px; }
+.update-icon { color: var(--user-primary); margin-bottom: 20px; }
 .update-card h2 { color: #f8fafc; margin-bottom: 12px; font-size: 24px; }
 .update-card p { color: #94a3b8; margin-bottom: 30px; line-height: 1.6; }
 .update-action-area { transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); min-height: 80px; display: flex; flex-direction: column; justify-content: center; position: relative; }
@@ -480,7 +514,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .update-progress-container { width: 100%; text-align: left; animation: morphReveal 0.8s cubic-bezier(0.19, 1, 0.22, 1); }
 .update-status-text { color: #f8fafc; font-size: 14px; margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .update-progress-bar { height: 16px; background: #0f172a; border-radius: 20px; overflow: hidden; margin-bottom: 10px; position: relative; border: 1px solid #1e293b; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
-.update-progress-fill { height: 100%; background: linear-gradient(90deg, #1d4ed8, #3b82f6, #60a5fa); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); position: relative; display: flex; align-items: center; justify-content: flex-end; }
+.update-progress-fill { height: 100%; background: linear-gradient(90deg, var(--user-bg-top), var(--user-primary), var(--user-accent)); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); position: relative; display: flex; align-items: center; justify-content: flex-end; }
 
 /* Efecto Nitro-Wind (Destellos hacia ATRÁS) */
 .nitro-wind { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; }
@@ -506,13 +540,13 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   justify-content: center !important;
   border-radius: 30px !important;
   gap: 12px !important;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  background: linear-gradient(135deg, var(--user-primary) 0%, var(--user-bg-top) 100%) !important;
   color: white !important;
   border: none !important;
   cursor: pointer !important;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
 }
-.update-btn:hover { transform: scale(1.05) translateY(-3px) !important; box-shadow: 0 15px 30px rgba(37, 99, 235, 0.4) !important; }
+.update-btn:hover { transform: scale(1.05) translateY(-3px) !important; box-shadow: 0 15px 30px var(--user-glow) !important; }
 .update-btn:active { transform: scale(0.98) !important; }
 
 @keyframes windBackwards {
@@ -538,7 +572,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
-.sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:#55bdff}
+.sidebar-nav{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}.sidebar-nav button{border:0;background:transparent;color:#7890a7;text-align:left;padding:11px 12px;border-radius:9px;font:500 12px 'DM Sans';cursor:pointer}.sidebar-nav button span{display:inline-block;width:22px;color:#5d83a2;font-size:16px}.sidebar-nav button:hover,.sidebar-nav button.selected{background:#102b42;color:#eef7ff}.sidebar-nav button.selected span{color:var(--user-accent)}
 .sidebar-user-badge{display:flex;align-items:center;justify-content:space-between;background:#0e2032;border:1px solid #1f3a54;border-radius:10px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#dbe7f5}
 .sidebar-user-badge .user-info{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
 .sidebar-user-badge .user-icon{color:#39db9a;flex:none}

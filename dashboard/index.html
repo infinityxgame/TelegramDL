@@ -6,6 +6,36 @@
     <meta name="theme-color" content="#07111f">
     <link rel="icon" type="image/svg+xml" href="/dashboard/telegramdl-android-icon.svg">
     <title>Telegram DL</title>
+    <script>
+      (function() {
+        try {
+          const user = JSON.parse(localStorage.getItem('tgdl_user') || 'null');
+          if (user && user.color_id !== undefined) {
+            const themeMap = {
+              0: { primary: '#fb6169', accent: '#ff8a8f', bgBase: '#0f0505', bgTop: '#3d161a', surface: '#1a0b0b', surfaceLight: '#250f0f', border: '#4b1b1b', borderLight: '#652323', iconBg: '#5b1118', glow: 'rgba(251, 97, 105, 0.2)' },
+              1: { primary: '#faa357', accent: '#ffc694', bgBase: '#0f0a05', bgTop: '#3d2a16', surface: '#1a120b', surfaceLight: '#251a0f', border: '#4b341b', borderLight: '#654723', iconBg: '#5b3d11', glow: 'rgba(250, 163, 87, 0.2)' },
+              2: { primary: '#b48bf2', accent: '#d2b4ff', bgBase: '#0a050f', bgTop: '#2a163d', surface: '#120b1a', surfaceLight: '#1a0f25', border: '#341b4b', borderLight: '#472365', iconBg: '#3d115b', glow: 'rgba(180, 139, 242, 0.2)' },
+              3: { primary: '#85de85', accent: '#b4ffb4', bgBase: '#050f05', bgTop: '#163d1a', surface: '#0b1a0b', surfaceLight: '#0f250f', border: '#1b4b1b', borderLight: '#236523', iconBg: '#115b18', glow: 'rgba(133, 222, 133, 0.2)' },
+              4: { primary: '#62d4e3', accent: '#a0f0f9', bgBase: '#050f0f', bgTop: '#16383d', surface: '#0b1a1a', surfaceLight: '#0f2525', border: '#1b4b4b', borderLight: '#236565', iconBg: '#114b5b', glow: 'rgba(98, 212, 227, 0.2)' },
+              5: { primary: '#38a7ff', accent: '#5ebcff', bgBase: '#07111f', bgTop: '#163557', surface: '#0b1a2a', surfaceLight: '#0e2032', border: '#1b344b', borderLight: '#234765', iconBg: '#11385b', glow: 'rgba(73, 182, 255, 0.2)' },
+              6: { primary: '#ff7db5', accent: '#ffb4d5', bgBase: '#0f050a', bgTop: '#3d162a', surface: '#1a0b12', surfaceLight: '#250f1a', border: '#4b1b34', borderLight: '#652347', iconBg: '#5b1138', glow: 'rgba(255, 125, 181, 0.2)' }
+            };
+            const theme = themeMap[user.color_id] || themeMap[5];
+            const root = document.documentElement;
+            root.style.setProperty('--user-primary', theme.primary);
+            root.style.setProperty('--user-accent', theme.accent);
+            root.style.setProperty('--user-bg-base', theme.bgBase);
+            root.style.setProperty('--user-bg-top', theme.bgTop);
+            root.style.setProperty('--user-surface', theme.surface);
+            root.style.setProperty('--user-surface-light', theme.surfaceLight);
+            root.style.setProperty('--user-border', theme.border);
+            root.style.setProperty('--user-border-light', theme.borderLight);
+            root.style.setProperty('--user-icon-bg', theme.iconBg);
+            root.style.setProperty('--user-glow', theme.glow);
+          }
+        } catch (e) {}
+      })();
+    </script>
 </head>
 <body class="p-4 md:p-8">
     <div id="app"></div>

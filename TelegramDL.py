@@ -472,6 +472,7 @@ async def check_auth_status() -> Dict[str, Any]:
                 "first_name": me.first_name or "",
                 "username": me.username or "",
                 "phone": getattr(me, "phone_number", ""),
+                "color_id": getattr(me.color, "color", None) if hasattr(me, "color") else None
             }
             auth_session["state"] = "LOGGED_IN"
             auth_session["user"] = user_info
