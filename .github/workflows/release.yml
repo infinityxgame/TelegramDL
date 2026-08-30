@@ -75,7 +75,7 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
         run: |
-          pyinstaller --noconfirm --onedir --console --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
+          pyinstaller --noconfirm --onedir --noconsole --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
           Compress-Archive -Path dist/TelegramDL/* -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
 
       - name: Build with PyInstaller (Linux / macOS)
