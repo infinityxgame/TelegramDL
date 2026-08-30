@@ -62,6 +62,9 @@ const applyTheme = (colorId) => {
 const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
 if (storedUser && storedUser.color_id !== undefined) {
   applyTheme(storedUser.color_id)
+} else {
+  // Aplicar tema por defecto (5 - azul) si no hay usuario
+  applyTheme(5)
 }
 
 const authStatus = ref({
@@ -101,6 +104,7 @@ const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
+const bootstrapping = ref(true)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 
 const formatSize = (bytes) => {
@@ -369,16 +373,24 @@ const connectWebSocket = () => {
 
 onMounted(async () => {
   disposed = false
-  // Lanzamos la verificación inicial
-  await fetchAuthStatus()
 
-  // Si estamos autenticados (ya sea por localStorage o por la respuesta del servidor),
-  // cargamos la configuración y las descargas.
-  if (authStatus.value.authenticated) {
-    await Promise.all([fetchSettings(), fetchDownloads()])
+  // Ejecutamos comprobaciones críticas en paralelo para evitar latencia
+  try {
+    await Promise.all([
+      fetchAuthStatus(),
+      checkForUpdates()
+    ])
+
+    // Si estamos autenticados, cargamos el resto de la info antes de quitar el loader
+    if (authStatus.value.authenticated) {
+      await Promise.all([fetchSettings(), fetchDownloads()])
+    }
+  } catch (err) {
+    console.error('Error durante el arranque:', err)
+  } finally {
+    bootstrapping.value = false
   }
 
-  checkForUpdates()
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
 })
@@ -386,8 +398,19 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 </script>
 
 <template>
-  <div v-if="updateInfo" class="update-required-overlay">
-    <div class="update-card">
+  <!-- Pantalla de arranque para evitar flashes -->
+  <div v-if="bootstrapping" class="boot-screen">
+    <div class="boot-container">
+      <img :src="logoUrl" alt="TelegramDL" class="boot-logo" />
+      <div class="boot-loader">
+        <div class="boot-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <template v-else>
+    <div v-if="updateInfo" class="update-required-overlay">
+      <div class="update-card">
       <Zap :size="48" class="update-icon" />
       <h2>Actualización Obligatoria</h2>
       <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
@@ -548,9 +571,55 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
     </main>
   </div>
+  </template>
 </template>
 
 <style>
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--user-bg-base);
+  background-image: radial-gradient(circle at 70% -10%, var(--user-bg-top) 0, var(--user-bg-base) 40%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.boot-container { text-align: center; }
+.boot-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 0 20px var(--user-glow));
+  animation: bootPulse 2s infinite ease-in-out;
+  border-radius: 20px;
+}
+.boot-loader {
+  width: 140px;
+  height: 3px;
+  background: var(--user-border);
+  border-radius: 10px;
+  margin: 0 auto;
+  overflow: hidden;
+  position: relative;
+}
+.boot-bar {
+  position: absolute;
+  width: 40%;
+  height: 100%;
+  background: var(--user-primary);
+  border-radius: 10px;
+  animation: bootLoading 1.5s infinite ease-in-out;
+}
+@keyframes bootPulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+@keyframes bootLoading {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
 .update-required-overlay {
   position: fixed;
   top: 0;
