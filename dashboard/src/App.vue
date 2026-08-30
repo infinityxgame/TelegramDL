@@ -17,6 +17,7 @@ const host = window.location.host
 const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
+const version = ref('')
 
 const authStatus = ref({
   authenticated: localStorage.getItem('tgdl_auth') === 'true',
@@ -232,6 +233,7 @@ const deleteDownload = async item => {
 const checkForUpdates = async () => {
   try {
     const data = await api('/api/update/check')
+    version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
       openConfirm({
@@ -365,7 +367,14 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
   <div class="app-shell">
     <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
-      <div class="brand"><span class="brand-mark"><img :src="logoUrl" alt="" /></span><span>Telegram<span class="brand-accent">DL</span></span><button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button></div>
+      <div class="brand">
+        <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
+        <div class="brand-text">
+          <span>Telegram<span class="brand-accent">DL</span></span>
+          <span class="version-tag" v-if="version">v{{ version }}</span>
+        </div>
+        <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button>
+      </div>
       <p class="sidebar-copy">Centro de descargas personal</p>
       <nav class="sidebar-nav">
         <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
