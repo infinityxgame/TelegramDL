@@ -109,22 +109,30 @@ class AppUpdater:
                 with tarfile.open(archive_path, 'r:*') as tar_ref:
                     tar_ref.extractall(extract_path)
 
-            # Si el zip contenía una sola carpeta, entramos en ella
-            extracted_items = list(extract_path.iterdir())
-            if len(extracted_items) == 1 and extracted_items[0].is_dir():
-                final_src = extracted_items[0]
-            else:
-                final_src = extract_path
+            # --- BUSCADOR DE RAÍZ DE APLICACIÓN ---
+            # Buscamos la carpeta que contiene '_internal'. Es la clave de PyInstaller.
+            final_src = None
+            for root, dirs, files in os.walk(extract_path):
+                if "_internal" in dirs:
+                    final_src = Path(root)
+                    break
+
+            # Si no encontramos _internal, buscamos donde esté el .exe
+            if not final_src:
+                for root, dirs, files in os.walk(extract_path):
+                    if "TelegramDL.exe" in files:
+                        final_src = Path(root)
+                        break
+
+            if not final_src:
+                raise RuntimeError("No se encontró la estructura de la aplicación en el paquete descargado.")
 
             self.progress["status"] = "finishing"
-            # Crear script de finalización para Windows/Linux/Mac
             self._create_finish_script(final_src)
 
         except Exception as e:
             self.progress["status"] = f"error: {str(e)}"
             print(f"Error durante la instalación de la actualización: {e}")
-            if self.temp_dir.exists():
-                shutil.rmtree(self.temp_dir)
 
     def _create_finish_script(self, src_path):
         is_windows = platform.system() == "Windows"
@@ -134,30 +142,44 @@ class AppUpdater:
             exe_name = "TelegramDL.exe"
             exe_path = self.base_dir / exe_name
 
-            # Lista de exclusiones para Robocopy
+            # Archivos y carpetas a preservar (no sobreescribir ni borrar)
             exclude_files = " ".join(self.preserve_files)
+            exclude_dirs = "descargas cache update_temp .git .github"
 
-            # Script usando Robocopy (mucho más robusto)
             script_content = f"""@echo off
-setlocal
+setlocal enabledelayedexpansion
 title Actualizando TelegramDL...
-echo Esperando a que la aplicacion se cierre...
-timeout /t 3 /nobreak > nul
+echo.
+echo ========================================
+echo   INSTALANDO ACTUALIZACION
+echo ========================================
+echo.
 
-:: Asegurar que el proceso este muerto
+:: 1. Esperar a que el proceso se cierre completamente
+echo [*] Finalizando procesos...
+:wait_process
 taskkill /f /im "{exe_name}" >nul 2>&1
+timeout /t 1 /nobreak >nul
+tasklist /FI "IMAGENAME eq {exe_name}" 2>NUL | find /I /N "{exe_name}">NUL
+if "%ERRORLEVEL%"=="0" goto wait_process
 
-echo Instalando archivos nuevos...
-:: /e = subdirectorios (incl. vacios)
-:: /move = mueve archivos (los borra del origen)
-:: /y = sobreescribe sin preguntar
-:: /xf = excluye los archivos de configuracion para no borrarlos ni pisarlos
-robocopy "{src_path}" "{self.base_dir}" /e /move /y /xf {exclude_files} /r:3 /w:2 > nul
+echo [*] Instalando nuevos archivos...
+:: Usamos Robocopy de forma silenciosa para evitar el "spam" de archivos.
+:: /nfl /ndl /njh /njs ocultan listas de archivos, carpetas, cabecera y resumen.
+robocopy "{src_path}" "{self.base_dir}" /e /move /is /it /xf {exclude_files} /xd {exclude_dirs} /r:5 /w:2 /nfl /ndl /njh /njs > nul
 
-echo Limpiando...
-rd /s /q "{self.temp_dir}" 2>nul
+if %ERRORLEVEL% GEQ 8 (
+    echo.
+    echo [!] ERROR: No se pudieron copiar todos los archivos.
+    echo [!] Por favor, cierra cualquier carpeta abierta y pulsa una tecla para reintentar.
+    pause
+    goto wait_process
+)
 
-echo Reiniciando aplicacion...
+echo [*] Limpiando...
+if exist "{self.temp_dir}" rd /s /q "{self.temp_dir}" >nul 2>&1
+
+echo [*] Actualizacion completada. Reiniciando...
 start "" "{exe_path}"
 endlocal
 (goto) 2>nul & del "%~f0"
@@ -167,16 +189,16 @@ endlocal
 
             os.startfile(script_path)
         else:
-            # Linux / Mac (usando rsync si está disponible, es el equivalente a robocopy)
+            # Linux / Mac
             script_path = self.base_dir / "finish_update.sh"
             exe_name = "TelegramDL"
             exe_path = self.base_dir / exe_name
-            exclude_args = " ".join([f'--exclude="{f}"' for f in self.preserve_files])
+            exclude_args = " ".join([f'--exclude="{f}"' for f in self.preserve_files + ["descargas", "cache", "update_temp"]])
 
             script_content = f"""#!/bin/bash
-sleep 3
-pkill -f "{exe_name}"
-rsync -a --remove-source-files {exclude_args} "{src_path}/" "{self.base_dir}/"
+sleep 2
+pkill -9 -x "{exe_name}"
+rsync -av --remove-source-files {exclude_args} "{src_path}/" "{self.base_dir}/"
 rm -rf "{self.temp_dir}"
 chmod +x "{exe_path}"
 "{exe_path}" &
