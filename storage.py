@@ -122,9 +122,16 @@ class Storage:
     def delete_download(self, item_id: str) -> None:
         with self._lock: self.db.execute("DELETE FROM downloads WHERE id=?", (item_id,)); self.db.commit()
 
+    def clear_finished_downloads(self) -> int:
+        """Elimina solo registros terminados; nunca toca los archivos físicos."""
+        with self._lock:
+            self.db.execute("DELETE FROM download_chunks WHERE download_id IN (SELECT id FROM downloads WHERE status IN ('completed','skipped','failed','cancelled'))")
+            cursor = self.db.execute("DELETE FROM downloads WHERE status IN ('completed','skipped','failed','cancelled')")
+            self.db.commit()
+            return cursor.rowcount
+
     def chunks(self, item_id: str) -> set[int]:
         with self._lock: return {r[0] for r in self.db.execute("SELECT chunk_index FROM download_chunks WHERE download_id=?", (item_id,))}
 
     def add_chunk(self, item_id: str, index: int) -> None:
         with self._lock: self.db.execute("INSERT OR IGNORE INTO download_chunks(download_id,chunk_index) VALUES(?,?)", (item_id, index)); self.db.commit()
-

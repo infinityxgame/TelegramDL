@@ -238,6 +238,22 @@ const saveSettings = async () => {
   } catch (err) { showMessage(err.message, true) } finally { saving.value = false; settingsSavePending.value = false }
 }
 
+const clearDownloadHistory = () => {
+  openConfirm({
+    title: 'Limpiar estadísticas',
+    message: '¿Quieres eliminar del historial todas las descargas completadas, omitidas, fallidas y canceladas? Los archivos del disco no se borrarán.',
+    confirmText: 'Sí, limpiar historial',
+    type: 'danger',
+    action: async () => {
+      try {
+        const data = await api('/api/downloads/history', { method: 'DELETE' })
+        await fetchDownloads()
+        showMessage(`${data.removed || 0} registros eliminados`)
+      } catch (err) { showMessage(err.message, true) }
+    }
+  })
+}
+
 watch(settings, () => {
   if (!hydrated.value || syncingSettings) return
   settingsSavePending.value = true
@@ -555,6 +571,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
               </div>
             </div>
 
+            <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar estadísticas e historial</button>
             <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
           </aside>
         </div>
@@ -722,6 +739,8 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .settings-panel-full { padding: 30px; }
 .settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; }
 .settings-group { display: flex; flex-direction: column; gap: 15px; }
+.clear-history-button { width: 100%; margin-top: 22px; padding: 11px; border: 1px solid #6e3942; border-radius: 10px; background: rgba(125, 48, 61, .16); color: #ffadb5; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; }
+.clear-history-button:hover { background: rgba(125, 48, 61, .3); border-color: #a95663; }
 .color-group { padding-top: 5px; }
 .color-selector-container { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 20px; }
 .color-row { display: flex; gap: 12px; flex-wrap: wrap; }

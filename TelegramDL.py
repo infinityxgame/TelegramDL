@@ -83,7 +83,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.0.6"
+APP_VERSION = "2.0.7"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -732,6 +732,17 @@ async def get_downloads() -> List[Dict[str, Any]]:
             reverse=True,
         )
     ]
+
+
+@app.delete("/api/downloads/history")
+async def clear_download_history() -> Dict[str, Any]:
+    finished_statuses = {"completed", "skipped", "failed", "cancelled"}
+    removed = [item_id for item_id, item in downloads_state.items() if item.get("status") in finished_statuses]
+    for item_id in removed:
+        downloads_state.pop(item_id, None)
+    storage.clear_finished_downloads()
+    schedule_websocket_broadcast()
+    return {"status": "ok", "removed": len(removed)}
 
 
 @app.websocket("/api/ws")
