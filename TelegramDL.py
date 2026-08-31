@@ -297,7 +297,12 @@ def websocket_snapshot() -> Dict[str, Any]:
         {key: value for key, value in item.items() if key != "file_path"}
         for item in sorted(
             downloads_state.values(),
-            key=lambda item: item.get("created_at", item.get("updated_at", 0)),
+            key=lambda item: (
+                item.get("status") == "downloading",
+                item.get("status") == "paused",
+                (item.get("progress") or 0) > 0,
+                item.get("created_at", item.get("updated_at", 0))
+            ),
             reverse=True,
         )
     ]
@@ -1528,7 +1533,9 @@ class TelegramDownloader:
             update_state(item_id, status="completed", progress=100)
         except asyncio.CancelledError:
             if shutting_down:
-                update_state(item_id, status="queued")
+                # Si estaba pausado, mantenemos el estado para que no se reanude solo
+                if downloads_state.get(item_id, {}).get("status") != "paused":
+                    update_state(item_id, status="queued")
             else:
                 update_state(item_id, status="cancelled", progress=0)
             raise
@@ -1985,8 +1992,9 @@ async def main(server_mode: bool = False) -> None:
             await asyncio.sleep(0.5)
     finally:
         shutting_down = True
-        # Un cierre de la ventana no equivale a cancelar una descarga. Se
-        # conserva como queued para que el siguiente arranque la recupere.
+        # Un cierre de la ventana no equivale a cancelar una descarga.
+        # Conservamos como queued para que el siguiente arranque la recupere,
+        # pero respetamos si el usuario la había pausado manualmente.
         for item_id, item in downloads_state.items():
             if item.get("status") == "downloading":
                 update_state(item_id, status="queued")
