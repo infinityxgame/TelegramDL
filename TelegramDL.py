@@ -83,7 +83,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.0.5"
+APP_VERSION = "2.0.6"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1456,7 +1456,10 @@ class TelegramDownloader:
             await self.download_file_from_message(message, chat_id, item_id)
         except Exception as e:
             print(f"❌ Error al reanudar {item_id}: {e}")
-            update_state(item_id, status="failed")
+            if shutting_down:
+                update_state(item_id, status="queued")
+            else:
+                update_state(item_id, status="failed")
 
     async def download_file_from_message(self, message: Any, chat_id: Any, item_id: str) -> None:
         info = self._extract_media_info(message)
@@ -1520,7 +1523,10 @@ class TelegramDownloader:
             raise
         except Exception as error:
             print(f"❌ Error en la descarga {item_id}: {error}")
-            update_state(item_id, status="failed")
+            if shutting_down:
+                update_state(item_id, status="queued")
+            else:
+                update_state(item_id, status="failed")
         finally:
             if reserved_path:
                 await self._release_download_path(reserved_path)
