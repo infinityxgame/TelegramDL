@@ -82,7 +82,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 GITHUB_REPO = "infinityxgame/tgdown"
 updater = AppUpdater(APP_VERSION, GITHUB_REPO, BASE_DIR)
 
@@ -994,6 +994,12 @@ async def _set_download_pause(item_id: str, paused: bool) -> Dict[str, Any]:
     if paused:
         update_state(item_id, status="paused")
     else:
+        # Asegurar que la tarea de descarga esté en ejecución si se está reanudando
+        if item_id not in active_tasks:
+            task = asyncio.create_task(downloader_instance.resume_item(item_id))
+            active_tasks[item_id] = task
+            task.add_done_callback(lambda f, i=item_id: active_tasks.pop(i, None))
+
         update_state(item_id, status="downloading")
     return {"status": "ok", "id": item_id, "paused": paused}
 
@@ -1477,7 +1483,11 @@ class TelegramDownloader:
         pause_event = self.pause_events.get(item_id)
         if pause_event is None:
             pause_event = asyncio.Event()
-            pause_event.set()
+            # Si el estado persistido es 'paused', el evento empieza bloqueado
+            if downloads_state.get(item_id, {}).get("status") == "paused":
+                pause_event.clear()
+            else:
+                pause_event.set()
             self.pause_events[item_id] = pause_event
         await pause_event.wait()
         await self._acquire_download_slot()
