@@ -1,5 +1,4 @@
 import asyncio
-import json
 import math
 import os
 import re
@@ -12,6 +11,8 @@ import uuid
 import argparse
 import webbrowser
 import ctypes
+import shutil
+from storage import Storage
 
 # --- Redirección temprana de flujos para evitar bloqueos en modo --noconsole ---
 if os.name == "nt" and getattr(sys, "frozen", False):
@@ -84,13 +85,36 @@ else:
 
 APP_VERSION = "2.0.5"
 GITHUB_REPO = "infinityxgame/tgdown"
+DATA_DIR = Path.home() / ".tgdown"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+USER_ENV_PATH = DATA_DIR / ".env"
+LEGACY_ENV_PATH = BASE_DIR / ".env"
+if not USER_ENV_PATH.exists() and LEGACY_ENV_PATH.exists():
+    try:
+        shutil.copy2(LEGACY_ENV_PATH, USER_ENV_PATH)
+    except OSError:
+        pass
+load_dotenv(USER_ENV_PATH)
+if not USER_ENV_PATH.exists():
+    load_dotenv(LEGACY_ENV_PATH)
+
+# La sesión de Pyrogram también pertenece al perfil del usuario. Se migra
+# desde la carpeta antigua para no obligar a iniciar sesión otra vez.
+for legacy_session_name in ("downloader_session.session", "downloader_session.session-journal"):
+    legacy_session = BASE_DIR / legacy_session_name
+    user_session = DATA_DIR / legacy_session_name
+    if not user_session.exists() and legacy_session.exists():
+        try:
+            shutil.copy2(legacy_session, user_session)
+        except OSError:
+            pass
+
 updater = AppUpdater(APP_VERSION, GITHUB_REPO, BASE_DIR)
 
-load_dotenv(BASE_DIR / ".env")
-CONFIG_PATH = BASE_DIR / "config.json"
-STATE_PATH = BASE_DIR / "downloads.json"
-CONFIG_WRITE_LOCK = threading.Lock()
-STATE_WRITE_LOCK = threading.Lock()
+DB_PATH = DATA_DIR / "tgdown.sqlite3"
+storage = Storage(DB_PATH)
+CONFIG_PATH = BASE_DIR / "config.json"  # Solo se usa para migrar instalaciones anteriores.
+STATE_PATH = BASE_DIR / "downloads.json"  # Solo se usa para migrar instalaciones anteriores.
 state_dirty = False
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -213,32 +237,13 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
 
 
 def save_config(config: Dict[str, Any]) -> None:
-    normalized = normalize_config(config)
-    pending_path = CONFIG_PATH.with_name(f"{CONFIG_PATH.name}.pending")
-    with CONFIG_WRITE_LOCK:
-        with pending_path.open("w", encoding="utf-8") as config_file:
-            json.dump(normalized, config_file, ensure_ascii=False, indent=2)
-            config_file.write("\n")
-            config_file.flush()
-            os.fsync(config_file.fileno())
-        os.replace(pending_path, CONFIG_PATH)
+    storage.save_config(normalize_config(config))
 
 
 def load_config() -> Dict[str, Any]:
-    if not CONFIG_PATH.exists():
-        config = normalize_config(DEFAULT_CONFIG)
-        save_config(config)
-        return config
-    try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
-            raw_config = json.load(config_file)
-        config = normalize_config(raw_config)
-        if config != raw_config:
-            save_config(config)
-        return config
-    except (OSError, json.JSONDecodeError):
-        print(f"⚠️ No se pudo leer {CONFIG_PATH.name}; se usarán los valores por defecto.")
-        return normalize_config(DEFAULT_CONFIG)
+    config = normalize_config(storage.load_config(DEFAULT_CONFIG, CONFIG_PATH))
+    save_config(config)
+    return config
 
 
 def public_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -261,6 +266,7 @@ runtime_config = load_config()
 
 # --- Runtime state ---
 stop_event = threading.Event()
+shutting_down = False
 downloads_state: Dict[str, Dict[str, Any]] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
 active_jobs: Dict[str, asyncio.Task] = {}
@@ -272,39 +278,18 @@ websocket_broadcast_dirty = False
 
 def save_downloads_state() -> None:
     global state_dirty
-    if not state_dirty:
-        return
-    with STATE_WRITE_LOCK:
-        try:
-            temp_path = STATE_PATH.with_suffix(".tmp")
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(downloads_state, f, ensure_ascii=False, indent=2)
-            os.replace(temp_path, STATE_PATH)
-            state_dirty = False
-        except Exception as e:
-            print(f"⚠️ Error al guardar el estado: {e}")
+    for item in downloads_state.values():
+        storage.upsert_download(item)
+    state_dirty = False
 
 
 def load_downloads_state() -> None:
     global downloads_state
-    if not STATE_PATH.exists():
-        return
-    try:
-        with open(STATE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                downloads_state = data
-                for item in downloads_state.values():
-                    if item.get("status") == "downloading":
-                        item["status"] = "queued"
-    except Exception as e:
-        print(f"⚠️ Error al cargar el estado previo: {e}")
-
-
-async def auto_save_loop() -> None:
-    while True:
-        await asyncio.sleep(5)
-        save_downloads_state()
+    downloads_state = storage.load_downloads(STATE_PATH)
+    for item in downloads_state.values():
+        if item.get("status") == "downloading":
+            item["status"] = "queued"
+            storage.upsert_download(item)
 
 
 def websocket_snapshot() -> Dict[str, Any]:
@@ -383,6 +368,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
     state_dirty = True
+    storage.upsert_download(downloads_state[item_id])
     _prune_state()
     schedule_websocket_broadcast()
 
@@ -400,6 +386,7 @@ def _prune_state() -> None:
     )
     for item_id, _ in terminal[: max(0, len(downloads_state) - MAX_STATE_ITEMS)]:
         downloads_state.pop(item_id, None)
+        storage.delete_download(item_id)
 
 
 # --- Auth & Session Manager ---
@@ -412,7 +399,7 @@ auth_session: Dict[str, Any] = {
 
 
 def save_env_credentials(api_id: str, api_hash: str) -> None:
-    env_path = BASE_DIR / ".env"
+    env_path = USER_ENV_PATH
     lines = []
     if env_path.exists():
         lines = env_path.read_text(encoding="utf-8").splitlines()
@@ -663,6 +650,7 @@ async def auth_verify_code(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         }
         auth_session["state"] = "LOGGED_IN"
         auth_session["user"] = user_info
+        asyncio.create_task(downloader_instance.resume_all())
         return {"status": "ok", "state": "LOGGED_IN", "user": user_info}
     except SessionPasswordNeeded:
         auth_session["state"] = "WAITING_2FA"
@@ -700,6 +688,7 @@ async def auth_verify_2fa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         }
         auth_session["state"] = "LOGGED_IN"
         auth_session["user"] = user_info
+        asyncio.create_task(downloader_instance.resume_all())
         return {"status": "ok", "state": "LOGGED_IN", "user": user_info}
     except PasswordHashInvalid:
         raise HTTPException(status_code=400, detail="La contraseña 2FA ingresada es incorrecta.")
@@ -717,11 +706,11 @@ async def auth_logout() -> Dict[str, Any]:
             await downloader_instance.client.disconnect()
         downloader_instance = None
 
-    session_file = BASE_DIR / "downloader_session.session"
+    session_file = DATA_DIR / "downloader_session.session"
     if session_file.exists():
         with suppress(OSError):
             session_file.unlink()
-    session_journal = BASE_DIR / "downloader_session.session-journal"
+    session_journal = DATA_DIR / "downloader_session.session-journal"
     if session_journal.exists():
         with suppress(OSError):
             session_journal.unlink()
@@ -788,6 +777,7 @@ async def delete_download(item_id: str, delete_file: bool = True) -> Dict[str, A
             raise HTTPException(status_code=500, detail=f"No se pudo borrar el archivo: {error}") from error
 
     downloads_state.pop(item_id, None)
+    storage.delete_download(item_id)
     if downloader_instance:
         downloader_instance.listener_messages.pop(item_id, None)
     schedule_websocket_broadcast()
@@ -1204,7 +1194,7 @@ class TelegramDownloader:
             "downloader_session",
             api_id=api_id,
             api_hash=api_hash,
-            workdir=str(BASE_DIR),
+            workdir=str(DATA_DIR),
             app_version=APP_VERSION,
             device_model="TGDown Desktop",
             system_version="Windows 11",
@@ -1358,6 +1348,7 @@ class TelegramDownloader:
             for old_item_id in oldest:
                 self.listener_messages.pop(old_item_id, None)
                 downloads_state.pop(old_item_id, None)
+                storage.delete_download(old_item_id)
 
     @staticmethod
     def _item_id(job_id: str, message_id: int) -> str:
@@ -1425,9 +1416,9 @@ class TelegramDownloader:
         to_resume = []
         for item_id, item in downloads_state.items():
             if item.get("status") in {"pending", "queued", "downloading", "paused"}:
-                has_progress = False
+                has_progress = bool(storage.chunks(item_id))
                 file_path = item.get("file_path")
-                if file_path and os.path.exists(f"{file_path}.temp.state.json"):
+                if file_path and os.path.exists(f"{file_path}.temp"):
                     has_progress = True
 
                 to_resume.append({
@@ -1522,7 +1513,10 @@ class TelegramDownloader:
             await self._download_manual(info, file_path, file_name, item_id, workers)
             update_state(item_id, status="completed", progress=100)
         except asyncio.CancelledError:
-            update_state(item_id, status="cancelled", progress=0)
+            if shutting_down:
+                update_state(item_id, status="queued")
+            else:
+                update_state(item_id, status="cancelled", progress=0)
             raise
         except Exception as error:
             print(f"❌ Error en la descarga {item_id}: {error}")
@@ -1579,17 +1573,9 @@ class TelegramDownloader:
             raise ValueError("Tamaño de archivo inválido")
         file_id = FileId.decode(info.media.file_id)
         temp_path = f"{file_path}.temp"
-        state_path = f"{temp_path}.state.json"
         total_chunks = math.ceil(file_size / CHUNK_SIZE)
 
-        downloaded_chunks = set()
-        if os.path.exists(temp_path) and os.path.exists(state_path):
-            try:
-                with open(state_path, "r") as f:
-                    data = json.load(f)
-                    downloaded_chunks = set(data.get("completed_chunks", []))
-            except Exception:
-                pass
+        downloaded_chunks = storage.chunks(item_id)
 
         progress = DownloadProgress(
             item_id,
@@ -1642,8 +1628,7 @@ class TelegramDownloader:
                         downloaded += len(chunk_data)
                         progress.update(downloaded)
                         
-                        with open(state_path, "w") as f:
-                            json.dump({"completed_chunks": list(downloaded_chunks)}, f)
+                        storage.add_chunk(item_id, index)
 
                     await self.throttle(len(chunk_data))
                 except asyncio.CancelledError:
@@ -1671,8 +1656,9 @@ class TelegramDownloader:
         if not os.path.exists(temp_path):
             raise IOError("No se generó el archivo temporal")
         os.replace(temp_path, file_path)
-        if os.path.exists(state_path):
-            os.remove(state_path)
+        with storage._lock:
+            storage.db.execute("DELETE FROM download_chunks WHERE download_id=?", (item_id,))
+            storage.db.commit()
 
     def _extract_media_info(self, message: Any) -> Optional[MediaInfo]:
         media = (
@@ -1944,11 +1930,10 @@ def check_webview2_runtime() -> bool:
 
 
 async def main(server_mode: bool = False) -> None:
-    global downloader_instance
+    global downloader_instance, shutting_down
     print("TG Downloader")
 
     load_downloads_state()
-    asyncio.create_task(auto_save_loop())
 
     server_task = asyncio.create_task(run_server())
 
@@ -1982,6 +1967,12 @@ async def main(server_mode: bool = False) -> None:
         while not stop_event.is_set():
             await asyncio.sleep(0.5)
     finally:
+        shutting_down = True
+        # Un cierre de la ventana no equivale a cancelar una descarga. Se
+        # conserva como queued para que el siguiente arranque la recupere.
+        for item_id, item in downloads_state.items():
+            if item.get("status") == "downloading":
+                update_state(item_id, status="queued")
         print("Cerrando aplicacion de forma segura...")
         server_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -2038,7 +2029,7 @@ if __name__ == "__main__":
                 background_color="#ffffff"
             )
 
-            webview.start(storage_path=os.path.join(os.getcwd(), "cache"))
+            webview.start(storage_path=str(DATA_DIR / "cache"))
 
             # Al salir de la ventana, avisar al backend y esperar cierre limpio
             stop_event.set()

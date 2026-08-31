@@ -124,5 +124,7 @@ El ejecutable resultante se guardará en `dist/TelegramDL/TelegramDL.exe`.
 - `dashboard/src/`: Código fuente de Vue 3 (Panel Web y Asistente de Autenticación).
 - `dashboard/dist/`: Bundle compilado del frontend.
 - `icon.ico`: Ícono oficial generado para la aplicación ejecutable.
-- `.env`: Credenciales locales (`TGDL_API_ID`, `TGDL_API_HASH`, puerto).
-- `config.json`: Configuración persistente del dashboard.
+- `%USERPROFILE%\.tgdown\.env` en Windows, o `~/.tgdown/.env` en Linux/macOS: credenciales locales (`TGDL_API_ID`, `TGDL_API_HASH`, puerto).
+- `%USERPROFILE%\.tgdown\tgdown.sqlite3` en Windows, o `~/.tgdown/tgdown.sqlite3` en Linux/macOS: configuración, cola, historial y progreso por fragmentos.
+
+En la primera ejecución, la aplicación migra automáticamente `config.json` y `downloads.json` existentes a SQLite. Los JSON antiguos no se vuelven a escribir y pueden conservarse como respaldo.

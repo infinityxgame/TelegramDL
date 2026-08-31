@@ -568,7 +568,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         @confirm="handleConfirm"
         @cancel="modal.show = false"
       />
-      <footer>TelegramDL · Configuración persistida localmente en JSON · {{ host }}</footer>
+      <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>
     </main>
   </div>
   </template>
