@@ -1390,7 +1390,7 @@ class TelegramDownloader:
         job_id = job_id or uuid.uuid4().hex
         try:
             chat_id, start_id, end_id = parsed or self.parse_url(url)
-            for message_id in range(start_id, end_id + 1):
+            for message_id in range(end_id, start_id - 1, -1):
                 update_state(
                     self._item_id(job_id, message_id),
                     job_id=job_id,
