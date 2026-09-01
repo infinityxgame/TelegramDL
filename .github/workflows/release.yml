@@ -233,6 +233,68 @@ jobs:
             "${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" \
             -C dist/TelegramDL .
 
+      # ==========================================
+      # CREATE macOS ICON
+      # ==========================================
+
+      - name: Create macOS icon
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "Creating macOS ICNS icon from icon.png..."
+
+          rm -rf Icon.iconset
+          mkdir -p Icon.iconset
+
+          sips -z 16 16 \
+            icon.png \
+            --out Icon.iconset/icon_16x16.png
+
+          sips -z 32 32 \
+            icon.png \
+            --out Icon.iconset/icon_16x16@2x.png
+
+          sips -z 32 32 \
+            icon.png \
+            --out Icon.iconset/icon_32x32.png
+
+          sips -z 64 64 \
+            icon.png \
+            --out Icon.iconset/icon_32x32@2x.png
+
+          sips -z 128 128 \
+            icon.png \
+            --out Icon.iconset/icon_128x128.png
+
+          sips -z 256 256 \
+            icon.png \
+            --out Icon.iconset/icon_128x128@2x.png
+
+          sips -z 256 256 \
+            icon.png \
+            --out Icon.iconset/icon_256x256.png
+
+          sips -z 512 512 \
+            icon.png \
+            --out Icon.iconset/icon_256x256@2x.png
+
+          sips -z 512 512 \
+            icon.png \
+            --out Icon.iconset/icon_512x512.png
+
+          sips -z 1024 1024 \
+            icon.png \
+            --out Icon.iconset/icon_512x512@2x.png
+
+          iconutil \
+            -c icns \
+            Icon.iconset \
+            -o icon.icns
+
+          echo "macOS icon created successfully"
+
+          ls -lh icon.icns
+
       # ==================================================
       # macOS BUILD
       # ==================================================
