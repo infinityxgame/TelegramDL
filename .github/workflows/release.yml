@@ -10,49 +10,80 @@ permissions:
 
 jobs:
   build:
-    name: Build executable on ${{ matrix.os }}
+    name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
         include:
-          - os: windows-latest
+          # =========================
+          # WINDOWS
+          # =========================
+          - platform: Windows
+            os: windows-latest
             artifact_name: TelegramDL-Windows
             asset_extension: .zip
 
-          - os: ubuntu-latest
+          # =========================
+          # LINUX
+          # =========================
+          - platform: Linux
+            os: ubuntu-latest
             artifact_name: TelegramDL-Linux
             asset_extension: .tar.gz
 
-          - os: macos-latest
-            artifact_name: TelegramDL-macOS
+          # =========================
+          # macOS INTEL
+          # =========================
+          - platform: macOS-Intel
+            os: macos-15-intel
+            artifact_name: TelegramDL-macOS-Intel
             asset_extension: .dmg
+            macos_arch: x86_64
+
+          # =========================
+          # macOS APPLE SILICON
+          # =========================
+          - platform: macOS-ARM64
+            os: macos-15
+            artifact_name: TelegramDL-macOS-ARM64
+            asset_extension: .dmg
+            macos_arch: arm64
 
     steps:
+      # ==================================================
+      # CHECKOUT
+      # ==================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # =========================
+      # ==================================================
       # VERSION INFORMATION
-      # =========================
+      # ==================================================
 
       - name: Set version information
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PRODUCT_NAME=TGDown" >> $GITHUB_ENV
-          echo "PRODUCT_DESCRIPTION=Descarga y gestiona archivos multimedia de Telegram" >> $GITHUB_ENV
-          echo "COMPANY_NAME=InfinityxGame" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "PRODUCT_NAME=TGDown" >> "$GITHUB_ENV"
+          echo "PRODUCT_DESCRIPTION=Descarga y gestiona archivos multimedia de Telegram" >> "$GITHUB_ENV"
+          echo "COMPANY_NAME=InfinityxGame" >> "$GITHUB_ENV"
 
-      # =========================
-      # NODE / VUE
-      # =========================
+      # ==================================================
+      # NODE.JS
+      # ==================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      # ==================================================
+      # BUILD VUE DASHBOARD
+      # ==================================================
 
       - name: Build Vue Dashboard
         run: |
@@ -61,14 +92,18 @@ jobs:
           npm run build
           cd ..
 
-      # =========================
+      # ==================================================
       # PYTHON
-      # =========================
+      # ==================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      # ==================================================
+      # PYTHON DEPENDENCIES
+      # ==================================================
 
       - name: Install Python dependencies
         run: |
@@ -77,7 +112,7 @@ jobs:
           pip install pyinstaller
 
       # ==================================================
-      # WINDOWS - VERSION INFORMATION
+      # WINDOWS VERSION INFORMATION
       # ==================================================
 
       - name: Create Windows version information
@@ -131,7 +166,7 @@ jobs:
           "@ | Out-File -Encoding utf8 version_info.txt
 
       # ==================================================
-      # WINDOWS
+      # WINDOWS BUILD
       # ==================================================
 
       - name: Build with PyInstaller (Windows)
@@ -153,7 +188,7 @@ jobs:
             -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
 
       # ==================================================
-      # LINUX
+      # LINUX BUILD
       # ==================================================
 
       - name: Build with PyInstaller (Linux)
@@ -167,20 +202,28 @@ jobs:
             --add-data "dashboard/dist:dashboard/dist" \
             TelegramDL.py
 
+      # ==================================================
+      # LINUX DESKTOP INFORMATION
+      # ==================================================
+
       - name: Create Linux desktop information
         if: runner.os == 'Linux'
         shell: bash
         run: |
           cat > dist/TelegramDL/TGDown.desktop << EOF
           [Desktop Entry]
-          Version=${VERSION}
           Type=Application
           Name=TGDown
           Comment=Descarga y gestiona archivos multimedia de Telegram
           Exec=TelegramDL
           Terminal=false
           Categories=Network;Utility;
+          X-AppVersion=${VERSION}
           EOF
+
+      # ==================================================
+      # LINUX PORTABLE PACKAGE
+      # ==================================================
 
       - name: Create Linux portable package
         if: runner.os == 'Linux'
@@ -191,20 +234,28 @@ jobs:
             -C dist/TelegramDL .
 
       # ==================================================
-      # macOS
+      # macOS BUILD
       # ==================================================
 
       - name: Build macOS App with PyInstaller
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          echo "Building macOS application for architecture: ${{ matrix.macos_arch }}"
+
           pyinstaller \
             --noconfirm \
             --onedir \
             --windowed \
+            --target-arch "${{ matrix.macos_arch }}" \
+            --osx-bundle-identifier "com.infinityxgame.tgdown" \
             --name "TelegramDL" \
             --add-data "dashboard/dist:dashboard/dist" \
             TelegramDL.py
+
+      # ==================================================
+      # macOS APPLICATION INFORMATION
+      # ==================================================
 
       - name: Add macOS application information
         if: runner.os == 'macOS'
@@ -212,21 +263,63 @@ jobs:
         run: |
           PLIST="dist/TelegramDL.app/Contents/Info.plist"
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName TGDown" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleName string TGDown" "$PLIST"
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleName TGDown" \
+            "$PLIST" || \
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleName string TGDown" \
+            "$PLIST"
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName TGDown" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string TGDown" "$PLIST"
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleDisplayName TGDown" \
+            "$PLIST" || \
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleDisplayName string TGDown" \
+            "$PLIST"
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleShortVersionString ${VERSION}" \
+            "$PLIST" || \
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleShortVersionString string ${VERSION}" \
+            "$PLIST"
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleVersion ${VERSION}" \
+            "$PLIST" || \
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleVersion string ${VERSION}" \
+            "$PLIST"
 
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.infinityxgame.tgdown" "$PLIST" || true
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleIdentifier com.infinityxgame.tgdown" \
+            "$PLIST" || \
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleIdentifier string com.infinityxgame.tgdown" \
+            "$PLIST"
 
-          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright © 2026 InfinityxGame" "$PLIST" || true
+          /usr/libexec/PlistBuddy \
+            -c "Add :NSHumanReadableCopyright string Copyright © 2026 InfinityxGame" \
+            "$PLIST" || true
+
+          /usr/libexec/PlistBuddy \
+            -c "Add :NSHumanReadableDescription string Descarga y gestiona archivos multimedia de Telegram" \
+            "$PLIST" || true
+
+      # ==================================================
+      # macOS ARCHITECTURE CHECK
+      # ==================================================
+
+      - name: Check macOS architecture
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "Expected architecture: ${{ matrix.macos_arch }}"
+          file "dist/TelegramDL.app/Contents/MacOS/TelegramDL"
+
+      # ==================================================
+      # macOS AD-HOC SIGNING
+      # ==================================================
 
       - name: Ad-Hoc Sign macOS App
         if: runner.os == 'macOS'
@@ -238,6 +331,14 @@ jobs:
             --sign - \
             "dist/TelegramDL.app"
 
+      # ==================================================
+      # VERIFY macOS SIGNATURE
+      # ==================================================
+
+      - name: Verify macOS signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
           codesign \
             --verify \
             --deep \
@@ -245,10 +346,33 @@ jobs:
             --verbose=2 \
             "dist/TelegramDL.app"
 
+      # ==================================================
+      # VERIFY macOS ARCHITECTURE AFTER SIGNING
+      # ==================================================
+
+      - name: Verify macOS architecture
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "Final application architecture:"
+          file "dist/TelegramDL.app/Contents/MacOS/TelegramDL"
+
+          echo ""
+          echo "Code signature:"
+          codesign \
+            --display \
+            --verbose=4 \
+            "dist/TelegramDL.app" 2>&1 || true
+
+      # ==================================================
+      # CREATE macOS DMG
+      # ==================================================
+
       - name: Create macOS DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          rm -rf dmg
           mkdir dmg
 
           cp -R "dist/TelegramDL.app" dmg/
@@ -263,10 +387,10 @@ jobs:
             "${{ matrix.artifact_name }}-${{ github.ref_name }}.dmg"
 
       # ==================================================
-      # UPLOAD RELEASE ASSETS
+      # UPLOAD RELEASE ASSET
       # ==================================================
 
-      - name: Upload Release Assets
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact_name }}-${{ github.ref_name }}${{ matrix.asset_extension }}
