@@ -71,7 +71,7 @@ try:
     import webview
     from updater import AppUpdater
 except ImportError:
-    print("❌ Faltan dependencias. Ejecuta: pip install -r requirements.txt pywebview")
+    print("Faltan dependencias. Ejecuta: pip install -r requirements.txt pywebview")
     sys.exit(1)
 
 
@@ -271,6 +271,7 @@ downloads_state: Dict[str, Dict[str, Any]] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
 active_jobs: Dict[str, asyncio.Task] = {}
 downloader_instance = None
+downloader_lock = None
 websocket_clients: Set[WebSocket] = set()
 websocket_broadcast_task: Optional[asyncio.Task] = None
 websocket_broadcast_dirty = False
@@ -433,77 +434,82 @@ def save_env_credentials(api_id: str, api_hash: str) -> None:
 
 
 async def check_auth_status() -> Dict[str, Any]:
-    global downloader_instance, auth_session
-    api_id = os.getenv("TGDL_API_ID")
-    api_hash = os.getenv("TGDL_API_HASH")
+    global downloader_instance, auth_session, downloader_lock
 
-    if not api_id or not api_hash:
-        auth_session["state"] = "UNCONFIGURED"
-        auth_session["user"] = None
-        return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False}
+    if downloader_lock is None:
+        downloader_lock = asyncio.Lock()
 
-    if not downloader_instance:
-        try:
-            downloader_instance = TelegramDownloader(api_id, api_hash)
-        except Exception as err:
-            return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False, "error": str(err)}
+    async with downloader_lock:
+        api_id = os.getenv("TGDL_API_ID")
+        api_hash = os.getenv("TGDL_API_HASH")
 
-    try:
-        if not downloader_instance.client.is_connected:
-            await downloader_instance.client.connect()
+        if not api_id or not api_hash:
+            auth_session["state"] = "UNCONFIGURED"
+            auth_session["user"] = None
+            return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False}
 
-        # Asegurar que el despachador de Pyrogram esté iniciado si ya estamos autenticados
-        if await downloader_instance.client.get_me():
+        if not downloader_instance:
             try:
-                await downloader_instance.client.initialize()
-            except Exception:
-                pass
+                downloader_instance = TelegramDownloader(api_id, api_hash)
+            except Exception as err:
+                return {"authenticated": False, "state": "UNCONFIGURED", "has_credentials": False, "error": str(err)}
 
-        if auth_session["state"] == "LOGGED_IN" and auth_session["user"]:
-            return {
-                "authenticated": True,
-                "state": "LOGGED_IN",
-                "has_credentials": True,
-                "user": auth_session["user"],
-            }
+        try:
+            if not downloader_instance.client.is_connected:
+                await downloader_instance.client.connect()
 
-        me = await downloader_instance.client.get_me()
-        if me:
-            account_color_id = getattr(me.color, "color_id", 5) if hasattr(me, "color") and me.color else 5
+            # Asegurar que el despachador de Pyrogram esté iniciado si ya estamos autenticados
+            if await downloader_instance.client.get_me():
+                try:
+                    await downloader_instance.client.initialize()
+                except Exception:
+                    pass
 
-            # Si no hay color configurado, usamos el de la cuenta y guardamos
-            if runtime_config.get("color_id") is None:
-                runtime_config["color_id"] = account_color_id
-                save_config(runtime_config)
+            if auth_session["state"] == "LOGGED_IN" and auth_session["user"]:
+                return {
+                    "authenticated": True,
+                    "state": "LOGGED_IN",
+                    "has_credentials": True,
+                    "user": auth_session["user"],
+                }
 
-            user_info = {
-                "id": me.id,
-                "first_name": me.first_name or "",
-                "username": me.username or "",
-                "phone": getattr(me, "phone_number", ""),
-                "color_id": account_color_id
-            }
-            auth_session["state"] = "LOGGED_IN"
-            auth_session["user"] = user_info
-            return {
-                "authenticated": True,
-                "state": "LOGGED_IN",
-                "has_credentials": True,
-                "user": user_info,
-            }
-    except Exception:
-        pass
+            me = await downloader_instance.client.get_me()
+            if me:
+                account_color_id = getattr(me.color, "color_id", 5) if hasattr(me, "color") and me.color else 5
 
-    if auth_session["state"] not in {"WAITING_CODE", "WAITING_2FA"}:
-        auth_session["state"] = "NOT_LOGGED_IN"
-        auth_session["user"] = None
+                # Si no hay color configurado, usamos el de la cuenta y guardamos
+                if runtime_config.get("color_id") is None:
+                    runtime_config["color_id"] = account_color_id
+                    save_config(runtime_config)
 
-    return {
-        "authenticated": False,
-        "state": auth_session["state"],
-        "has_credentials": True,
-        "phone_number": auth_session.get("phone_number"),
-    }
+                user_info = {
+                    "id": me.id,
+                    "first_name": me.first_name or "",
+                    "username": me.username or "",
+                    "phone": getattr(me, "phone_number", ""),
+                    "color_id": account_color_id
+                }
+                auth_session["state"] = "LOGGED_IN"
+                auth_session["user"] = user_info
+                return {
+                    "authenticated": True,
+                    "state": "LOGGED_IN",
+                    "has_credentials": True,
+                    "user": user_info,
+                }
+        except Exception:
+            pass
+
+        if auth_session["state"] not in {"WAITING_CODE", "WAITING_2FA"}:
+            auth_session["state"] = "NOT_LOGGED_IN"
+            auth_session["user"] = None
+
+        return {
+            "authenticated": False,
+            "state": auth_session["state"],
+            "has_credentials": True,
+            "phone_number": auth_session.get("phone_number"),
+        }
 
 
 # --- Dashboard API ---
@@ -566,25 +572,30 @@ async def get_auth_status() -> Dict[str, Any]:
 
 @app.post("/api/auth/credentials")
 async def set_auth_credentials(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    global downloader_instance
-    api_id = str(data.get("api_id", "")).strip()
-    api_hash = str(data.get("api_hash", "")).strip()
+    global downloader_instance, downloader_lock
 
-    if not api_id or not api_hash:
-        raise HTTPException(status_code=422, detail="Debe ingresar tanto API ID como API HASH")
+    if downloader_lock is None:
+        downloader_lock = asyncio.Lock()
 
-    save_env_credentials(api_id, api_hash)
+    async with downloader_lock:
+        api_id = str(data.get("api_id", "")).strip()
+        api_hash = str(data.get("api_hash", "")).strip()
 
-    if downloader_instance and downloader_instance.client:
-        with suppress(Exception):
-            await downloader_instance.client.disconnect()
-        downloader_instance = None
+        if not api_id or not api_hash:
+            raise HTTPException(status_code=422, detail="Debe ingresar tanto API ID como API HASH")
 
-    try:
-        downloader_instance = TelegramDownloader(api_id, api_hash)
-        await downloader_instance.client.connect()
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=f"Credenciales de API inválidas: {error}") from error
+        save_env_credentials(api_id, api_hash)
+
+        if downloader_instance and downloader_instance.client:
+            with suppress(Exception):
+                await downloader_instance.client.disconnect()
+            downloader_instance = None
+
+        try:
+            downloader_instance = TelegramDownloader(api_id, api_hash)
+            await downloader_instance.client.connect()
+        except Exception as error:
+            raise HTTPException(status_code=400, detail=f"Credenciales de API inválidas: {error}") from error
 
     return await check_auth_status()
 
@@ -1178,7 +1189,7 @@ class DownloadProgress:
             if sys.stdout and hasattr(sys.stdout, "write"):
                 with PRINT_LOCK:
                     print(
-                        f"📥 {self.file_name} - {percentage:5.1f}% "
+                        f"Descargando: {self.file_name} - {percentage:5.1f}% "
                         f"({format_bytes(speed_value)}/s)"
                     )
         except Exception:
@@ -1426,7 +1437,7 @@ class TelegramDownloader:
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            print(f"❌ Error en el trabajo {job_id}: {error}")
+            print(f"Error en el trabajo {job_id}: {error}")
 
     async def resume_all(self) -> None:
         to_resume = []
@@ -1448,7 +1459,7 @@ class TelegramDownloader:
 
         to_resume.sort(key=lambda x: (not x["progress"], x["created_at"]))
 
-        print(f"🔄 Reanudando {len(to_resume)} tareas pendientes...")
+        print(f"Reanudando {len(to_resume)} tareas pendientes...")
         for entry in to_resume:
             item_id = entry["id"]
             task = asyncio.create_task(self.resume_item(item_id))
@@ -1471,7 +1482,7 @@ class TelegramDownloader:
                 return
             await self.download_file_from_message(message, chat_id, item_id)
         except Exception as e:
-            print(f"❌ Error al reanudar {item_id}: {e}")
+            print(f"Error al reanudar {item_id}: {e}")
             if shutting_down:
                 update_state(item_id, status="queued")
             else:
@@ -1540,7 +1551,7 @@ class TelegramDownloader:
                 update_state(item_id, status="cancelled", progress=0)
             raise
         except Exception as error:
-            print(f"❌ Error en la descarga {item_id}: {error}")
+            print(f"Error en la descarga {item_id}: {error}")
             if shutting_down:
                 update_state(item_id, status="queued")
             else:
@@ -1955,9 +1966,21 @@ def check_webview2_runtime() -> bool:
 
 async def main(server_mode: bool = False) -> None:
     global downloader_instance, shutting_down
-    print("TG Downloader")
+
+    # Asegurar que el directorio de datos existe
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = DATA_DIR / "backend.log"
+
+    def log_backend(msg: str):
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {msg}\n")
+        print(msg)
+
+    log_backend(f"--- Iniciando TG Downloader v{APP_VERSION} (Modo {'Servidor' if server_mode else 'Nativo'}) ---")
 
     load_downloads_state()
+    log_backend("Estado de descargas cargado.")
 
     server_task = asyncio.create_task(run_server())
 
@@ -1966,51 +1989,76 @@ async def main(server_mode: bool = False) -> None:
     visible_host = get_local_ip() if host == "0.0.0.0" else host
 
     dashboard_url = f"http://{visible_host}:{port}/dashboard/"
-    print(f"Dashboard: {dashboard_url}")
+    log_backend(f"Dashboard disponible en: {dashboard_url}")
 
     api_id = os.getenv("TGDL_API_ID")
     api_hash = os.getenv("TGDL_API_HASH")
+
     if api_id and api_hash:
-        try:
-            status = await check_auth_status()
-            if status.get("authenticated"):
-                print("Conectado a Telegram. Esperando órdenes desde la web...")
-                if downloader_instance:
-                    asyncio.create_task(downloader_instance.resume_all())
-            else:
-                print("Completa el inicio de sesión desde el panel web.")
-        except Exception as err:
-            print(f"Atencion: {err}")
+        async def startup_resume():
+            # En modo nativo, dar tiempo a que la UI y el server se asienten
+            if not server_mode:
+                await asyncio.sleep(2)
+
+            log_backend("Verificando autenticación para reanudación automática...")
+            for attempt in range(3):
+                try:
+                    status = await check_auth_status()
+                    if status.get("authenticated"):
+                        log_backend("Conectado a Telegram. Iniciando reanudación...")
+                        if downloader_instance:
+                            await downloader_instance.resume_all()
+                            log_backend("Comando resume_all enviado con éxito.")
+                            break
+                    else:
+                        log_backend("Esperando autenticación del usuario...")
+                        break
+                except Exception as e:
+                    log_backend(f"Intento {attempt+1} fallido: {e}")
+                    await asyncio.sleep(2)
+
+        asyncio.create_task(startup_resume())
     else:
-        print("No hay API_ID / API_HASH configurados. Configúralos directamente en el panel web.")
+        log_backend("Sin credenciales API configuradas.")
 
     if not server_mode:
-        print("Iniciando interfaz nativa...")
+        log_backend("Iniciando interfaz nativa...")
 
     try:
+        # En modo nativo, usamos una espera que reaccione al stop_event de threading
         while not stop_event.is_set():
             await asyncio.sleep(0.5)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        log_backend("Interrupción detectada.")
     finally:
         shutting_down = True
-        # Un cierre de la ventana no equivale a cancelar una descarga.
-        # Conservamos como queued para que el siguiente arranque la recupere,
-        # pero respetamos si el usuario la había pausado manualmente.
-        for item_id, item in downloads_state.items():
+        log_backend("Iniciando proceso de cierre...")
+
+        # Guardar estado de descargas activas como en cola ANTES de cerrar
+        active_count = 0
+        for item_id, item in list(downloads_state.items()):
             if item.get("status") == "downloading":
                 update_state(item_id, status="queued")
+                active_count += 1
+
+        if active_count > 0:
+            log_backend(f"Marcadas {active_count} descargas como 'en cola'.")
+
+        save_downloads_state()
+        log_backend("Estado guardado en base de datos.")
+
         print("Cerrando aplicacion de forma segura...")
         server_task.cancel()
         with suppress(asyncio.CancelledError):
             await server_task
-
-        # Guardar estado final antes de salir
-        save_downloads_state()
+        log_backend("Servidor web detenido.")
 
         if downloader_instance and downloader_instance.client:
-            print("Desconectando de Telegram...")
+            log_backend("Desconectando de Telegram...")
             with suppress(Exception):
                 await downloader_instance.client.disconnect()
         print("Proceso finalizado correctamente.")
+        log_backend("Cierre completo.")
 
 
 if __name__ == "__main__":
@@ -2058,7 +2106,7 @@ if __name__ == "__main__":
 
             # Al salir de la ventana, avisar al backend y esperar cierre limpio
             stop_event.set()
-            t.join(timeout=5)
+            t.join(timeout=15)
 
         except Exception as e:
             import traceback
