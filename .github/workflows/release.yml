@@ -18,16 +18,36 @@ jobs:
           - os: windows-latest
             artifact_name: TelegramDL-Windows
             asset_extension: .zip
+
           - os: ubuntu-latest
             artifact_name: TelegramDL-Linux
             asset_extension: .tar.gz
+
           - os: macos-latest
             artifact_name: TelegramDL-macOS
-            asset_extension: .tar.gz
+            asset_extension: .dmg
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # =========================
+      # VERSION INFORMATION
+      # =========================
+
+      - name: Set version information
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PRODUCT_NAME=TGDown" >> $GITHUB_ENV
+          echo "PRODUCT_DESCRIPTION=Descarga y gestiona archivos multimedia de Telegram" >> $GITHUB_ENV
+          echo "COMPANY_NAME=InfinityxGame" >> $GITHUB_ENV
+
+      # =========================
+      # NODE / VUE
+      # =========================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,6 +61,10 @@ jobs:
           npm run build
           cd ..
 
+      # =========================
+      # PYTHON
+      # =========================
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -52,17 +76,195 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # ==================================================
+      # WINDOWS - VERSION INFORMATION
+      # ==================================================
+
+      - name: Create Windows version information
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $VERSION = "${{ env.VERSION }}"
+          $VERSION_PARTS = $VERSION.Split('.')
+
+          $MAJOR = [int]$VERSION_PARTS[0]
+          $MINOR = if ($VERSION_PARTS.Length -gt 1) { [int]$VERSION_PARTS[1] } else { 0 }
+          $PATCH = if ($VERSION_PARTS.Length -gt 2) { [int]$VERSION_PARTS[2] } else { 0 }
+
+          @"
+          VSVersionInfo(
+            ffi=FixedFileInfo(
+              filevers=($MAJOR, $MINOR, $PATCH, 0),
+              prodvers=($MAJOR, $MINOR, $PATCH, 0),
+              mask=0x3f,
+              flags=0x0,
+              OS=0x40004,
+              fileType=0x1,
+              subtype=0x0,
+              date=(0, 0)
+            ),
+            kids=[
+              StringFileInfo(
+                [
+                  StringTable(
+                    u'040904B0',
+                    [
+                      StringStruct(u'CompanyName', u'InfinityxGame'),
+                      StringStruct(u'FileDescription', u'Descarga y gestiona archivos multimedia de Telegram'),
+                      StringStruct(u'FileVersion', u'$VERSION'),
+                      StringStruct(u'InternalName', u'TelegramDL'),
+                      StringStruct(u'LegalCopyright', u'Copyright © 2026 InfinityxGame'),
+                      StringStruct(u'OriginalFilename', u'TelegramDL.exe'),
+                      StringStruct(u'ProductName', u'TGDown'),
+                      StringStruct(u'ProductVersion', u'$VERSION')
+                    ]
+                  )
+                ]
+              ),
+              VarFileInfo(
+                [
+                  VarStruct(u'Translation', [1033, 1200])
+                ]
+              )
+            ]
+          )
+          "@ | Out-File -Encoding utf8 version_info.txt
+
+      # ==================================================
+      # WINDOWS
+      # ==================================================
+
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
+        shell: powershell
         run: |
-          pyinstaller --noconfirm --onedir --noconsole --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
-          Compress-Archive -Path dist/TelegramDL/* -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
+          pyinstaller `
+            --noconfirm `
+            --onedir `
+            --noconsole `
+            --icon="icon.ico" `
+            --version-file="version_info.txt" `
+            --name "TelegramDL" `
+            --add-data "dashboard/dist;dashboard/dist" `
+            TelegramDL.py
 
-      - name: Build with PyInstaller (Linux / macOS)
-        if: runner.os != 'Windows'
+          Compress-Archive `
+            -Path dist/TelegramDL/* `
+            -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
+
+      # ==================================================
+      # LINUX
+      # ==================================================
+
+      - name: Build with PyInstaller (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          pyinstaller --noconfirm --onedir --name "TelegramDL" --add-data "dashboard/dist:dashboard/dist" TelegramDL.py
-          tar -czvf "${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" -C dist/TelegramDL .
+          pyinstaller \
+            --noconfirm \
+            --onedir \
+            --name "TelegramDL" \
+            --add-data "dashboard/dist:dashboard/dist" \
+            TelegramDL.py
+
+      - name: Create Linux desktop information
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cat > dist/TelegramDL/TGDown.desktop << EOF
+          [Desktop Entry]
+          Version=${VERSION}
+          Type=Application
+          Name=TGDown
+          Comment=Descarga y gestiona archivos multimedia de Telegram
+          Exec=TelegramDL
+          Terminal=false
+          Categories=Network;Utility;
+          EOF
+
+      - name: Create Linux portable package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          tar -czvf \
+            "${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" \
+            -C dist/TelegramDL .
+
+      # ==================================================
+      # macOS
+      # ==================================================
+
+      - name: Build macOS App with PyInstaller
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --onedir \
+            --windowed \
+            --name "TelegramDL" \
+            --add-data "dashboard/dist:dashboard/dist" \
+            TelegramDL.py
+
+      - name: Add macOS application information
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          PLIST="dist/TelegramDL.app/Contents/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName TGDown" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleName string TGDown" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName TGDown" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string TGDown" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${VERSION}" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${VERSION}" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.infinityxgame.tgdown" "$PLIST" || true
+
+          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright © 2026 InfinityxGame" "$PLIST" || true
+
+      - name: Ad-Hoc Sign macOS App
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          codesign \
+            --force \
+            --deep \
+            --sign - \
+            "dist/TelegramDL.app"
+
+          codesign \
+            --verify \
+            --deep \
+            --strict \
+            --verbose=2 \
+            "dist/TelegramDL.app"
+
+      - name: Create macOS DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir dmg
+
+          cp -R "dist/TelegramDL.app" dmg/
+
+          ln -s /Applications dmg/Applications
+
+          hdiutil create \
+            -volname "TGDown" \
+            -srcfolder dmg \
+            -ov \
+            -format UDZO \
+            "${{ matrix.artifact_name }}-${{ github.ref_name }}.dmg"
+
+      # ==================================================
+      # UPLOAD RELEASE ASSETS
+      # ==================================================
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
