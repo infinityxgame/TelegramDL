@@ -86,7 +86,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1044,6 +1044,37 @@ async def resume_download(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not item_id:
         raise HTTPException(status_code=422, detail="ID requerido")
     return await _set_download_pause(item_id, False)
+
+
+@app.post("/api/retry")
+async def retry_download(payload: Dict[str, Any]) -> Dict[str, Any]:
+    item_id = str(payload.get("id", "")).strip()
+    if not item_id:
+        raise HTTPException(status_code=422, detail="ID requerido")
+    if not downloader_instance:
+        raise HTTPException(status_code=503, detail="El cliente no está listo")
+
+    state = downloads_state.get(item_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="La descarga no existe")
+
+    if state.get("status") not in {"failed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="Solo se pueden reintentar descargas fallidas o canceladas")
+
+    task = active_tasks.get(item_id)
+    if task and not task.done():
+        task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
+
+    update_state(item_id, status="queued", progress=0, speed="0 B/s")
+
+    retry_task = asyncio.create_task(downloader_instance.resume_item(item_id))
+    active_tasks[item_id] = retry_task
+    retry_task.add_done_callback(lambda f, i=item_id: active_tasks.pop(i, None))
+
+    return {"status": "ok", "id": item_id}
+
 
 
 @app.post("/api/download")

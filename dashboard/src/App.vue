@@ -4,7 +4,7 @@ import ListenerView from './views/ListenerView.vue'
 import FolderPicker from './components/FolderPicker.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
 import AuthWizard from './components/AuthWizard.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileCheck, FileDown, Gauge, LogOut, Menu, Radio, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
+import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, FileCheck, FileDown, Gauge, LogOut, Menu, Radio, RotateCcw, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
 const newUrl = ref('')
@@ -296,6 +296,16 @@ const setDownloadPause = async (id, paused) => {
   } catch (err) { showMessage(err.message, true) }
 }
 
+const retryDownload = async (item) => {
+  try {
+    await api('/api/retry', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id })
+    })
+    showMessage('Reintentando descarga…')
+    await fetchDownloads()
+  } catch (err) { showMessage(err.message, true) }
+}
+
 const deleteDownload = async item => {
   openConfirm({
     title: 'Borrar archivo',
@@ -530,7 +540,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         </section>
       </div>
 
-      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
+      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="['failed', 'cancelled'].includes(item.status)" class="retry-button" type="button" title="Reintentar descarga" aria-label="Reintentar descarga" @click="retryDownload(item)"><RotateCcw :size="14" /></button><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
       <ListenerView v-else-if="activeView === 'listener'" :notify="showMessage" />
       <template v-else-if="activeView === 'settings'">
