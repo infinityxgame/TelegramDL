@@ -105,6 +105,7 @@ const websocketConnected = ref(false)
 const wasDownloading = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
+const isUpdateForced = ref(false)
 const bootstrapping = ref(true)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 
@@ -325,6 +326,7 @@ const deleteDownload = async item => {
 const installUpdate = async () => {
   try {
     isUpdating.value = true
+    isUpdateForced.value = true
     await api('/api/update/install', { method: 'POST' })
 
     const pollProgress = async () => {
@@ -350,12 +352,26 @@ const installUpdate = async () => {
   }
 }
 
-const checkForUpdates = async () => {
+const checkForUpdates = async (force = false) => {
   try {
     const data = await api('/api/update/check')
     version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
+      if (force) {
+        isUpdateForced.value = true
+      } else if (!isUpdateForced.value) {
+        openConfirm({
+          title: 'Nueva versión disponible',
+          message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
+          confirmText: 'Actualizar ahora',
+          type: 'primary',
+          action: () => {
+            isUpdateForced.value = true
+            installUpdate()
+          }
+        })
+      }
     }
   } catch (err) {
     console.error('Error al buscar actualizaciones:', err)
@@ -406,7 +422,7 @@ onMounted(async () => {
   try {
     await Promise.all([
       fetchAuthStatus(),
-      checkForUpdates()
+      checkForUpdates(true)
     ])
 
     // Si estamos autenticados, cargamos el resto de la info antes de quitar el loader
@@ -421,6 +437,7 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
+  setInterval(() => checkForUpdates(false), 30 * 60 * 1000)
 })
 onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTimer); clearTimeout(reconnectTimer); socket?.close() })
 </script>
@@ -437,7 +454,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   </div>
 
   <template v-else>
-    <div v-if="updateInfo" class="update-required-overlay">
+    <div v-if="updateInfo && isUpdateForced" class="update-required-overlay">
       <div class="update-card">
       <Zap :size="48" class="update-icon" />
       <h2>Actualización Obligatoria</h2>

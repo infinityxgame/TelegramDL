@@ -113,12 +113,14 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             pkg-config \
+            python3-dev \
             libcairo2-dev \
             libgirepository1.0-dev \
             gir1.2-gtk-3.0 \
             libgtk-3-dev \
             libglib2.0-dev \
             libffi-dev \
+            libdbus-1-dev \
             patchelf
 
 
@@ -131,12 +133,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
 
-          # 1. Instalación normal de todas las dependencias
-          pip install -r requirements.txt
-
+          # 1. Instalación de dependencias críticas en Linux antes del resto
           if [ "${RUNNER_OS}" = "Linux" ]; then
+            pip install pycairo
+            pip install PyGObject
             pip install -r requirements-linux.txt
           fi
+
+          # 2. Instalación normal de todas las dependencias
+          pip install -r requirements.txt
 
           # 2. Arreglo específico para macOS Universal2
           if [ "${RUNNER_OS}" = "macOS" ]; then
