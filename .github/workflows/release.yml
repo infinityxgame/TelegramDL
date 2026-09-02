@@ -129,27 +129,30 @@ jobs:
       - name: Install Python dependencies
         shell: bash
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
 
-          if [ "${RUNNER_OS}" = "macOS" ]; then
-            # Fix for universal2 build: ensure we have fat binaries (x86_64 + arm64)
-            # We force universal2 wheels for packages that provide them
-            # We also include pyobjc which is required by pywebview on macOS
-            pip install --upgrade --only-binary=:all: \
-              --platform macosx_10_9_universal2 \
-              --platform macosx_11_0_universal2 \
-              --platform macosx_12_0_universal2 \
-              markupsafe websockets jinja2 pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
-            
-            # For packages that need to be compiled as universal2
-            export ARCHFLAGS="-arch x86_64 -arch arm64"
-            pip install --no-binary tgcrypto-pyrofork tgcrypto-pyrofork || true
-          fi
-
+          # 1. Instalación normal de todas las dependencias
           pip install -r requirements.txt
 
           if [ "${RUNNER_OS}" = "Linux" ]; then
             pip install -r requirements-linux.txt
+          fi
+
+          # 2. Arreglo específico para macOS Universal2
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            echo "Configurando entorno para compilación Universal2..."
+            export ARCHFLAGS="-arch x86_64 -arch arm64"
+            
+            # Reinstalamos las librerías con C-Extensions forzando compilación dual
+            # markupsafe y websockets son las que suelen dar el error "not a fat binary"
+            pip install --force-reinstall --no-binary markupsafe,websockets,tgcrypto-pyrofork \
+              markupsafe websockets tgcrypto-pyrofork
+
+            # Instalamos pyobjc necesario para pywebview en formato universal
+            pip install --upgrade --only-binary=:all: \
+              --platform macosx_11_0_universal2 \
+              --platform macosx_12_0_universal2 \
+              pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
           fi
 
           pip install pyinstaller
