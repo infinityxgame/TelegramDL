@@ -139,6 +139,7 @@ const modal = reactive({
   title: '',
   message: '',
   confirmText: '',
+  cancelText: 'Cancelar',
   type: 'primary',
   action: null
 })
@@ -147,6 +148,7 @@ const openConfirm = (config) => {
   modal.title = config.title
   modal.message = config.message
   modal.confirmText = config.confirmText
+  modal.cancelText = config.cancelText || 'Cancelar'
   modal.type = config.type || 'primary'
   modal.action = config.action
   modal.show = true
@@ -360,11 +362,12 @@ const checkForUpdates = async (force = false) => {
       updateInfo.value = data
       if (force) {
         isUpdateForced.value = true
-      } else if (!isUpdateForced.value) {
+      } else if (!isUpdateForced.value && !modal.show) {
         openConfirm({
           title: 'Nueva versión disponible',
           message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
           confirmText: 'Actualizar ahora',
+          cancelText: 'Posponer',
           type: 'primary',
           action: () => {
             isUpdateForced.value = true
@@ -437,7 +440,8 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
-  setInterval(() => checkForUpdates(false), 30 * 60 * 1000)
+  // Chequeo cada 1 minuto para asegurar que la notificación salga pronto
+  setInterval(() => checkForUpdates(false), 60 * 1000)
 })
 onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTimer); clearTimeout(reconnectTimer); socket?.close() })
 </script>
@@ -615,6 +619,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         :title="modal.title"
         :message="modal.message"
         :confirmText="modal.confirmText"
+        :cancelText="modal.cancelText"
         :type="modal.type"
         @confirm="handleConfirm"
         @cancel="modal.show = false"
