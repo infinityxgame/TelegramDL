@@ -136,7 +136,6 @@ jobs:
           # 1. Instalación de dependencias críticas en Linux antes del resto
           if [ "${RUNNER_OS}" = "Linux" ]; then
             pip install pycairo
-            pip install PyGObject
             pip install -r requirements-linux.txt
           fi
 
