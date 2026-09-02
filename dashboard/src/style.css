@@ -143,9 +143,9 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .delete-button { display: grid; place-items: center; border: 0; background: transparent; color: #d9828b; width: 32px; height: 32px; border-radius: 8px; cursor: pointer }
 .delete-button:hover { background: #48252c; color: #ffb0b0 }
 
-.toast { position: fixed; right: 28px; top: 24px; z-index: 5; padding: 11px 15px; border-radius: 9px; font-size: 12px; display: flex; align-items: center; gap: 7px; animation: toastIn .25s ease-out; border: 1px solid rgba(255,255,255,0.1) }
-.toast.success { background: #113a31; color: #73e0b7; border: 1px solid #286e5a }
-.toast.danger { background: #48252c; color: #ffadad; border: 1px solid #8c4550 }
+.toast { position: fixed; right: 28px; top: 24px; z-index: 10001; padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; animation: toastIn .25s ease-out; box-shadow: 0 12px 36px rgba(0,0,0,0.4), 0 0 25px var(--user-glow); backdrop-filter: blur(8px) }
+.toast.success { background: var(--user-surface); color: var(--user-accent); border: 1px solid var(--user-border-light) }
+.toast.danger { background: #3d171d; color: #ffadad; border: 1px solid #732a36 }
 
 .sidebar-user-badge { display: flex; align-items: center; justify-content: space-between; background: var(--user-bg-base); border: 1px solid var(--user-border); border-radius: 10px; padding: 8px 10px; margin-bottom: 14px; font-size: 12px; color: #dbe7f5 }
 .sidebar-user-badge .user-info { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden }

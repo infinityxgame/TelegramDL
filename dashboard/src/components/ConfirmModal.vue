@@ -46,20 +46,20 @@ const emit = defineEmits(['confirm', 'cancel'])
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(2, 10, 19, 0.85);
-  backdrop-filter: blur(4px);
+  background: rgba(2, 8, 19, 0.75);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
 }
 
 .modal-content {
-  background: #0b1a2a;
-  border: 1px solid #1b344b;
+  background: var(--user-surface);
+  border: 1px solid var(--user-border-light);
   border-radius: 18px;
-  width: min(400px, 90%);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  width: min(420px, 90%);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 35px var(--user-glow);
   overflow: hidden;
 }
 
@@ -68,7 +68,7 @@ const emit = defineEmits(['confirm', 'cancel'])
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid #193149;
+  border-bottom: 1px solid var(--user-border);
   position: relative;
 }
 
@@ -80,7 +80,7 @@ const emit = defineEmits(['confirm', 'cancel'])
   place-items: center;
 }
 
-.header-icon.primary { background: #11385b; color: #59baff; }
+.header-icon.primary { background: var(--user-icon-bg); color: var(--user-accent); }
 .header-icon.danger { background: #48252c; color: #ffadad; }
 
 .modal-header h3 {
@@ -94,21 +94,26 @@ const emit = defineEmits(['confirm', 'cancel'])
   margin-left: auto;
   background: transparent;
   border: 0;
-  color: #6f8ba5;
+  color: var(--user-text-dim);
   cursor: pointer;
   padding: 4px;
 }
 
+.close-btn:hover {
+  color: var(--user-accent);
+}
+
 .modal-body {
   padding: 24px;
-  color: #8da5bb;
+  color: var(--user-text-dim);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .modal-footer {
   padding: 16px 24px;
-  background: #0e2032;
+  background: var(--user-bg-base);
+  border-top: 1px solid var(--user-border);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -124,19 +129,19 @@ button {
 }
 
 .cancel-btn {
-  background: #1b344b;
-  border: 1px solid #294963;
-  color: #dbe7f5;
+  background: var(--user-surface-light);
+  border: 1px solid var(--user-border-light);
+  color: var(--user-text-dim);
 }
 
-.cancel-btn:hover { background: #234765; }
+.cancel-btn:hover { background: var(--user-border); color: #fff; }
 
 .confirm-btn {
   border: 0;
 }
 
-.confirm-btn.primary { background: #42aefa; color: #041322; }
-.confirm-btn.primary:hover { background: #62c7ff; box-shadow: 0 4px 15px rgba(66, 174, 250, 0.3); }
+.confirm-btn.primary { background: var(--user-gradient); color: var(--user-bg-base); }
+.confirm-btn.primary:hover { opacity: 0.9; box-shadow: 0 4px 15px var(--user-glow); }
 
 .confirm-btn.danger { background: #e88888; color: #041322; }
 .confirm-btn.danger:hover { background: #ffadad; box-shadow: 0 4px 15px rgba(232, 136, 136, 0.3); }

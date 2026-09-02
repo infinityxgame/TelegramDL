@@ -83,7 +83,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.0.8"
+APP_VERSION = "2.0.9"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1344,6 +1344,20 @@ class TelegramDownloader:
         if not info:
             return
 
+        chat_name = None
+        for c in self.config.get("listener_chats", []):
+            if c.get("id") == chat_id:
+                chat_name = c.get("name")
+                break
+        if not chat_name and message.chat:
+            chat_name = (
+                getattr(message.chat, "title", None)
+                or getattr(message.chat, "first_name", None)
+                or getattr(message.chat, "username", None)
+            )
+        if not chat_name:
+            chat_name = str(chat_id)
+
         item_id = f"listener:{chat_id}:{message.id}"
         self.listener_messages[item_id] = (message, chat_id)
         update_state(
@@ -1351,6 +1365,7 @@ class TelegramDownloader:
             job_id=f"listener:{chat_id}",
             message_id=message.id,
             chat_id=chat_id,
+            chat_name=str(chat_name),
             file_name=sanitize_file_name(info.file_name) or f"file_{message.id}",
             total_str=format_bytes(info.file_size),
             kind=info.kind,
@@ -1733,10 +1748,29 @@ class TelegramDownloader:
                     first_line = first_line[:50].strip()
                 name = f"{first_line}{ext}"
 
+        kind = "file"
+        if message.photo:
+            kind = "photo"
+        elif message.video or message.video_note or message.animation:
+            kind = "video"
+        elif message.audio or message.voice:
+            kind = "song"
+        elif message.document:
+            mime = getattr(media, "mime_type", "") or ""
+            lower_ext = ext.lower()
+            if mime.startswith("image/") or lower_ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".svg"}:
+                kind = "photo"
+            elif mime.startswith("video/") or lower_ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".wmv", ".m4v"}:
+                kind = "video"
+            elif mime.startswith("audio/") or lower_ext in {".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma"}:
+                kind = "song"
+            else:
+                kind = "file"
+
         return MediaInfo(
             media,
             name,
-            "media",
+            kind,
             int(getattr(media, "file_size", 0) or 0),
         )
 
