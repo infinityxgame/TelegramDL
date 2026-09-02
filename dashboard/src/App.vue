@@ -102,6 +102,7 @@ let disposed = false
 let syncingSettings = false
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
+const wasDownloading = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
 const bootstrapping = ref(true)
@@ -369,7 +370,14 @@ const connectWebSocket = () => {
     try {
       const data = JSON.parse(event.data)
       if (data.type === 'state') {
-        if (Array.isArray(data.downloads)) downloads.value = data.downloads
+        if (Array.isArray(data.downloads)) {
+          downloads.value = data.downloads
+          const isDownloading = data.downloads.some(d => ['downloading', 'queued'].includes(d.status))
+          if (wasDownloading.value && !isDownloading && data.downloads.length > 0) {
+            new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log("Audio blocked", e))
+          }
+          wasDownloading.value = isDownloading
+        }
         if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
       }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
