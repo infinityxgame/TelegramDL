@@ -44,8 +44,10 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .sidebar-nav button.selected { background: var(--user-icon-bg) !important; color: #eef7ff; box-shadow: inset 3px 0 var(--user-primary), 0 6px 20px rgba(0,0,0,0.2) }
 .sidebar-nav button.selected span { color: var(--user-accent) }
 
-.sidebar-status { display: flex; gap: 8px; align-items: center; color: #95aabd; font-size: 12px; padding: 11px 12px; background: var(--user-surface-light); border-radius: 10px }
+.sidebar-status { display: flex; gap: 8px; align-items: center; color: #95aabd; font-size: 12px; padding: 11px 12px; background: var(--user-surface-light); border-radius: 10px; transition: all 0.3s ease; border: 1px solid transparent; }
+.sidebar-status.is-disconnected { color: #ffadad; background: rgba(255, 77, 77, 0.05); border-color: rgba(255, 77, 77, 0.1); }
 .status-dot, .live-dot { width: 7px; height: 7px; background: #39db9a; border-radius: 99px; box-shadow: 0 0 12px #39db9a; animation: livePulse 1.8s ease-in-out infinite }
+.status-dot.disconnected { background: #ff4d4d; box-shadow: 0 0 12px #ff4d4d; animation-name: alertPulse; }
 .sidebar-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 7px; color: var(--user-text-dim); font-size: 12px }
 .sidebar-bottom strong { color: #dbe7f5; font-size: 15px }
 .mini-label, .eyebrow, .stat-label { font-size: 10px; letter-spacing: .14em; color: var(--user-text-dim); font-weight: 700 }
@@ -163,7 +165,8 @@ footer { text-align: center; color: var(--user-text-dim); font-size: 10px; margi
 
 @keyframes riseIn { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: translateY(0) } }
 @keyframes brandFloat { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-3px) rotate(-4deg) } }
-@keyframes livePulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 #39db9a66 } 50% { opacity: .65; box-shadow: 0 0 0 6px #39db9a00 } }
+@keyframes livePulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(57, 219, 154, 0.4) } 50% { opacity: .65; box-shadow: 0 0 0 6px rgba(57, 219, 154, 0) } }
+@keyframes alertPulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.4) } 50% { opacity: .65; box-shadow: 0 0 0 6px rgba(255, 77, 77, 0) } }
 @keyframes progressSheen { to { background-position: -200% 0 } }
 @keyframes toastIn { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: translateY(0) } }
 @keyframes softPulse { 0%, 100% { opacity: .65; transform: scale(1) } 50% { opacity: 1; transform: scale(1.1) } }
