@@ -52,7 +52,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .sidebar-bottom strong { color: #dbe7f5; font-size: 15px }
 .mini-label, .eyebrow, .stat-label { font-size: 10px; letter-spacing: .14em; color: var(--user-text-dim); font-weight: 700 }
 
-.main-content { width: min(1200px, 100%); padding: 34px 42px; margin: auto; margin-left: 230px }
+.main-content { flex: 1; padding: 34px 42px; margin-left: 230px; min-width: 0 }
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px }
 .topbar h1 { font: 700 30px 'Space Grotesk'; margin: 7px 0 0; color: #f4f8fc }
 .topbar-meta { font-size: 12px; color: var(--user-text-dim); display: flex; gap: 9px; align-items: center }
