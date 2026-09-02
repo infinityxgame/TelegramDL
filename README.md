@@ -223,7 +223,7 @@ sudo apt install -y \
     build-essential \
     pkg-config \
     libcairo2-dev \
-    libgirepository-2.0-dev \
+    libgirepository1.0-dev \
     gir1.2-gtk-3.0 \
     libgtk-3-dev \
     libglib2.0-dev \
