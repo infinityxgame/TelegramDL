@@ -279,6 +279,12 @@ jobs:
             --onedir \
             --name "TelegramDL" \
             --add-data "dashboard/dist:dashboard/dist" \
+            --exclude-module tkinter \
+            --exclude-module tcl \
+            --exclude-module tk \
+            --exclude-module _tkinter \
+            --exclude-module idlelib \
+            --exclude-module unittest \
             --collect-submodules gi \
             --collect-submodules gi.repository \
             --hidden-import gi \
@@ -306,12 +312,10 @@ jobs:
 
           echo ""
           echo "=========================================="
-          echo "Searching for gi / GTK files"
+          echo "Searching for critical files"
           echo "=========================================="
 
-          find dist/TelegramDL \
-            \( -iname "*gi*" -o -iname "*gtk*" -o -iname "*.typelib" \) \
-            | head -100
+          find dist/TelegramDL -maxdepth 3
 
 
       # ==================================================
@@ -346,10 +350,16 @@ jobs:
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           # ==================================================
-          # COPIAR BUNDLE COMPLETO DE PYINSTALLER
+          # COPIAR BUNDLE COMPLETO DE PYINSTALLER Y LIMPIAR
           # ==================================================
 
           cp -R dist/TelegramDL/* AppDir/usr/lib/TGDown/
+
+          # Eliminar archivos innecesarios para reducir peso
+          rm -rf AppDir/usr/lib/TGDown/_internal/share/icons
+          rm -rf AppDir/usr/lib/TGDown/_internal/share/help
+          rm -rf AppDir/usr/lib/TGDown/_internal/share/doc
+          rm -rf AppDir/usr/lib/TGDown/_internal/share/man
 
           # ==================================================
           # LAUNCHER
