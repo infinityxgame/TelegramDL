@@ -469,32 +469,37 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
   <div class="app-shell">
     <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
-      <div class="brand">
-        <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
-        <div class="brand-text">
-          <span>Telegram<span class="brand-accent">DL</span></span>
-          <span class="version-tag" v-if="version">v{{ version }}</span>
+      <div class="sidebar-main">
+        <div class="brand">
+          <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
+          <div class="brand-text">
+            <span>Telegram<span class="brand-accent">DL</span></span>
+            <span class="version-tag" v-if="version">v{{ version }}</span>
+          </div>
+          <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button>
         </div>
-        <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button>
-      </div>
-      <p class="sidebar-copy">Centro de descargas personal</p>
-      <nav class="sidebar-nav">
-        <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
-        <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
-        <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
-      </nav>
+        <p class="sidebar-copy">Centro de descargas personal</p>
+        <nav class="sidebar-nav">
+          <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
+          <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
+          <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
+        </nav>
 
-      <div v-if="authStatus.user" class="sidebar-user-badge">
-        <div class="user-info">
-          <UserCheck :size="14" class="user-icon" />
-          <span class="user-name">{{ authStatus.user.first_name }}</span>
+        <div v-if="authStatus.user" class="sidebar-user-badge">
+          <div class="user-info">
+            <UserCheck :size="14" class="user-icon" />
+            <span class="user-name">{{ authStatus.user.first_name }}</span>
+          </div>
+          <button class="logout-btn" title="Cerrar sesión de Telegram" @click="logoutTelegram">
+            <LogOut :size="13" />
+          </button>
         </div>
-        <button class="logout-btn" title="Cerrar sesión de Telegram" @click="logoutTelegram">
-          <LogOut :size="13" />
-        </button>
-      </div>
 
-      <div class="sidebar-status"><span class="status-dot"></span><span>Servicio conectado</span></div>
+        <div class="sidebar-status" :class="{ 'is-disconnected': !websocketConnected }">
+          <span class="status-dot" :class="{ 'disconnected': !websocketConnected }"></span>
+          <span>{{ websocketConnected ? 'Servicio conectado' : 'Servicio desconectado' }}</span>
+        </div>
+      </div>
       <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
     </aside>
 
