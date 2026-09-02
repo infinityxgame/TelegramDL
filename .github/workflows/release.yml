@@ -143,10 +143,16 @@ jobs:
             echo "Configurando entorno para compilación Universal2..."
             export ARCHFLAGS="-arch x86_64 -arch arm64"
             
-            # Reinstalamos las librerías con C-Extensions forzando compilación dual
-            # markupsafe y websockets son las que suelen dar el error "not a fat binary"
-            pip install --force-reinstall --no-binary markupsafe,websockets,tgcrypto-pyrofork \
-              markupsafe websockets tgcrypto-pyrofork
+            # Forzamos la descarga de wheels universal2 para las librerías con extensiones binarias
+            # Esto evita el error "not a fat binary" en PyInstaller
+            pip install --force-reinstall --only-binary=:all: \
+              --platform macosx_10_9_universal2 \
+              --platform macosx_11_0_universal2 \
+              --platform macosx_12_0_universal2 \
+              markupsafe websockets pydantic-core sniffio anyio
+
+            # tgcrypto-pyrofork suele requerir compilación desde fuente para ser universal
+            pip install --force-reinstall --no-binary tgcrypto-pyrofork tgcrypto-pyrofork
 
             # Instalamos pyobjc necesario para pywebview en formato universal
             pip install --upgrade --only-binary=:all: \
