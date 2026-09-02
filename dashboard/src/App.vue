@@ -311,46 +311,40 @@ const deleteDownload = async item => {
   })
 }
 
+const installUpdate = async () => {
+  try {
+    isUpdating.value = true
+    await api('/api/update/install', { method: 'POST' })
+
+    const pollProgress = async () => {
+      try {
+        const res = await api('/api/update/progress')
+        updateProgress.value = res
+        if (res.status.startsWith('error')) {
+          isUpdating.value = false
+          showMessage('Error: ' + res.status, true)
+          return
+        }
+        if (res.status !== 'finishing') {
+          setTimeout(pollProgress, 500)
+        }
+      } catch (e) {
+        setTimeout(pollProgress, 1000)
+      }
+    }
+    pollProgress()
+  } catch (err) {
+    isUpdating.value = false
+    showMessage('Error al iniciar la actualización: ' + err.message, true)
+  }
+}
+
 const checkForUpdates = async () => {
   try {
     const data = await api('/api/update/check')
     version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
-      openConfirm({
-        title: 'Actualización Disponible',
-        message: `Se ha encontrado una nueva versión (${data.latest}). La actualización es obligatoria para continuar usando la aplicación. Tamaño: ${formatSize(data.size_bytes)}`,
-        confirmText: 'Actualizar Ahora',
-        cancelText: 'Salir',
-        type: 'primary',
-        action: async () => {
-          try {
-            isUpdating.value = true
-            await api('/api/update/install', { method: 'POST' })
-
-            const pollProgress = async () => {
-              try {
-                const res = await api('/api/update/progress')
-                updateProgress.value = res
-                if (res.status.startsWith('error')) {
-                  isUpdating.value = false
-                  showMessage('Error: ' + res.status, true)
-                  return
-                }
-                if (res.status !== 'finishing') {
-                  setTimeout(pollProgress, 500)
-                }
-              } catch (e) {
-                setTimeout(pollProgress, 1000)
-              }
-            }
-            pollProgress()
-          } catch (err) {
-            isUpdating.value = false
-            showMessage('Error al iniciar la actualización: ' + err.message, true)
-          }
-        }
-      })
     }
   } catch (err) {
     console.error('Error al buscar actualizaciones:', err)
@@ -432,7 +426,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
 
       <div class="update-action-area" :class="{ 'is-loading': isUpdating }">
-        <button v-if="!isUpdating" class="primary-button update-btn" @click="modal.action()">
+        <button v-if="!isUpdating" class="primary-button update-btn" @click="installUpdate">
           <span>Actualizar ahora</span>
           <ArrowUpRight :size="18" />
         </button>

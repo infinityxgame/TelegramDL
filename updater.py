@@ -56,25 +56,18 @@ class AppUpdater:
         system = platform.system().lower()
         assets = release.get('assets', [])
 
-        # Primero buscamos coincidencias específicas del sistema
-        target_asset = None
         for asset in assets:
             name = asset['name'].lower()
-            if system == "windows" and ("win" in name or "windows" in name):
-                target_asset = asset
-                break
-            elif system == "linux" and "linux" in name:
-                target_asset = asset
-                break
-            elif system == "darwin" and ("mac" in name or "darwin" in name or "osx" in name):
-                target_asset = asset
-                break
+            if system == "windows" and name.endswith(".zip") and ("win" in name or "windows" in name):
+                return asset
+            elif system == "linux" and name.endswith(".appimage"):
+                return asset
+            elif system == "darwin" and name.endswith(".zip") and ("mac" in name or "darwin" in name or "osx" in name):
+                # Preferimos el ZIP para actualizar el .app en macOS
+                return asset
 
-        # Si no hay match específico, buscamos el primer zip o tar.gz
-        if not target_asset:
-            target_asset = next((a for a in assets if a['name'].endswith(('.zip', '.tar.gz'))), None)
-
-        return target_asset
+        # Si no hay match específico, buscamos el primer zip o AppImage
+        return next((a for a in assets if a['name'].endswith(('.zip', '.AppImage'))), None)
 
     def _download_progress_hook(self, count, block_size, total_size):
         self.progress["status"] = "downloading"
@@ -99,6 +92,11 @@ class AppUpdater:
                 reporthook=self._download_progress_hook
             )
 
+            if archive_path.suffix.lower() == '.appimage':
+                self.progress["status"] = "finishing"
+                self._finish_appimage_update(archive_path)
+                return
+
             self.progress["status"] = "extracting"
             extract_path = self.temp_dir / "extracted"
             if archive_path.suffix == '.zip':
@@ -110,14 +108,16 @@ class AppUpdater:
                     tar_ref.extractall(extract_path)
 
             # --- BUSCADOR DE RAÍZ DE APLICACIÓN ---
-            # Buscamos la carpeta que contiene '_internal'. Es la clave de PyInstaller.
+            # Buscamos la carpeta que contiene '_internal' o es el .app
             final_src = None
             for root, dirs, files in os.walk(extract_path):
-                if "_internal" in dirs:
+                if "_internal" in dirs or "TelegramDL.app" in dirs:
                     final_src = Path(root)
+                    if "TelegramDL.app" in dirs:
+                        final_src = final_src / "TelegramDL.app"
                     break
 
-            # Si no encontramos _internal, buscamos donde esté el .exe
+            # Si no encontramos los anteriores, buscamos donde esté el .exe
             if not final_src:
                 for root, dirs, files in os.walk(extract_path):
                     if "TelegramDL.exe" in files:
@@ -134,8 +134,35 @@ class AppUpdater:
             self.progress["status"] = f"error: {str(e)}"
             print(f"Error durante la instalación de la actualización: {e}")
 
+    def _finish_appimage_update(self, new_appimage_path):
+        """Específico para Linux AppImage"""
+        running_appimage = os.environ.get('APPIMAGE')
+        if not running_appimage:
+            print("No se detectó entorno AppImage (desarrollo).")
+            return
+
+        script_path = self.base_dir / "finish_update.sh"
+        appimage_filename = os.path.basename(running_appimage)
+
+        script_content = f"""#!/bin/bash
+sleep 2
+pkill -9 -f "{appimage_filename}"
+mv "{new_appimage_path}" "{running_appimage}"
+chmod +x "{running_appimage}"
+"{running_appimage}" &
+rm "$0"
+"""
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(script_content)
+
+        os.chmod(script_path, 0o755)
+        subprocess.Popen(["/bin/bash", str(script_path)], start_new_session=True)
+        os._exit(0)
+
     def _create_finish_script(self, src_path):
-        is_windows = platform.system() == "Windows"
+        system = platform.system()
+        is_windows = system == "Windows"
+        is_mac = system == "Darwin"
 
         if is_windows:
             script_path = self.base_dir / "finish_update.bat"
@@ -188,8 +215,36 @@ endlocal
                 f.write(script_content)
 
             os.startfile(script_path)
+        elif is_mac:
+            # macOS .app bundle replacement
+            script_path = self.base_dir / "finish_update.sh"
+            app_name = "TelegramDL.app"
+            # Asumimos que base_dir es el directorio que CONTIENE al .app si está instalado,
+            # o es el MacOS dir si está dentro del bundle.
+            # PyInstaller suele poner sys.executable en .app/Contents/MacOS/TelegramDL
+
+            target_app_path = self.base_dir
+            if target_app_path.name == "MacOS" and target_app_path.parent.name == "Contents":
+                target_app_path = target_app_path.parent.parent # La raíz del .app
+
+            # Si src_path es el .app descargado, queremos reemplazar el target_app_path
+
+            script_content = f"""#!/bin/bash
+sleep 2
+pkill -9 -f "TelegramDL"
+rm -rf "{target_app_path}"
+cp -R "{src_path}" "{target_app_path.parent}"
+rm -rf "{self.temp_dir}"
+open "{target_app_path}"
+rm "$0"
+"""
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(script_content)
+
+            os.chmod(script_path, 0o755)
+            subprocess.Popen(["/bin/bash", str(script_path)], start_new_session=True)
         else:
-            # Linux / Mac
+            # Linux (Standard / Internal)
             script_path = self.base_dir / "finish_update.sh"
             exe_name = "TelegramDL"
             exe_path = self.base_dir / exe_name

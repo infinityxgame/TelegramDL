@@ -412,15 +412,7 @@ pip install pyinstaller
 Compilar:
 
 ```powershell
-pyinstaller `
-    --noconfirm `
-    --clean `
-    --onedir `
-    --noconsole `
-    --icon="icon.ico" `
-    --name "TelegramDL" `
-    --add-data "dashboard/dist;dashboard/dist" `
-    TelegramDL.py
+pyinstaller --noconfirm --clean --onedir --noconsole --icon="icon.ico" --name "TelegramDL" --add-data "dashboard/dist;dashboard/dist" TelegramDL.py
 ```
 
 El resultado estará en:
@@ -438,9 +430,7 @@ dist/TelegramDL/TelegramDL.exe
 Para distribuirlo como ZIP:
 
 ```powershell
-Compress-Archive `
-    -Path dist/TelegramDL/* `
-    -DestinationPath "TelegramDL-Windows.zip"
+Compress-Archive -Path dist/TelegramDL/* -DestinationPath "TelegramDL-Windows.zip"
 ```
 
 ---
@@ -458,21 +448,7 @@ pip install pyinstaller
 Compila:
 
 ```bash
-pyinstaller \
-    --noconfirm \
-    --clean \
-    --onedir \
-    --name "TelegramDL" \
-    --add-data "dashboard/dist:dashboard/dist" \
-    --collect-submodules gi \
-    --collect-submodules gi.repository \
-    --hidden-import gi \
-    --hidden-import gi.repository.Gtk \
-    --hidden-import gi.repository.Gdk \
-    --hidden-import gi.repository.GLib \
-    --hidden-import gi.repository.GObject \
-    --hidden-import webview.platforms.gtk \
-    TelegramDL.py
+pyinstaller --noconfirm --clean --onedir --name "TelegramDL" --add-data "dashboard/dist:dashboard/dist" --collect-submodules gi --collect-submodules gi.repository --hidden-import gi --hidden-import gi.repository.Gtk --hidden-import gi.repository.Gdk --hidden-import gi.repository.GLib --hidden-import gi.repository.GObject --hidden-import webview.platforms.gtk TelegramDL.py
 ```
 
 El bundle generado estará en:
@@ -521,60 +497,18 @@ icon.icns
 
 ---
 
-## macOS Intel
+## macOS Universal
 
 La compilación utiliza:
 
 ```text
-x86_64
+universal2
 ```
 
 Comando:
 
 ```bash
-pyinstaller \
-    --noconfirm \
-    --clean \
-    --onedir \
-    --windowed \
-    --icon="icon.icns" \
-    --target-arch x86_64 \
-    --osx-bundle-identifier "com.infinityxgame.tgdown" \
-    --name "TelegramDL" \
-    --add-data "dashboard/dist:dashboard/dist" \
-    TelegramDL.py
-```
-
----
-
-## macOS Apple Silicon
-
-Para Macs con procesadores Apple Silicon:
-
-```text
-arm64
-```
-
-Comando:
-
-```bash
-pyinstaller \
-    --noconfirm \
-    --clean \
-    --onedir \
-    --windowed \
-    --icon="icon.icns" \
-    --target-arch arm64 \
-    --osx-bundle-identifier "com.infinityxgame.tgdown" \
-    --name "TelegramDL" \
-    --add-data "dashboard/dist:dashboard/dist" \
-    TelegramDL.py
-```
-
-El resultado será:
-
-```text
-dist/TelegramDL.app
+pyinstaller --noconfirm --clean --onedir --windowed --icon="icon.icns" --target-arch universal2 --osx-bundle-identifier "com.infinityxgame.tgdown" --name "TelegramDL" --add-data "dashboard/dist:dashboard/dist" TelegramDL.py
 ```
 
 ---
@@ -584,62 +518,19 @@ dist/TelegramDL.app
 Para firmar localmente la aplicación:
 
 ```bash
-codesign \
-    --force \
-    --deep \
-    --sign - \
-    "dist/TelegramDL.app"
+codesign --force --deep --sign - "dist/TelegramDL.app"
 ```
 
 Comprobar la firma:
 
 ```bash
-codesign \
-    --verify \
-    --deep \
-    --strict \
-    --verbose=2 \
-    "dist/TelegramDL.app"
+codesign --verify --deep --strict --verbose=2 "dist/TelegramDL.app"
 ```
 
 Comprobar la arquitectura:
 
 ```bash
 file "dist/TelegramDL.app/Contents/MacOS/TelegramDL"
-```
-
----
-
-# 💿 Crear un DMG en macOS
-
-Una vez compilada y firmada la aplicación:
-
-```bash
-rm -rf dmg
-mkdir dmg
-```
-
-Copiar la aplicación:
-
-```bash
-cp -R "dist/TelegramDL.app" dmg/
-```
-
-Crear el acceso a Applications:
-
-```bash
-ln -s /Applications dmg/Applications
-```
-
-Crear el DMG:
-
-```bash
-hdiutil create \
-    -volname "TGDown" \
-    -srcfolder dmg \
-    -ov \
-    -format UDZO \
-    "TelegramDL.dmg"
 ```
 
 ---
@@ -657,8 +548,7 @@ El workflow compila automáticamente las cuatro versiones:
 ```text
 Windows
 Linux x86_64
-macOS Intel
-macOS ARM64
+macOS Universal
 ```
 
 Cada compilación utiliza el tag de Git como número de versión.
@@ -674,34 +564,8 @@ generará archivos similares a:
 ```text
 TelegramDL-Windows-v2.0.9.zip
 TelegramDL-Linux-x86_64-v2.0.9.AppImage
-TelegramDL-macOS-Intel-v2.0.9.dmg
-TelegramDL-macOS-ARM64-v2.0.9.dmg
+TelegramDL-macOS-Universal-v2.0.9.zip
 ```
-
----
-
-## Crear una nueva versión
-
-Después de realizar los cambios:
-
-```bash
-git add .
-git commit -m "Release v2.0.9"
-```
-
-Crear el tag:
-
-```bash
-git tag v2.0.9
-```
-
-Subirlo a GitHub:
-
-```bash
-git push origin v2.0.9
-```
-
-El workflow se ejecutará automáticamente y creará el **GitHub Release** con los cuatro archivos compilados.
 
 ---
 

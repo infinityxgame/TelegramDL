@@ -77,7 +77,10 @@ except ImportError:
 
 # --- Paths and persistent configuration ---
 if getattr(sys, "frozen", False):
-    BASE_DIR = Path(sys.executable).resolve().parent
+    if os.environ.get('APPIMAGE'):
+        BASE_DIR = Path(os.environ.get('APPIMAGE')).resolve().parent
+    else:
+        BASE_DIR = Path(sys.executable).resolve().parent
     BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
 else:
     BASE_DIR = Path(__file__).resolve().parent
@@ -514,6 +517,12 @@ async def check_auth_status() -> Dict[str, Any]:
 
 # --- Dashboard API ---
 app = FastAPI(title="Telegram DL API")
+
+@app.post("/api/app/exit")
+async def exit_app():
+    stop_event.set()
+    return {"status": "ok"}
+
 
 @app.get("/api/update/check")
 async def check_update():

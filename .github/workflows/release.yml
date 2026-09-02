@@ -34,22 +34,13 @@ jobs:
             asset_extension: .AppImage
 
           # =========================
-          # macOS INTEL
+          # macOS UNIVERSAL
           # =========================
-          - platform: macOS-Intel
-            os: macos-15-intel
-            artifact_name: TelegramDL-macOS-Intel
-            asset_extension: .dmg
-            macos_arch: x86_64
-
-          # =========================
-          # macOS APPLE SILICON
-          # =========================
-          - platform: macOS-ARM64
-            os: macos-15
-            artifact_name: TelegramDL-macOS-ARM64
-            asset_extension: .dmg
-            macos_arch: arm64
+          - platform: macOS-Universal
+            os: macos-14
+            artifact_name: TelegramDL-macOS
+            asset_extension: .zip
+            macos_arch: universal2
 
     steps:
 
@@ -601,27 +592,15 @@ jobs:
 
 
       # ==================================================
-      # CREATE macOS DMG
+      # CREATE macOS ARTIFACT (ZIP)
       # ==================================================
 
-      - name: Create macOS DMG
+      - name: Create macOS Artifact
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          rm -rf dmg
-          mkdir dmg
-
-          cp -R "dist/TelegramDL.app" dmg/
-
-          ln -s /Applications dmg/Applications
-
-          hdiutil create \
-            -volname "TGDown" \
-            -srcfolder dmg \
-            -ov \
-            -format UDZO \
-            "${{ matrix.artifact_name }}-${{ github.ref_name }}.dmg"
-
+          cd dist
+          zip -r "../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip" "TelegramDL.app"
 
       # ==================================================
       # UPLOAD RELEASE ASSET
