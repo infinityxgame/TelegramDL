@@ -143,22 +143,24 @@ jobs:
             echo "Configurando entorno para compilación Universal2..."
             export ARCHFLAGS="-arch x86_64 -arch arm64"
             
-            # Forzamos la descarga de wheels universal2 para las librerías con extensiones binarias
-            # Esto evita el error "not a fat binary" en PyInstaller
-            pip install --force-reinstall --only-binary=:all: \
+            # Truco para macOS: Descargamos los wheels universal2 y luego los instalamos
+            # Esto evita el error de pip con el parámetro --platform
+            mkdir temp_wheels
+            pip download --only-binary=:all: \
               --platform macosx_10_9_universal2 \
               --platform macosx_11_0_universal2 \
               --platform macosx_12_0_universal2 \
+              --dest temp_wheels \
               markupsafe websockets pydantic-core sniffio anyio
+
+            pip install --force-reinstall temp_wheels/*.whl
 
             # tgcrypto-pyrofork suele requerir compilación desde fuente para ser universal
             pip install --force-reinstall --no-binary tgcrypto-pyrofork tgcrypto-pyrofork
 
-            # Instalamos pyobjc necesario para pywebview en formato universal
-            pip install --upgrade --only-binary=:all: \
-              --platform macosx_11_0_universal2 \
-              --platform macosx_12_0_universal2 \
-              pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
+            # Instalamos pyobjc necesario para pywebview
+            # Como vimos en los logs, pyobjc ya suele bajar universal2, pero aseguramos
+            pip install --upgrade pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
           fi
 
           pip install pyinstaller
