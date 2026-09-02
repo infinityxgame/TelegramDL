@@ -131,6 +131,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
 
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            # Fix for universal2 build: ensure we have fat binaries (x86_64 + arm64)
+            # We force universal2 wheels for packages that provide them
+            # We also include pyobjc which is required by pywebview on macOS
+            pip install --upgrade --only-binary=:all: \
+              --platform macosx_10_9_universal2 \
+              --platform macosx_11_0_universal2 \
+              --platform macosx_12_0_universal2 \
+              markupsafe websockets jinja2 pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
+            
+            # For packages that need to be compiled as universal2
+            export ARCHFLAGS="-arch x86_64 -arch arm64"
+            pip install --no-binary tgcrypto-pyrofork tgcrypto-pyrofork || true
+          fi
+
           pip install -r requirements.txt
 
           if [ "${RUNNER_OS}" = "Linux" ]; then
