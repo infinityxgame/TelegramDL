@@ -112,9 +112,17 @@ const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage
 const formatSize = (bytes) => {
   if (!bytes) return '0 B'
   const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const parseSpeed = (speedStr) => {
+  if (!speedStr || typeof speedStr !== 'string') return 0
+  const match = speedStr.match(/^([\d.]+)\s*([A-Za-z]+)\/s$/)
+  if (!match) return 0
+  const multipliers = { 'B': 1, 'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4 }
+  return parseFloat(match[1]) * (multipliers[match[2].toUpperCase()] || 1)
 }
 
 const syncSettings = async nextSettings => {
@@ -387,6 +395,11 @@ const recentDownloads = computed(() => downloads.value.filter(item => ['complete
 const completedCount = computed(() => downloads.value.filter(item => item.status === 'completed').length)
 const skippedCount = computed(() => downloads.value.filter(item => item.status === 'skipped').length)
 const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
+const totalSpeed = computed(() => {
+  const totalBytes = downloads.value.reduce((acc, item) =>
+    item.status === 'downloading' ? acc + parseSpeed(item.speed) : acc, 0)
+  return totalBytes > 0 ? formatSize(totalBytes) + '/s' : '0 B/s'
+})
 
 const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
 const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
@@ -535,7 +548,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
     </aside>
 
     <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : (activeView === 'listener' ? 'Escucha' : 'Ajustes') }}</h1></div><div class="topbar-meta">Actualización automática <span class="live-dot"></span></div></header>
+      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : (activeView === 'listener' ? 'Escucha' : 'Ajustes') }}</h1></div><div class="topbar-meta">Velocidad total: {{ totalSpeed }}</div></header>
 
       <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
       <div v-if="error" class="toast danger">{{ error }}</div>
