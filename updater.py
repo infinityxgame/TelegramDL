@@ -54,20 +54,51 @@ class AppUpdater:
 
     def get_asset_for_platform(self, release):
         system = platform.system().lower()
+        # Normalización adicional para mayor compatibilidad
+        if os.name == 'nt':
+            system = 'windows'
+        elif system == 'darwin':
+            system = 'darwin'
+
         assets = release.get('assets', [])
 
+        # 1. Búsqueda específica por palabras clave y extensión
         for asset in assets:
             name = asset['name'].lower()
-            if system == "windows" and name.endswith(".zip") and ("win" in name or "windows" in name):
-                return asset
-            elif system == "linux" and name.endswith(".appimage"):
-                return asset
-            elif system == "darwin" and name.endswith(".zip") and ("mac" in name or "darwin" in name or "osx" in name):
-                # Preferimos el ZIP para actualizar el .app en macOS
-                return asset
+            if system == "windows":
+                # Aceptar .zip o .exe que contengan win/windows o que sean genéricos pero no de otra plataforma
+                if name.endswith((".zip", ".exe")):
+                    if any(x in name for x in ["win", "windows"]):
+                        return asset
+            elif system == "linux":
+                if name.endswith(".appimage") or (name.endswith(".zip") and "linux" in name):
+                    return asset
+            elif system == "darwin":
+                if name.endswith(".zip") and any(x in name for x in ["mac", "darwin", "osx", "apple"]):
+                    return asset
 
-        # Si no hay match específico, buscamos el primer zip o AppImage
-        return next((a for a in assets if a['name'].endswith(('.zip', '.AppImage'))), None)
+        # 2. Si no hubo match exacto, buscar un candidato genérico pero excluyendo otras plataformas
+        for asset in assets:
+            name = asset['name'].lower()
+            if not name.endswith((".zip", ".appimage", ".exe")):
+                continue
+
+            if system == "windows":
+                if not any(x in name for x in ["mac", "darwin", "osx", "linux", "apple", "appimage"]):
+                    return asset
+            elif system == "darwin":
+                if not any(x in name for x in ["win", "windows", "linux", "appimage"]):
+                    return asset
+            elif system == "linux":
+                if not any(x in name for x in ["win", "windows", "mac", "darwin", "osx", "apple"]):
+                    return asset
+
+        # 3. Fallback final: si solo hay un asset descargable, lo usamos
+        downloadable = [a for a in assets if a['name'].lower().endswith(('.zip', '.appimage', '.exe'))]
+        if len(downloadable) == 1:
+            return downloadable[0]
+
+        return None
 
     def _download_progress_hook(self, count, block_size, total_size):
         self.progress["status"] = "downloading"

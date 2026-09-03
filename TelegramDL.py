@@ -539,13 +539,14 @@ async def exit_app():
 async def check_update():
     latest = updater.check_for_update()
     size = 0
+    asset = None
     if latest:
         asset = updater.get_asset_for_platform(latest)
         if asset:
             size = asset.get('size', 0)
 
     return {
-        "update_available": latest is not None,
+        "update_available": latest is not None and asset is not None,
         "latest": latest["tag_name"] if latest else None,
         "current": APP_VERSION,
         "size_bytes": size
