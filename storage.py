@@ -201,10 +201,10 @@ class Storage:
             self.db.execute("DELETE FROM downloads WHERE id=?", (item_id,))
             self.db.commit()
 
-    def get_chunks(self, download_id: str) -> Iterable[int]:
+    def chunks(self, download_id: str) -> set[int]:
         with self._lock:
             rows = self.db.execute("SELECT chunk_index FROM download_chunks WHERE download_id=?", (download_id,))
-            return [row["chunk_index"] for row in rows]
+            return {row["chunk_index"] for row in rows}
 
     def add_chunk(self, download_id: str, chunk_index: int) -> None:
         with self._lock:
@@ -214,4 +214,11 @@ class Storage:
     def delete_chunks(self, download_id: str) -> None:
         with self._lock:
             self.db.execute("DELETE FROM download_chunks WHERE download_id=?", (download_id,))
+            self.db.commit()
+
+    def clear_finished_downloads(self) -> None:
+        with self._lock:
+            self.db.execute(
+                "DELETE FROM downloads WHERE status IN ('completed', 'skipped', 'failed', 'cancelled')"
+            )
             self.db.commit()
