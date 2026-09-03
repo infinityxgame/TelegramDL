@@ -31,7 +31,12 @@ class Storage:
                 CREATE TABLE IF NOT EXISTS listener_chats (
                     chat_id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
-                    auto_download INTEGER NOT NULL DEFAULT 0
+                    auto_download INTEGER NOT NULL DEFAULT 0,
+                    f_photos INTEGER NOT NULL DEFAULT 1,
+                    f_videos INTEGER NOT NULL DEFAULT 1,
+                    f_audios INTEGER NOT NULL DEFAULT 1,
+                    f_docs INTEGER NOT NULL DEFAULT 1,
+                    f_stickers INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE TABLE IF NOT EXISTS downloads (
                     id TEXT PRIMARY KEY, job_id TEXT, message_id INTEGER,
@@ -52,6 +57,13 @@ class Storage:
                 );
                 """
             )
+            self.db.commit()
+            # Migraciones básicas
+            for col in ["f_photos", "f_videos", "f_audios", "f_docs", "f_stickers"]:
+                try:
+                    self.db.execute(f"ALTER TABLE listener_chats ADD COLUMN {col} INTEGER NOT NULL DEFAULT 1")
+                except sqlite3.OperationalError:
+                    pass
             self.db.commit()
 
     def _set(self, key: str, value: Any) -> None:
@@ -87,8 +99,17 @@ class Storage:
             for key in ("download_folder", "color_id"):
                 if key in rows: config[key] = rows[key] if key != "color_id" else (None if rows[key] == "None" else int(rows[key]))
             config["speed_limit"] = {"value": float(rows.get("speed_value", defaults["speed_limit"]["value"])), "unit": rows.get("speed_unit", "MB")}
-            chats = [dict(row) for row in self.db.execute("SELECT chat_id AS id,name,auto_download FROM listener_chats ORDER BY chat_id")]
-            config["listener_chats"] = [{"id": c["id"], "name": c["name"], "auto_download": bool(c["auto_download"])} for c in chats]
+            chats = [dict(row) for row in self.db.execute("SELECT * FROM listener_chats ORDER BY chat_id")]
+            config["listener_chats"] = [{
+                "id": c["chat_id"],
+                "name": c["name"],
+                "auto_download": bool(c["auto_download"]),
+                "f_photos": bool(c.get("f_photos", 1)),
+                "f_videos": bool(c.get("f_videos", 1)),
+                "f_audios": bool(c.get("f_audios", 1)),
+                "f_docs": bool(c.get("f_docs", 1)),
+                "f_stickers": bool(c.get("f_stickers", 1))
+            } for c in chats]
             config["listener_chat_ids"] = [c["id"] for c in config["listener_chats"]]
             return config
 
@@ -100,7 +121,19 @@ class Storage:
             self._set("speed_unit", config["speed_limit"]["unit"])
             self.db.execute("DELETE FROM listener_chats")
             for chat in config.get("listener_chats", []):
-                self.db.execute("INSERT INTO listener_chats(chat_id,name,auto_download) VALUES(?,?,?)", (int(chat["id"]), chat.get("name", str(chat["id"])), int(bool(chat.get("auto_download")))))
+                self.db.execute(
+                    "INSERT INTO listener_chats(chat_id,name,auto_download,f_photos,f_videos,f_audios,f_docs,f_stickers) VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        int(chat["id"]),
+                        chat.get("name", str(chat["id"])),
+                        int(bool(chat.get("auto_download"))),
+                        int(bool(chat.get("f_photos", True))),
+                        int(bool(chat.get("f_videos", True))),
+                        int(bool(chat.get("f_audios", True))),
+                        int(bool(chat.get("f_docs", True))),
+                        int(bool(chat.get("f_stickers", True)))
+                    )
+                )
             self.db.commit()
 
     def load_downloads(self, legacy: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
@@ -108,30 +141,77 @@ class Storage:
             if self.db.execute("SELECT 1 FROM downloads LIMIT 1").fetchone() is None and legacy and legacy.exists():
                 try:
                     data = json.loads(legacy.read_text(encoding="utf-8"))
-                    for item in data.values() if isinstance(data, dict) else []: self.upsert_download(item)
-                except (OSError, ValueError, json.JSONDecodeError): pass
-            return {row["id"]: dict(row) for row in self.db.execute("SELECT * FROM downloads ORDER BY created_at DESC")}
+                    for item_id, item in data.items():
+                        self.db.execute(
+                            """
+                            INSERT INTO downloads(
+                                id, job_id, message_id, chat_id, file_name,
+                                status, progress, total_str, current_str, speed,
+                                kind, file_path, source, updated_at, created_at
+                            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            (
+                                item_id, item.get("job_id"), item.get("message_id"),
+                                item.get("chat_id"), item.get("file_name", "unknown"),
+                                item.get("status", "failed"), item.get("progress", 0),
+                                item.get("total_str", "0 B"), item.get("current_str", "0 B"),
+                                item.get("speed", "0 B/s"), item.get("kind"),
+                                item.get("file_path"), item.get("source"),
+                                item.get("updated_at", time.time()),
+                                item.get("created_at", time.time())
+                            )
+                        )
+                    self.db.commit()
+                except (OSError, ValueError, json.JSONDecodeError):
+                    pass
 
-    def upsert_download(self, item: Dict[str, Any]) -> None:
-        now = item.get("updated_at", time.time())
-        fields = (item.get("id"), item.get("job_id"), item.get("message_id"), item.get("chat_id"), item.get("file_name", "Cargando..."), item.get("status", "pending"), item.get("progress", 0), item.get("total_str", "0 B"), item.get("current_str", "0 B"), item.get("speed", "0 B/s"), item.get("kind"), item.get("file_path"), item.get("source"), now, item.get("created_at", now))
+            rows = self.db.execute("SELECT * FROM downloads ORDER BY updated_at DESC")
+            return {row["id"]: dict(row) for row in rows}
+
+    def save_download(self, item_id: str, data: Dict[str, Any]) -> None:
         with self._lock:
-            self.db.execute("""INSERT INTO downloads(id,job_id,message_id,chat_id,file_name,status,progress,total_str,current_str,speed,kind,file_path,source,updated_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET job_id=excluded.job_id,message_id=excluded.message_id,chat_id=excluded.chat_id,file_name=excluded.file_name,status=excluded.status,progress=excluded.progress,total_str=excluded.total_str,current_str=excluded.current_str,speed=excluded.speed,kind=excluded.kind,file_path=excluded.file_path,source=excluded.source,updated_at=excluded.updated_at""", fields)
+            self.db.execute(
+                """
+                INSERT INTO downloads(
+                    id, job_id, message_id, chat_id, file_name,
+                    status, progress, total_str, current_str, speed,
+                    kind, file_path, source, updated_at, created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    status=excluded.status, progress=excluded.progress,
+                    total_str=excluded.total_str, current_str=excluded.current_str,
+                    speed=excluded.speed, updated_at=excluded.updated_at,
+                    file_path=excluded.file_path, kind=excluded.kind
+                """,
+                (
+                    item_id, data.get("job_id"), data.get("message_id"),
+                    data.get("chat_id"), data.get("file_name", "unknown"),
+                    data.get("status", "failed"), data.get("progress", 0),
+                    data.get("total_str", "0 B"), data.get("current_str", "0 B"),
+                    data.get("speed", "0 B/s"), data.get("kind"),
+                    data.get("file_path"), data.get("source"),
+                    data.get("updated_at", time.time()),
+                    data.get("created_at", data.get("updated_at", time.time()))
+                )
+            )
             self.db.commit()
 
     def delete_download(self, item_id: str) -> None:
-        with self._lock: self.db.execute("DELETE FROM downloads WHERE id=?", (item_id,)); self.db.commit()
-
-    def clear_finished_downloads(self) -> int:
-        """Elimina solo registros terminados; nunca toca los archivos físicos."""
         with self._lock:
-            self.db.execute("DELETE FROM download_chunks WHERE download_id IN (SELECT id FROM downloads WHERE status IN ('completed','skipped','failed','cancelled'))")
-            cursor = self.db.execute("DELETE FROM downloads WHERE status IN ('completed','skipped','failed','cancelled')")
+            self.db.execute("DELETE FROM downloads WHERE id=?", (item_id,))
             self.db.commit()
-            return cursor.rowcount
 
-    def chunks(self, item_id: str) -> set[int]:
-        with self._lock: return {r[0] for r in self.db.execute("SELECT chunk_index FROM download_chunks WHERE download_id=?", (item_id,))}
+    def get_chunks(self, download_id: str) -> Iterable[int]:
+        with self._lock:
+            rows = self.db.execute("SELECT chunk_index FROM download_chunks WHERE download_id=?", (download_id,))
+            return [row["chunk_index"] for row in rows]
 
-    def add_chunk(self, item_id: str, index: int) -> None:
-        with self._lock: self.db.execute("INSERT OR IGNORE INTO download_chunks(download_id,chunk_index) VALUES(?,?)", (item_id, index)); self.db.commit()
+    def add_chunk(self, download_id: str, chunk_index: int) -> None:
+        with self._lock:
+            self.db.execute("INSERT OR IGNORE INTO download_chunks(download_id, chunk_index) VALUES(?,?)", (download_id, chunk_index))
+            self.db.commit()
+
+    def delete_chunks(self, download_id: str) -> None:
+        with self._lock:
+            self.db.execute("DELETE FROM download_chunks WHERE download_id=?", (download_id,))
+            self.db.commit()

@@ -86,7 +86,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.1.3"
+APP_VERSION = "2.1.4"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -196,10 +196,16 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
             raw_chat_id = raw_chat.get("id")
             name = str(raw_chat.get("name", "")).strip()
             auto_download = bool(raw_chat.get("auto_download", False))
+            f_photos = bool(raw_chat.get("f_photos", True))
+            f_videos = bool(raw_chat.get("f_videos", True))
+            f_audios = bool(raw_chat.get("f_audios", True))
+            f_docs = bool(raw_chat.get("f_docs", True))
+            f_stickers = bool(raw_chat.get("f_stickers", True))
         else:
             raw_chat_id = raw_chat
             name = ""
             auto_download = False
+            f_photos = f_videos = f_audios = f_docs = f_stickers = True
         try:
             chat_id = int(raw_chat_id)
         except (TypeError, ValueError):
@@ -212,6 +218,11 @@ def normalize_config(raw: Any, strict: bool = False) -> Dict[str, Any]:
                 "id": chat_id,
                 "name": name or str(chat_id),
                 "auto_download": auto_download,
+                "f_photos": f_photos,
+                "f_videos": f_videos,
+                "f_audios": f_audios,
+                "f_docs": f_docs,
+                "f_stickers": f_stickers,
             })
 
     return {
@@ -283,7 +294,7 @@ websocket_broadcast_dirty = False
 def save_downloads_state() -> None:
     global state_dirty
     for item in downloads_state.values():
-        storage.upsert_download(item)
+        storage.save_download(item["id"], item)
     state_dirty = False
 
 
@@ -293,7 +304,7 @@ def load_downloads_state() -> None:
     for item in downloads_state.values():
         if item.get("status") == "downloading":
             item["status"] = "queued"
-            storage.upsert_download(item)
+            storage.save_download(item["id"], item)
 
 
 def websocket_snapshot() -> Dict[str, Any]:
@@ -377,7 +388,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
     state_dirty = True
-    storage.upsert_download(downloads_state[item_id])
+    storage.save_download(item_id, downloads_state[item_id])
     _prune_state()
     schedule_websocket_broadcast()
 
@@ -860,6 +871,12 @@ async def resolve_listener_chat(chat_id: int) -> Dict[str, Any]:
             "name": str(name),
             "type": str(getattr(chat, "type", "")),
             "username": getattr(chat, "username", None),
+            "auto_download": False,
+            "f_photos": True,
+            "f_videos": True,
+            "f_audios": True,
+            "f_docs": True,
+            "f_stickers": True,
         },
     }
 
@@ -1380,15 +1397,24 @@ class TelegramDownloader:
         chat_id = message.chat.id
         if chat_id not in self.watched_chat_ids:
             return
+
+        chat_config = next((c for c in self.config.get("listener_chats", []) if c.get("id") == chat_id), None)
+        if not chat_config:
+            return
+
         info = self._extract_media_info(message)
         if not info:
             return
 
-        chat_name = None
-        for c in self.config.get("listener_chats", []):
-            if c.get("id") == chat_id:
-                chat_name = c.get("name")
-                break
+        # Aplicar filtros por tipo de archivo
+        kind = info.kind
+        if kind == "photo" and not chat_config.get("f_photos", True): return
+        if kind == "video" and not chat_config.get("f_videos", True): return
+        if kind == "song" and not chat_config.get("f_audios", True): return
+        if kind == "sticker" and not chat_config.get("f_stickers", True): return
+        if kind == "file" and not chat_config.get("f_docs", True): return
+
+        chat_name = chat_config.get("name")
         if not chat_name and message.chat:
             chat_name = (
                 getattr(message.chat, "title", None)
@@ -1791,6 +1817,8 @@ class TelegramDownloader:
         kind = "file"
         if message.photo:
             kind = "photo"
+        elif message.sticker:
+            kind = "sticker"
         elif message.video or message.video_note or message.animation:
             kind = "video"
         elif message.audio or message.voice:

@@ -30,7 +30,14 @@ const load = async () => {
   try {
     const [settings, detected] = await Promise.all([api('/api/listener/settings'), api('/api/listener')])
     enabled.value = settings.enabled
-    chats.value = settings.chats || (settings.chat_ids || []).map(id => ({ id, name: String(id), auto_download: false }))
+    chats.value = (settings.chats || []).map(chat => ({
+      ...chat,
+      f_photos: chat.f_photos ?? true,
+      f_videos: chat.f_videos ?? true,
+      f_audios: chat.f_audios ?? true,
+      f_docs: chat.f_docs ?? true,
+      f_stickers: chat.f_stickers ?? true
+    }))
     items.value = detected
     error.value = ''
   } catch (err) {
@@ -45,7 +52,14 @@ const save = async () => {
       body: JSON.stringify({ enabled: enabled.value, chats: chats.value })
     })
     enabled.value = data.enabled
-    chats.value = data.chats || (data.chat_ids || []).map(id => ({ id, name: String(id), auto_download: false }))
+    chats.value = (data.chats || []).map(chat => ({
+      ...chat,
+      f_photos: chat.f_photos ?? true,
+      f_videos: chat.f_videos ?? true,
+      f_audios: chat.f_audios ?? true,
+      f_docs: chat.f_docs ?? true,
+      f_stickers: chat.f_stickers ?? true
+    }))
     error.value = ''
     props.notify('Configuración de escucha guardada')
   } catch (err) { props.notify(err.message, true) } finally { saving.value = false }
@@ -69,6 +83,10 @@ const removeChat = async id => {
 }
 const toggleAutoDownload = async chat => {
   chat.auto_download = !chat.auto_download
+  await save()
+}
+const toggleFilter = async (chat, key) => {
+  chat[key] = !chat[key]
   await save()
 }
 const toggle = async () => { await save() }
@@ -198,7 +216,14 @@ const connectWebSocket = () => {
         if (Array.isArray(data.listener)) items.value = data.listener
         if (data.settings) {
           enabled.value = data.settings.listener_enabled
-          chats.value = data.settings.listener_chats || (data.settings.listener_chat_ids || []).map(id => ({ id, name: String(id), auto_download: false }))
+          chats.value = (data.settings.listener_chats || []).map(chat => ({
+            ...chat,
+            f_photos: chat.f_photos ?? true,
+            f_videos: chat.f_videos ?? true,
+            f_audios: chat.f_audios ?? true,
+            f_docs: chat.f_docs ?? true,
+            f_stickers: chat.f_stickers ?? true
+          }))
         }
       }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
@@ -218,7 +243,27 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(reconnec
   <section class="listener-view">
     <section class="listener-hero"><div><span class="hero-kicker"><Radio :size="13" /> MONITOR DE MENSAJES</span><h2>Escucha multimedia en tiempo real</h2><p>Cuando llegue un archivo a uno de tus chats, aparecerá aquí listo para descargar.</p></div><label class="switch large"><input v-model="enabled" type="checkbox" @change="toggle"><span></span><b>{{ enabled ? 'Escucha activa' : 'Escucha pausada' }}</b></label></section>
     <div class="listener-grid">
-    <section class="panel listener-config"><div class="panel-heading"><div><span class="eyebrow"><MessageCircle :size="12" /> ORÍGENES</span><h2>Chats vigilados</h2></div><span class="count-pill">{{ chats.length }} configurados</span></div><p class="helper-text">Añade el ID numérico de un grupo, canal o chat privado. Se consultará su nombre y podrás decidir si descarga automáticamente sus archivos.</p><div class="listener-add"><input v-model="newChatId" @keyup.enter="addChat" placeholder="Ej. -1001234567890"><button class="save-button" :disabled="saving" @click="addChat"><Plus :size="15" /> Añadir</button></div><div v-if="!chats.length" class="empty-small">No hay chats configurados.</div><div v-for="chat in chats" :key="chat.id" class="chat-chip"><MessageCircle :size="14" /><div class="chat-details"><strong>{{ chat.name }}</strong><small>{{ chat.id }}</small></div><label class="auto-toggle"><input type="checkbox" :checked="chat.auto_download" :disabled="saving" @change="toggleAutoDownload(chat)"><span>Auto</span></label><button :disabled="saving" @click="removeChat(chat.id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button></div><button class="save-button listener-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar chats' }}</button><small class="save-hint">Los nombres y reglas se guardan en config.json del servidor.</small></section>
+    <section class="panel listener-config"><div class="panel-heading"><div><span class="eyebrow"><MessageCircle :size="12" /> ORÍGENES</span><h2>Chats vigilados</h2></div><span class="count-pill">{{ chats.length }} configurados</span></div><p class="helper-text">Añade el ID numérico de un grupo, canal o chat privado. Se consultará su nombre y podrás decidir si descarga automáticamente sus archivos.</p><div class="listener-add"><input v-model="newChatId" @keyup.enter="addChat" placeholder="Ej. -1001234567890"><button class="save-button" :disabled="saving" @click="addChat"><Plus :size="15" /> Añadir</button></div><div v-if="!chats.length" class="empty-small">No hay chats configurados.</div>
+        <div v-for="chat in chats" :key="chat.id" class="chat-chip">
+          <div class="chat-chip-main">
+            <MessageCircle :size="14" />
+            <div class="chat-details">
+              <strong>{{ chat.name }}</strong>
+              <small>{{ chat.id }}</small>
+            </div>
+            <label class="auto-toggle"><input type="checkbox" :checked="chat.auto_download" :disabled="saving" @change="toggleAutoDownload(chat)"><span>Auto</span></label>
+            <button :disabled="saving" @click="removeChat(chat.id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button>
+          </div>
+          <div class="chat-filters">
+            <label class="filter-tag f-photos" :class="{ active: chat.f_photos }"><input type="checkbox" :checked="chat.f_photos" :disabled="saving" @change="toggleFilter(chat, 'f_photos')"><span>Fotos</span></label>
+            <label class="filter-tag f-videos" :class="{ active: chat.f_videos }"><input type="checkbox" :checked="chat.f_videos" :disabled="saving" @change="toggleFilter(chat, 'f_videos')"><span>Videos</span></label>
+            <label class="filter-tag f-audios" :class="{ active: chat.f_audios }"><input type="checkbox" :checked="chat.f_audios" :disabled="saving" @change="toggleFilter(chat, 'f_audios')"><span>Audios</span></label>
+            <label class="filter-tag f-docs" :class="{ active: chat.f_docs }"><input type="checkbox" :checked="chat.f_docs" :disabled="saving" @change="toggleFilter(chat, 'f_docs')"><span>Docs</span></label>
+            <label class="filter-tag f-stickers" :class="{ active: chat.f_stickers }"><input type="checkbox" :checked="chat.f_stickers" :disabled="saving" @change="toggleFilter(chat, 'f_stickers')"><span>Stickers</span></label>
+          </div>
+        </div>
+        <button class="save-button listener-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar chats' }}</button>
+        <small class=".save-hint">Los nombres y reglas se guardan en el servidor.</small></section>
       <section class="panel listener-feed">
         <div class="panel-heading">
           <div>
@@ -277,7 +322,21 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(reconnec
 </template>
 
 <style scoped>
-.listener-view{display:flex;flex-direction:column;gap:18px}.listener-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:28px 30px;border:1px solid var(--user-border-light);border-radius:18px;background:linear-gradient(110deg,var(--user-surface-light),var(--user-surface) 70%)}.listener-hero h2{font:600 23px 'Space Grotesk';margin:8px 0 5px;color:#f1f7ff}.listener-hero p,.helper-text{margin:0;color:var(--user-text-dim);font-size:13px}.switch.large{display:flex;align-items:center;gap:10px;white-space:nowrap}.switch.large b{font-size:12px;color:var(--user-accent);font-weight:500}.listener-grid{display:grid;grid-template-columns:.82fr 1.18fr;gap:18px;min-width:0}.listener-grid > section{min-width:0}.helper-text{line-height:1.5;margin-bottom:17px}.listener-add{display:flex;gap:8px}.listener-add input{flex:1;min-width:0;background:var(--user-bg-base);border:1px solid var(--user-border-light);color:#dbe7f5;border-radius:10px;padding:11px 12px;outline:none;font:inherit}.listener-add .save-button{width:auto;margin:0;padding:0 15px}.chat-chip{display:flex;align-items:center;gap:9px;border-top:1px solid var(--user-border);padding:12px 0;color:var(--user-primary);font-size:12px}.chat-chip strong{flex:1;color:#d6e4f1;font-weight:500}.chat-chip button{border:0;background:transparent;color:#e58b91;font-size:20px;cursor:pointer}.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}.bulk-actions{display:flex;gap:6px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;overflow:hidden}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
+.listener-view{display:flex;flex-direction:column;gap:18px}.listener-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:28px 30px;border:1px solid var(--user-border-light);border-radius:18px;background:linear-gradient(110deg,var(--user-surface-light),var(--user-surface) 70%)}.listener-hero h2{font:600 23px 'Space Grotesk';margin:8px 0 5px;color:#f1f7ff}.listener-hero p,.helper-text{margin:0;color:var(--user-text-dim);font-size:13px}.switch.large{display:flex;align-items:center;gap:10px;white-space:nowrap}.switch.large b{font-size:12px;color:var(--user-accent);font-weight:500}.listener-grid{display:grid;grid-template-columns:.82fr 1.18fr;gap:18px;min-width:0}.listener-grid > section{min-width:0}.helper-text{line-height:1.5;margin-bottom:17px}.listener-add{display:flex;gap:8px}.listener-add input{flex:1;min-width:0;background:var(--user-bg-base);border:1px solid var(--user-border-light);color:#dbe7f5;border-radius:10px;padding:11px 12px;outline:none;font:inherit}.listener-add .save-button{width:auto;margin:0;padding:0 15px}.chat-chip{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--user-border);padding:14px 0}
+.chat-chip-main{display:flex;align-items:center;gap:9px;color:var(--user-primary);font-size:12px}
+.chat-filters{display:flex;flex-wrap:wrap;gap:8px;padding-left:23px;margin-top:4px}
+.filter-tag{display:flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:10px;font-weight:700;color:var(--user-text-dim);cursor:pointer;background:var(--user-bg-base);border:1px solid var(--user-border-light);transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);user-select:none;text-transform:uppercase;letter-spacing:0.5px}
+.filter-tag input{display:none}
+.filter-tag:hover{border-color:var(--user-primary);transform:translateY(-1px)}
+.filter-tag.active{color:#000;border-color:transparent;box-shadow:0 4px 10px rgba(0,0,0,0.3);transform:translateY(-1px)}
+.filter-tag.f-photos.active{background:#38bdf8;box-shadow:0 4px 12px rgba(56,189,248,0.3)}
+.filter-tag.f-videos.active{background:#c084fc;box-shadow:0 4px 12px rgba(192,132,252,0.3)}
+.filter-tag.f-audios.active{background:#4ade80;box-shadow:0 4px 12px rgba(74,222,128,0.3)}
+.filter-tag.f-docs.active{background:#94a3b8;box-shadow:0 4px 12px rgba(148,163,184,0.3)}
+.filter-tag.f-stickers.active{background:#f472b6;box-shadow:0 4px 12px rgba(244,114,182,0.3)}
+.chat-chip strong{flex:1;color:#d6e4f1;font-weight:500}
+.chat-chip button{border:0;background:transparent;color:#e58b91;font-size:20px;cursor:pointer}
+.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}.bulk-actions{display:flex;gap:6px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;overflow:hidden}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
 .chat-details{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}.chat-details strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chat-details small{color:var(--user-text-dim);font-size:10px}.auto-toggle{display:flex;align-items:center;gap:5px;color:var(--user-text-dim);font-size:10px;cursor:pointer;white-space:nowrap}.auto-toggle input{accent-color:var(--user-primary)}.auto-toggle input:checked+span{color:var(--user-accent)}
 .file-symbol{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;border:1px solid var(--user-border);flex-shrink:0;transition:all .2s ease}
 .media-badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-right:6px;border:1px solid transparent;vertical-align:middle}
