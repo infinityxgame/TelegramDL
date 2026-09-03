@@ -609,8 +609,10 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
               </div>
             </div>
 
-            <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar estadísticas e historial</button>
-            <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+            <div class="settings-actions">
+              <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar historial</button>
+              <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+            </div>
           </aside>
         </div>
       </template>
@@ -778,6 +780,8 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .settings-panel-full { padding: 30px; }
 .settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; }
 .settings-group { display: flex; flex-direction: column; gap: 15px; }
+.settings-actions { display: flex; gap: 12px; margin-top: 22px; }
+.settings-actions .clear-history-button, .settings-actions .save-button { width: 100%; margin-top: 0; flex: 1; }
 .clear-history-button { width: 100%; margin-top: 22px; padding: 11px; border: 1px solid #6e3942; border-radius: 10px; background: rgba(125, 48, 61, .16); color: #ffadb5; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; }
 .clear-history-button:hover { background: rgba(125, 48, 61, .3); border-color: #a95663; }
 .color-group { padding-top: 5px; }
