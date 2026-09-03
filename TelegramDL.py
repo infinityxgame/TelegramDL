@@ -86,7 +86,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.1.5"
+APP_VERSION = "2.1.6"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1079,12 +1079,17 @@ async def retry_download(payload: Dict[str, Any]) -> Dict[str, Any]:
     if state.get("status") not in {"failed", "cancelled"}:
         raise HTTPException(status_code=409, detail="Solo se pueden reintentar descargas fallidas o canceladas")
 
+    # Cambiamos el estado a 'queued' antes de cualquier await para evitar que _prune_state
+    # elimine este registro si el historial está lleno (ya que deja de ser un estado terminal).
+    update_state(item_id, status="queued")
+
     task = active_tasks.get(item_id)
     if task and not task.done():
         task.cancel()
         with suppress(asyncio.CancelledError, Exception):
             await task
 
+    # Tras el await, aseguramos de nuevo el estado por si la cancelación lo cambió a 'cancelled'
     update_state(item_id, status="queued", progress=0, speed="0 B/s")
 
     retry_task = asyncio.create_task(downloader_instance.resume_item(item_id))
