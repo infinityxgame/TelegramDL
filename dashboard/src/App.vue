@@ -118,7 +118,7 @@ const wasDownloading = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
 const isUpdateForced = ref(false)
-const bootstrapping = ref(true)
+const bootstrapping = ref(false)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 
 const formatSize = (bytes) => {
