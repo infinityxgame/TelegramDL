@@ -345,8 +345,15 @@ async def broadcast_websocket_state() -> None:
             except Exception:
                 disconnected.add(client)
         websocket_clients.difference_update(disconnected)
+
+        # Esperar un poco antes de la siguiente iteración si no hay cambios pendientes
+        # Pero permitimos que el bucle continúe si alguien marcó dirty
         if not websocket_broadcast_dirty:
-            break
+            await asyncio.sleep(2) # Actualización base cada 2 segundos para el disco
+            websocket_broadcast_dirty = True
+        else:
+            await asyncio.sleep(0.5)
+
     websocket_broadcast_task = None
 
 
@@ -564,17 +571,20 @@ def get_disk_info() -> Optional[Dict[str, Any]]:
 
         usage = shutil.disk_usage(str(path))
 
-        # Calcular espacio ocupado por descargas en curso/cola
-        projected_occupied = 0
+        # Calcular espacio pendiente por descargar en la cola
+        projected_needed = 0
         for item in downloads_state.values():
-            if item.get("status") in ["pending", "queued", "downloading"]:
-                projected_occupied += item.get("total_bytes", 0)
+            if item.get("status") in ["pending", "queued", "downloading", "paused"]:
+                total = item.get("total_bytes", 0)
+                current = item.get("current_bytes", 0)
+                # Solo contamos lo que FALTA por descargar
+                projected_needed += max(0, total - current)
 
-        free_after_queued = usage.free - projected_occupied
-        if free_after_queued < 0:
-            free_after_queued = 0
+        free_after_queued = usage.free - projected_needed
 
-        percent_free = (free_after_queued / usage.total) * 100 if usage.total > 0 else 0
+        # Para el porcentaje de la barra, no permitimos valores incoherentes, pero el valor real puede ser negativo
+        display_free = max(0, free_after_queued)
+        percent_used = (1 - (display_free / usage.total)) * 100 if usage.total > 0 else 0
 
         return {
             "total": usage.total,
@@ -582,9 +592,9 @@ def get_disk_info() -> Optional[Dict[str, Any]]:
             "projected_free": free_after_queued,
             "total_str": format_bytes(usage.total),
             "free_str": format_bytes(usage.free),
-            "projected_free_str": format_bytes(free_after_queued),
-            "percent": round(percent_free, 1),
-            "status": "red" if percent_free <= 10 else "green"
+            "projected_free_str": format_bytes(free_after_queued) if free_after_queued >= 0 else f"-{format_bytes(abs(free_after_queued))}",
+            "percent": round(percent_used, 1),
+            "status": "red" if (display_free / usage.total) <= 0.1 else "green"
         }
     except Exception:
         return None
@@ -1350,6 +1360,8 @@ class DownloadProgress:
             file_name=file_name,
             status="downloading",
             total_str=format_bytes(total),
+            total_bytes=total,
+            current_bytes=self.current,
             kind=kind,
         )
 
@@ -1366,6 +1378,7 @@ class DownloadProgress:
             progress=percentage,
             current_str=format_bytes(self.current),
             total_str=format_bytes(self.total),
+            current_bytes=self.current,
             speed=f"{format_bytes(speed_value)}/s",
         )
 

@@ -135,6 +135,17 @@ const syncSettings = async nextSettings => {
 
 const showMessage = (txt, isError = false) => {
   if (isError) {
+    if (txt.toLowerCase().includes('espacio no es suficiente') || txt.toLowerCase().includes('libera espacio')) {
+      openConfirm({
+        title: '¡Espacio en disco insuficiente!',
+        message: txt,
+        confirmText: 'Entendido',
+        cancelText: '',
+        type: 'danger',
+        action: () => {}
+      })
+      return
+    }
     error.value = txt
     setTimeout(() => { if (error.value === txt) error.value = '' }, 5000)
   } else {
@@ -157,7 +168,7 @@ const openConfirm = (config) => {
   modal.title = config.title
   modal.message = config.message
   modal.confirmText = config.confirmText
-  modal.cancelText = config.cancelText || 'Cancelar'
+  modal.cancelText = config.cancelText !== undefined ? config.cancelText : 'Cancelar'
   modal.type = config.type || 'primary'
   modal.action = config.action
   modal.show = true
@@ -417,6 +428,33 @@ const totalSpeed = computed(() => {
 const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
 const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
 
+const wasSpaceCritical = ref(false)
+watch(() => disk.value, (newDisk) => {
+  if (!newDisk) return
+
+  // Si el espacio proyectado es negativo, significa que lo que hay en cola + lo externo supera el disco
+  if (newDisk.projected_free < 0) {
+    if (!wasSpaceCritical.value && !modal.show) {
+      wasSpaceCritical.value = true
+      const needed = formatSize(Math.abs(newDisk.projected_free))
+      openConfirm({
+        title: '¡Alerta de Espacio Crítico!',
+        message: `Debido a cambios externos en tu disco, ya no hay espacio suficiente para completar las descargas en cola. \n\nNecesitas liberar al menos ${needed} o cancelar algunas tareas para evitar errores.`,
+        confirmText: 'Entendido',
+        cancelText: '',
+        type: 'danger',
+        action: () => {
+          // No reseteamos wasSpaceCritical aquí para que no sea molesto,
+          // se reseteará cuando el espacio vuelva a ser suficiente
+        }
+      })
+    }
+  } else {
+    // Si el espacio vuelve a ser positivo (porque borró algo o canceló descargas), reseteamos el flag
+    wasSpaceCritical.value = false
+  }
+}, { deep: true })
+
 const connectWebSocket = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
@@ -602,7 +640,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 
       <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="open-button" type="button" title="Abrir archivo" aria-label="Abrir archivo" @click="openFile(item)"><ExternalLink :size="14" /></button><button v-if="['failed', 'cancelled'].includes(item.status)" class="retry-button" type="button" title="Reintentar descarga" aria-label="Reintentar descarga" @click="retryDownload(item)"><RotateCcw :size="14" /></button><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
       </template>
-      <ListenerView v-else-if="activeView === 'listener'" :notify="showMessage" />
+      <ListenerView v-else-if="activeView === 'listener'" :notify="showMessage" :disk="disk" />
       <template v-else-if="activeView === 'settings'">
         <div class="content-grid-single">
           <aside class="panel settings-panel-full"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración General</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>

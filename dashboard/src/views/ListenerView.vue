@@ -4,7 +4,8 @@ import { Download, FileText, Image, Inbox, MessageCircle, Music, Plus, Radio, Tr
 import ConfirmModal from '../components/ConfirmModal.vue'
 
 const props = defineProps({
-  notify: { type: Function, default: () => {} }
+  notify: { type: Function, default: () => {} },
+  disk: { type: Object, default: null }
 })
 
 const enabled = ref(true)
@@ -13,7 +14,6 @@ const newChatId = ref('')
 const items = ref([])
 const saving = ref(false)
 const error = ref('')
-const disk = ref(null)
 let timer
 let socket
 let reconnectTimer
@@ -112,6 +112,7 @@ const modal = reactive({
   title: '',
   message: '',
   confirmText: '',
+  cancelText: 'Cancelar',
   type: 'primary',
   action: null
 })
@@ -120,6 +121,7 @@ const openConfirm = (config) => {
   modal.title = config.title
   modal.message = config.message
   modal.confirmText = config.confirmText
+  modal.cancelText = config.cancelText !== undefined ? config.cancelText : 'Cancelar'
   modal.type = config.type || 'primary'
   modal.action = config.action
   modal.show = true
@@ -226,9 +228,6 @@ const connectWebSocket = () => {
             f_stickers: chat.f_stickers ?? true
           }))
         }
-        if (data.disk) {
-          disk.value = data.disk
-        }
       }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
   }
@@ -322,6 +321,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(reconnec
       :title="modal.title"
       :message="modal.message"
       :confirmText="modal.confirmText"
+      :cancelText="modal.cancelText"
       :type="modal.type"
       @confirm="handleConfirm"
       @cancel="modal.show = false"

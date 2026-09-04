@@ -47,7 +47,8 @@ class Storage:
                     speed TEXT NOT NULL DEFAULT '0 B/s', kind TEXT,
                     file_path TEXT, source TEXT, updated_at REAL NOT NULL,
                     created_at REAL NOT NULL,
-                    total_bytes INTEGER NOT NULL DEFAULT 0
+                    total_bytes INTEGER NOT NULL DEFAULT 0,
+                    current_bytes INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS idx_downloads_updated ON downloads(updated_at DESC);
                 CREATE TABLE IF NOT EXISTS download_chunks (
@@ -62,6 +63,10 @@ class Storage:
             # Migraciones básicas
             try:
                 self.db.execute("ALTER TABLE downloads ADD COLUMN total_bytes INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                self.db.execute("ALTER TABLE downloads ADD COLUMN current_bytes INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
             for col in ["f_photos", "f_videos", "f_audios", "f_docs", "f_stickers"]:
@@ -180,14 +185,15 @@ class Storage:
                 INSERT INTO downloads(
                     id, job_id, message_id, chat_id, file_name,
                     status, progress, total_str, current_str, speed,
-                    kind, file_path, source, updated_at, created_at, total_bytes
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    kind, file_path, source, updated_at, created_at, total_bytes, current_bytes
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status, progress=excluded.progress,
                     total_str=excluded.total_str, current_str=excluded.current_str,
                     speed=excluded.speed, updated_at=excluded.updated_at,
                     file_path=excluded.file_path, kind=excluded.kind,
-                    total_bytes=excluded.total_bytes
+                    total_bytes=excluded.total_bytes,
+                    current_bytes=excluded.current_bytes
                 """,
                 (
                     item_id, data.get("job_id"), data.get("message_id"),
@@ -198,7 +204,8 @@ class Storage:
                     data.get("file_path"), data.get("source"),
                     data.get("updated_at", time.time()),
                     data.get("created_at", data.get("updated_at", time.time())),
-                    data.get("total_bytes", 0)
+                    data.get("total_bytes", 0),
+                    data.get("current_bytes", 0)
                 )
             )
             self.db.commit()

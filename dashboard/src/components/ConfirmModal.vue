@@ -17,7 +17,7 @@ const emit = defineEmits(['confirm', 'cancel'])
   <Teleport to="body">
     <Transition name="fade">
       <div v-if="show" class="modal-overlay" @click.self="emit('cancel')">
-        <div class="modal-content">
+        <div class="modal-content" :class="type">
           <div class="modal-header">
             <div class="header-icon" :class="type">
               <AlertCircle v-if="type === 'danger'" :size="20" />
@@ -30,7 +30,7 @@ const emit = defineEmits(['confirm', 'cancel'])
             <p>{{ message }}</p>
           </div>
           <div class="modal-footer">
-            <button class="cancel-btn" @click="emit('cancel')">{{ cancelText }}</button>
+            <button v-if="cancelText" class="cancel-btn" @click="emit('cancel')">{{ cancelText }}</button>
             <button class="confirm-btn" :class="type" @click="emit('confirm')">{{ confirmText }}</button>
           </div>
         </div>
@@ -61,6 +61,19 @@ const emit = defineEmits(['confirm', 'cancel'])
   width: min(420px, 90%);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 35px var(--user-glow);
   overflow: hidden;
+}
+
+.modal-content.danger {
+  border-color: rgba(232, 136, 136, 0.4);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 45px rgba(232, 136, 136, 0.25);
+  animation: modalShake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes modalShake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
 }
 
 .modal-header {
