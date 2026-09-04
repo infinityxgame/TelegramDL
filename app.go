@@ -75,13 +75,11 @@ func NewApp(assets fs.FS) *App {
 	port := config.GetServerPort()
 	_ = srv.Start(port)
 
-	// Conectar cliente de Telegram de forma asíncrona para no retrasar el inicio de la app
-	go func() {
-		apiID, apiHash := config.LoadEnvCredentials()
-		if apiID != "" && apiHash != "" {
-			_ = cm.InitClient(apiID, apiHash)
-		}
-	}()
+	// Cargar credenciales desde la base de datos (con fallback a .env) e inicializar cliente
+	apiID, apiHash, _ := st.GetCredentials()
+	if apiID != "" && apiHash != "" {
+		_ = cm.InitClient(apiID, apiHash)
+	}
 
 	return app
 }

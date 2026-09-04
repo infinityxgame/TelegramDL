@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { KeyRound, Phone, ShieldCheck, CheckCircle2, AlertCircle, ArrowRight, Loader2, RefreshCw, Info } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -13,18 +13,26 @@ const emit = defineEmits(['auth-success'])
 
 const currentStep = computed(() => {
   if (!props.authStatus.has_credentials || props.authStatus.state === 'UNCONFIGURED') return 1
-  if (props.authStatus.state === 'NOT_LOGGED_IN') return 2
+  if (props.authStatus.state === 'NOT_LOGGED_IN' || props.authStatus.state === 'NEED_PHONE') return 2
   if (props.authStatus.state === 'WAITING_CODE') return 3
   if (props.authStatus.state === 'WAITING_2FA') return 4
   if (props.authStatus.state === 'LOGGED_IN') return 5
   return 1
 })
 
-const apiId = ref('')
-const apiHash = ref('')
+const apiId = ref(props.authStatus.api_id || '')
+const apiHash = ref(props.authStatus.api_hash || '')
 const phoneNumber = ref(props.authStatus.phone_number || '')
 const code = ref('')
 const password = ref('')
+
+watch(() => props.authStatus, (val) => {
+  if (val) {
+    if (val.api_id && !apiId.value) apiId.value = val.api_id
+    if (val.api_hash && !apiHash.value) apiHash.value = val.api_hash
+    if (val.phone_number && !phoneNumber.value) phoneNumber.value = val.phone_number
+  }
+}, { immediate: true })
 
 const loading = ref(false)
 const errorMessage = ref('')

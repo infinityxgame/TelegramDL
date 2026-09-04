@@ -40,6 +40,8 @@ type AuthStatus struct {
 	Authenticated  bool      `json:"authenticated"`
 	State          string    `json:"state"`
 	Phone          string    `json:"phone,omitempty"`
+	APIID          string    `json:"api_id,omitempty"`
+	APIHash        string    `json:"api_hash,omitempty"`
 	User           *UserInfo `json:"user,omitempty"`
 }
 
@@ -271,6 +273,11 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	apiHash := cm.apiHash
 	cm.mu.RUnlock()
 
+	var apiIDStr string
+	if apiID != 0 {
+		apiIDStr = strconv.Itoa(apiID)
+	}
+
 	if apiID == 0 || apiHash == "" || client == nil {
 		return AuthStatus{
 			Configured:     false,
@@ -278,6 +285,8 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "UNCONFIGURED",
+			APIID:          apiIDStr,
+			APIHash:        apiHash,
 		}
 	}
 
@@ -291,6 +300,8 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "NEED_PHONE",
+			APIID:          apiIDStr,
+			APIHash:        apiHash,
 		}
 	}
 
@@ -303,6 +314,8 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "NEED_PHONE",
+			APIID:          apiIDStr,
+			APIHash:        apiHash,
 		}
 	}
 
@@ -314,6 +327,8 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authorized:     true,
 			Authenticated:  true,
 			State:          "LOGGED_IN",
+			APIID:          apiIDStr,
+			APIHash:        apiHash,
 		}
 	}
 
@@ -331,6 +346,8 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		Authenticated:  true,
 		State:          "LOGGED_IN",
 		Phone:          user.Phone,
+		APIID:          apiIDStr,
+		APIHash:        apiHash,
 		User: &UserInfo{
 			ID:        user.ID,
 			FirstName: user.FirstName,

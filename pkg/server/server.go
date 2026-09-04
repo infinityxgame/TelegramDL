@@ -327,6 +327,14 @@ func (s *Server) buildStateSnapshot() map[string]any {
 // Handlers de Auth
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	st := s.clientMgr.GetAuthStatus(r.Context())
+	if !st.HasCredentials {
+		// Recuperar desde la base de datos (con fallback a .env)
+		apiID, apiHash, _ := s.storage.GetCredentials()
+		if apiID != "" && apiHash != "" {
+			_ = s.clientMgr.InitClient(apiID, apiHash)
+			st = s.clientMgr.GetAuthStatus(r.Context())
+		}
+	}
 	s.jsonResponse(w, http.StatusOK, st)
 }
 
@@ -340,6 +348,10 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guardar en la base de datos SQLite
+	_ = s.storage.SaveCredentials(body.APIID, body.APIHash)
+
+	// Guardar también en archivo .env
 	if err := config.SaveEnvCredentials(body.APIID, body.APIHash); err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, "Error guardando credenciales")
 		return

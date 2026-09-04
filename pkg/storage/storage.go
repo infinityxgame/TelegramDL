@@ -145,6 +145,39 @@ func (s *Storage) setConfigKey(key, value string) error {
 	return err
 }
 
+func (s *Storage) GetCredentials() (string, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var apiID, apiHash string
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'api_id' OR key = 'tgdl_api_id' ORDER BY key ASC LIMIT 1").Scan(&apiID)
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'api_hash' OR key = 'tgdl_api_hash' ORDER BY key ASC LIMIT 1").Scan(&apiHash)
+
+	if apiID == "" || apiHash == "" {
+		// Fallback a variables de entorno / .env
+		envID, envHash := config.LoadEnvCredentials()
+		if envID != "" && envHash != "" {
+			apiID = envID
+			apiHash = envHash
+			go func(id, hash string) {
+				_ = s.SaveCredentials(id, hash)
+			}(apiID, apiHash)
+		}
+	}
+
+	return apiID, apiHash, nil
+}
+
+func (s *Storage) SaveCredentials(apiID, apiHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.setConfigKey("api_id", apiID); err != nil {
+		return err
+	}
+	return s.setConfigKey("api_hash", apiHash)
+}
+
 func findExistingFile(paths ...string) string {
 	for _, p := range paths {
 		if p == "" {
