@@ -314,38 +314,83 @@ func (le *ListenerEngine) RemoveItem(itemID string) {
 	}
 }
 
-func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (string, error) {
+type ResolvedChatInfo struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Username string `json:"username,omitempty"`
+}
+
+func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (ResolvedChatInfo, error) {
 	raw := le.clientMgr.RawClient()
 	if raw == nil {
-		return "", errors.New("cliente no conectado")
+		return ResolvedChatInfo{ID: chatID, Name: strconv.FormatInt(chatID, 10), Type: "chat"}, errors.New("cliente no conectado")
 	}
 
-	// Si es canal o supergrupo
+	info := ResolvedChatInfo{
+		ID:   chatID,
+		Name: strconv.FormatInt(chatID, 10),
+		Type: "chat",
+	}
+
+	// 1. Si es canal o supergrupo (-100...) o grupo básico
 	if chatID < 0 {
 		channelID := -chatID
 		s := fmt.Sprintf("%d", chatID)
-		if len(s) > 4 && s[:4] == "-100" {
-			parsed, err := strconv.ParseInt(s[4:], 10, 64)
-			if err == nil {
+		isMegagroupOrChannel := strings.HasPrefix(s, "-100") && len(s) > 4
+		if isMegagroupOrChannel {
+			if parsed, err := strconv.ParseInt(s[4:], 10, 64); err == nil {
 				channelID = parsed
 			}
 		}
 
-		accessHash, _ := le.clientMgr.GetChannelAccessHash(channelID)
-		res, err := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
-			&tg.InputChannel{ChannelID: channelID, AccessHash: accessHash},
-		})
-		if err == nil {
-			chats := res.GetChats()
-			if len(chats) > 0 {
-				if ch, ok := chats[0].(*tg.Channel); ok {
-					return ch.Title, nil
+		if isMegagroupOrChannel {
+			accessHash, found := le.clientMgr.GetChannelAccessHash(channelID)
+			if !found {
+				_ = le.clientMgr.FetchDialogs(ctx)
+				accessHash, _ = le.clientMgr.GetChannelAccessHash(channelID)
+			}
+
+			res, err := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
+				&tg.InputChannel{ChannelID: channelID, AccessHash: accessHash},
+			})
+			if err == nil {
+				chats := res.GetChats()
+				if len(chats) > 0 {
+					if ch, ok := chats[0].(*tg.Channel); ok {
+						info.Name = ch.Title
+						info.Username = ch.Username
+						if ch.Megagroup {
+							info.Type = "supergroup"
+						} else {
+							info.Type = "channel"
+						}
+						return info, nil
+					}
+				}
+			}
+		} else {
+			// Grupo básico
+			res, err := raw.MessagesGetChats(ctx, []int64{-chatID})
+			if err == nil {
+				chats := res.GetChats()
+				if len(chats) > 0 {
+					if ch, ok := chats[0].(*tg.Chat); ok {
+						info.Name = ch.Title
+						info.Type = "group"
+						return info, nil
+					}
 				}
 			}
 		}
 	} else {
-		// Usuario
-		accessHash, _ := le.clientMgr.GetUserAccessHash(chatID)
+		// 2. ID positivo: Usuario o Bot (o ID de canal sin -100)
+		accessHash, found := le.clientMgr.GetUserAccessHash(chatID)
+		if !found {
+			_ = le.clientMgr.FetchDialogs(ctx)
+			accessHash, _ = le.clientMgr.GetUserAccessHash(chatID)
+		}
+
 		res, err := raw.UsersGetUsers(ctx, []tg.InputUserClass{
 			&tg.InputUser{UserID: chatID, AccessHash: accessHash},
 		})
@@ -356,11 +401,38 @@ func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (string
 					name = u.Username
 				}
 				if name != "" {
-					return name, nil
+					info.Name = name
+				}
+				info.Username = u.Username
+				if u.Bot {
+					info.Type = "bot"
+				} else {
+					info.Type = "user"
+				}
+				return info, nil
+			}
+		}
+
+		// Probar si era un canal pasado sin -100
+		accessHash, found = le.clientMgr.GetChannelAccessHash(chatID)
+		if found {
+			resCh, errCh := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
+				&tg.InputChannel{ChannelID: chatID, AccessHash: accessHash},
+			})
+			if errCh == nil && len(resCh.GetChats()) > 0 {
+				if ch, ok := resCh.GetChats()[0].(*tg.Channel); ok {
+					info.Name = ch.Title
+					info.Username = ch.Username
+					if ch.Megagroup {
+						info.Type = "supergroup"
+					} else {
+						info.Type = "channel"
+					}
+					return info, nil
 				}
 			}
 		}
 	}
 
-	return strconv.FormatInt(chatID, 10), nil
+	return info, nil
 }

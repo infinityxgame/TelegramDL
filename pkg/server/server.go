@@ -1021,12 +1021,14 @@ func (s *Server) handleListenerResolveChat(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	name, _ := s.listener.ResolveChat(r.Context(), chatID)
+	info, _ := s.listener.ResolveChat(r.Context(), chatID)
 	s.jsonResponse(w, http.StatusOK, map[string]any{
 		"status": "ok",
 		"chat": map[string]any{
 			"id":            chatID,
-			"name":          name,
+			"name":          info.Name,
+			"type":          info.Type,
+			"username":      info.Username,
 			"auto_download": false,
 			"f_photos":      true,
 			"f_videos":      true,
@@ -1051,12 +1053,14 @@ func (s *Server) handleListenerResolveChatPath(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	name, _ := s.listener.ResolveChat(r.Context(), chatID)
+	info, _ := s.listener.ResolveChat(r.Context(), chatID)
 	s.jsonResponse(w, http.StatusOK, map[string]any{
 		"status": "ok",
 		"chat": map[string]any{
 			"id":            chatID,
-			"name":          name,
+			"name":          info.Name,
+			"type":          info.Type,
+			"username":      info.Username,
 			"auto_download": false,
 			"f_photos":      true,
 			"f_videos":      true,
