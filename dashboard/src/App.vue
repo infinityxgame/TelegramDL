@@ -247,7 +247,11 @@ const onAuthSuccess = async (newStatus) => {
 
 const fetchDownloads = async () => {
   try {
-    downloads.value = await api('/api/downloads')
+    const data = await api('/api/downloads')
+    if (Array.isArray(data)) {
+      downloads.value = [...data]
+      websocketConnected.value = true
+    }
     error.value = ''
   } catch (err) { /* No mostramos error en poll constante */ }
 }
@@ -450,62 +454,61 @@ watch(() => disk.value, (newDisk) => {
   }
 }, { deep: true })
 
+const handleStateUpdate = (data) => {
+  if (!data) return
+  if (Array.isArray(data.downloads)) {
+    downloads.value = data.downloads
+    const isDownloading = data.downloads.some(d => ['downloading', 'queued'].includes(d.status))
+    if (wasDownloading.value && !isDownloading && data.downloads.length > 0) {
+      new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log("Audio blocked", e))
+    }
+    wasDownloading.value = isDownloading
+  }
+  if (Array.isArray(data.listener)) {
+    listenerItems.value = data.listener
+  }
+  if (data.disk) {
+    disk.value = data.disk
+  }
+  if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
+}
+
 const connectWebSocket = async () => {
-  let wsHost = window.location.host
-
-  if (window.go?.main?.App?.GetServerInfo) {
-    try {
-      const sInfo = await window.go.main.App.GetServerInfo()
-      if (sInfo && sInfo.port) {
-        const h = (sInfo.host && sInfo.host !== '0.0.0.0') ? sInfo.host : '127.0.0.1'
-        wsHost = `${h}:${sInfo.port}`
-      }
-    } catch (e) {
-      console.warn('Error obteniendo ServerInfo via Wails:', e)
-    }
-  } else if (!wsHost || wsHost.includes('wails') || wsHost.includes(':8080')) {
-    try {
-      const res = await fetch('/api/system/info')
-      if (res.ok) {
-        const sInfo = await res.json()
-        const h = (sInfo.host && sInfo.host !== '0.0.0.0') ? sInfo.host : '127.0.0.1'
-        wsHost = `${h}:${sInfo.port}`
-      }
-    } catch (e) {
-      // Fallback si la petición falla
-    }
+  if (window.runtime && window.runtime.EventsOn) {
+    websocketConnected.value = true
+    window.runtime.EventsOn("tgdl:state", handleStateUpdate)
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  socket = new WebSocket(`${protocol}//${wsHost}/api/ws`)
-  socket.onopen = () => { websocketConnected.value = true }
-  socket.onmessage = event => {
-    try {
-      const data = JSON.parse(event.data)
-      if (data.type === 'state') {
-        if (Array.isArray(data.downloads)) {
-          downloads.value = data.downloads
-          const isDownloading = data.downloads.some(d => ['downloading', 'queued'].includes(d.status))
-          if (wasDownloading.value && !isDownloading && data.downloads.length > 0) {
-            new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log("Audio blocked", e))
-          }
-          wasDownloading.value = isDownloading
-        }
-        if (Array.isArray(data.listener)) {
-          listenerItems.value = data.listener
-        }
-        if (data.disk) {
-          disk.value = data.disk
-        }
-        if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
-      }
-    } catch { /* Polling de respaldo */ }
+  let wsUrl = ''
+  if (window.location.host && !window.location.host.includes('wails')) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    wsUrl = `${proto}//${window.location.host}/api/ws`
+  } else {
+    wsUrl = 'ws://127.0.0.1:8000/api/ws'
   }
-  socket.onclose = () => {
-    websocketConnected.value = false
-    if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2500)
+
+  try {
+    socket = new WebSocket(wsUrl)
+    socket.onopen = () => { websocketConnected.value = true }
+    socket.onmessage = event => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'state') {
+          handleStateUpdate(data)
+        }
+      } catch {}
+    }
+    socket.onclose = () => {
+      if (!window.runtime) websocketConnected.value = false
+      if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
+    }
+    socket.onerror = () => {
+      socket?.close()
+    }
+  } catch {
+    if (!window.runtime) websocketConnected.value = false
+    if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
   }
-  socket.onerror = () => socket.close()
 }
 
 onMounted(async () => {

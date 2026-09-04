@@ -354,6 +354,10 @@ func (s *Server) broadcastState() {
 	}
 }
 
+func (s *Server) BuildStateSnapshot() map[string]any {
+	return s.buildStateSnapshot()
+}
+
 func (s *Server) buildStateSnapshot() map[string]any {
 	downloads := s.downloader.GetDownloads()
 	activeCount := 0

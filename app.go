@@ -86,6 +86,18 @@ func NewApp(assets fs.FS) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Emitir cambios de estado directamente a la interfaz nativa de Wails
+	a.downloader.OnStateChange(func(item storage.DownloadItem) {
+		if a.ctx != nil && a.server != nil {
+			wailsRuntime.EventsEmit(a.ctx, "tgdl:state", a.server.BuildStateSnapshot())
+		}
+	})
+	a.listener.OnStateChange(func(item listener.ListenerItem) {
+		if a.ctx != nil && a.server != nil {
+			wailsRuntime.EventsEmit(a.ctx, "tgdl:state", a.server.BuildStateSnapshot())
+		}
+	})
 }
 
 func (a *App) shutdown(ctx context.Context) {
