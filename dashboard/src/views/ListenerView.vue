@@ -1,24 +1,26 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
 import { Download, FileText, Image, Inbox, MessageCircle, Music, Plus, Radio, Trash2, Video } from 'lucide-vue-next'
 import ConfirmModal from '../components/ConfirmModal.vue'
 
 const props = defineProps({
   notify: { type: Function, default: () => {} },
-  disk: { type: Object, default: null }
+  disk: { type: Object, default: null },
+  initialItems: { type: Array, default: () => [] }
 })
 
 const enabled = ref(true)
 const chats = ref([])
 const newChatId = ref('')
-const items = ref([])
+const items = ref(props.initialItems)
 const saving = ref(false)
 const error = ref('')
 let timer
-let socket
-let reconnectTimer
 let disposed = false
-const websocketConnected = ref(false)
+
+watch(() => props.initialItems, (newItems) => {
+  items.value = newItems
+}, { deep: true })
 
 const api = async (url, options = {}) => {
   const response = await fetch(url, options)
@@ -208,38 +210,15 @@ const getChatName = item => {
   return item.chat_name || item.chat_id
 }
 
-const connectWebSocket = () => {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
-  socket.onopen = () => { websocketConnected.value = true }
-  socket.onmessage = event => {
-    try {
-      const data = JSON.parse(event.data)
-      if (data.type === 'state') {
-        if (Array.isArray(data.listener)) items.value = data.listener
-        if (data.settings) {
-          enabled.value = data.settings.listener_enabled
-          chats.value = (data.settings.listener_chats || []).map(chat => ({
-            ...chat,
-            f_photos: chat.f_photos ?? true,
-            f_videos: chat.f_videos ?? true,
-            f_audios: chat.f_audios ?? true,
-            f_docs: chat.f_docs ?? true,
-            f_stickers: chat.f_stickers ?? true
-          }))
-        }
-      }
-    } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
-  }
-  socket.onclose = () => {
-    websocketConnected.value = false
-    if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2500)
-  }
-  socket.onerror = () => socket.close()
-}
-
-onMounted(async () => { disposed = false; await load(); connectWebSocket(); timer = setInterval(() => { if (!websocketConnected.value) load() }, 1500) })
-onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(reconnectTimer); socket?.close() })
+onMounted(async () => {
+  disposed = false;
+  await load();
+  timer = setInterval(load, 15000); // Polling mucho más lento, el socket de App.vue ya trae los datos
+})
+onUnmounted(() => {
+  disposed = true;
+  clearInterval(timer);
+})
 </script>
 
 <template>

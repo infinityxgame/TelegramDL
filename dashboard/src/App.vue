@@ -7,6 +7,7 @@ import AuthWizard from './components/AuthWizard.vue'
 import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, ExternalLink, FileCheck, FileDown, Gauge, LogOut, Menu, Radio, RotateCcw, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
 
 const downloads = ref([])
+const listenerItems = ref([])
 const newUrl = ref('')
 const loading = ref(false)
 const message = ref('')
@@ -471,6 +472,9 @@ const connectWebSocket = () => {
           }
           wasDownloading.value = isDownloading
         }
+        if (Array.isArray(data.listener)) {
+          listenerItems.value = data.listener
+        }
         if (data.disk) {
           disk.value = data.disk
         }
@@ -527,185 +531,234 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   <template v-else>
     <div v-if="updateInfo && isUpdateForced" class="update-required-overlay">
       <div class="update-card">
-      <Zap :size="48" class="update-icon" />
-      <h2>Actualización Obligatoria</h2>
-      <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
+        <Zap :size="48" class="update-icon" />
+        <h2>Actualización Obligatoria</h2>
+        <p v-if="!isUpdating">Hay una nueva versión disponible ({{ updateInfo.latest }}). Es necesario actualizar para continuar.</p>
 
-      <div class="update-action-area" :class="{ 'is-loading': isUpdating }">
-        <button v-if="!isUpdating" class="primary-button update-btn" @click="installUpdate">
-          <span>Actualizar ahora</span>
-          <ArrowUpRight :size="18" />
-        </button>
-
-        <div v-else class="update-progress-container">
-          <div class="update-status-text">
-            {{ updateProgress.status === 'downloading' ? 'Descargando actualización...' :
-               updateProgress.status === 'extracting' ? 'Extrayendo archivos...' :
-               updateProgress.status === 'finishing' ? 'Finalizando e iniciando...' : 'Iniciando...' }}
-          </div>
-          <div class="update-progress-bar">
-            <div class="update-progress-fill" :style="{ width: updateProgress.percentage + '%' }">
-              <div class="nitro-wind">
-                <span></span><span></span><span></span><span></span>
-              </div>
-            </div>
-          </div>
-          <div class="update-progress-stats">
-            <span>{{ formatSize(updateProgress.downloaded) }} / {{ formatSize(updateProgress.total) }}</span>
-            <span>{{ updateProgress.percentage }}%</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="isUpdating" class="update-warning">
-        Por favor, no cierres la aplicación.
-      </div>
-
-      <small>Versión actual: {{ updateInfo.current }}</small>
-    </div>
-  </div>
-  <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
-  <div class="app-shell">
-    <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
-      <div class="sidebar-main">
-        <div class="brand">
-          <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
-          <div class="brand-text">
-            <span>Telegram<span class="brand-accent">DL</span></span>
-            <span class="version-tag" v-if="version">v{{ version }}</span>
-          </div>
-          <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen"><X v-if="mobileMenuOpen" :size="20" /><Menu v-else :size="20" /></button>
-        </div>
-        <p class="sidebar-copy">Centro de descargas personal</p>
-        <nav class="sidebar-nav">
-          <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
-          <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
-          <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
-        </nav>
-
-        <div v-if="authStatus.user" class="sidebar-user-badge">
-          <div class="user-info">
-            <UserCheck :size="14" class="user-icon" />
-            <span class="user-name">{{ authStatus.user.first_name }}</span>
-          </div>
-          <button class="logout-btn" title="Cerrar sesión de Telegram" @click="logoutTelegram">
-            <LogOut :size="13" />
+        <div class="update-action-area" :class="{ 'is-loading': isUpdating }">
+          <button v-if="!isUpdating" class="primary-button update-btn" @click="installUpdate">
+            <span>Actualizar ahora</span>
+            <ArrowUpRight :size="18" />
           </button>
-        </div>
 
-        <div class="sidebar-status" :class="{ 'is-disconnected': !websocketConnected }">
-          <span class="status-dot" :class="{ 'disconnected': !websocketConnected }"></span>
-          <span>{{ websocketConnected ? 'Servicio conectado' : 'Servicio desconectado' }}</span>
-        </div>
-      </div>
-      <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
-    </aside>
-
-    <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow">PANEL DE CONTROL</span><h1>{{ activeView === 'downloads' ? 'Descargas' : (activeView === 'listener' ? 'Escucha' : 'Ajustes') }}</h1></div><div class="topbar-meta">Velocidad total: {{ totalSpeed }}</div></header>
-
-      <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
-      <div v-if="error" class="toast danger">{{ error }}</div>
-
-      <template v-if="activeView === 'downloads'">
-
-      <section class="hero-card">
-        <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
-        <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><ArrowUpRight :size="18" /></button></div>
-      </section>
-
-      <section class="stats-grid">
-        <div class="stat-card"><span class="stat-icon blue"><Activity :size="19" /></span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
-        <div class="stat-card"><span class="stat-icon amber"><Clock3 :size="19" /></span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
-        <div class="stat-card"><span class="stat-icon green"><CheckCircle2 :size="19" /></span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
-        <div class="stat-card"><span class="stat-icon gray"><FileCheck :size="19" /></span><div><span class="stat-label">OMITIDAS</span><strong>{{ skippedCount }}</strong><small>ya existían</small></div></div>
-      </section>
-
-      <div class="content-grid-single">
-        <section class="panel activity-panel">
-          <div class="panel-heading">
-            <div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div>
-            <div class="header-actions">
-              <div v-if="disk" class="disk-monitor">
-                <div class="disk-bar"><div class="fill" :style="{ width: disk.percent + '%', backgroundColor: disk.status === 'red' ? '#ff4d4d' : '#4dff4d' }"></div></div>
-                <small>Total/Libre: ({{ disk.total_str }} / {{ disk.projected_free_str }})</small>
+          <div v-else class="update-progress-container">
+            <div class="update-status-text">
+              {{ updateProgress.status === 'downloading' ? 'Descargando actualización...' :
+                 updateProgress.status === 'extracting' ? 'Extrayendo archivos...' :
+                 updateProgress.status === 'finishing' ? 'Finalizando e iniciando...' : 'Iniciando...' }}
+            </div>
+            <div class="update-progress-bar">
+              <div class="update-progress-fill" :style="{ width: updateProgress.percentage + '%' }">
+                <div class="nitro-wind">
+                  <span></span><span></span><span></span><span></span>
+                </div>
               </div>
-              <span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span>
+            </div>
+            <div class="update-progress-stats">
+              <span>{{ formatSize(updateProgress.downloaded) }} / {{ formatSize(updateProgress.total) }}</span>
+              <span>{{ updateProgress.percentage }}%</span>
             </div>
           </div>
-          <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
-          <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button><button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
-        </section>
+        </div>
+
+        <div v-if="isUpdating" class="update-warning">
+          Por favor, no cierres la aplicación.
+        </div>
+
+        <small>Versión actual: {{ updateInfo.current }}</small>
       </div>
+    </div>
 
-      <section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div><div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div><div v-for="item in recentDownloads" :key="item.id" class="recent-row"><span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span><strong>{{ item.file_name }}</strong><span class="recent-size">{{ item.total_str }}</span><span class="badge" :class="item.status">{{ statusText(item.status) }}</span><button v-if="item.status === 'completed'" class="open-button" type="button" title="Abrir archivo" aria-label="Abrir archivo" @click="openFile(item)"><ExternalLink :size="14" /></button><button v-if="['failed', 'cancelled'].includes(item.status)" class="retry-button" type="button" title="Reintentar descarga" aria-label="Reintentar descarga" @click="retryDownload(item)"><RotateCcw :size="14" /></button><button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button></div></section>
-      </template>
-      <ListenerView v-else-if="activeView === 'listener'" :notify="showMessage" :disk="disk" />
-      <template v-else-if="activeView === 'settings'">
-        <div class="content-grid-single">
-          <aside class="panel settings-panel-full"><div class="panel-heading"><div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración General</h2></div><span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span></div>
-            <div class="settings-sections-grid">
-              <div class="settings-group">
-                <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label><input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input"><div class="range-hints"><span>1</span><span>16</span></div>
-                <div class="setting-line"><div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div><label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label></div>
-                <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label><input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input"><div class="range-hints"><span>1</span><span>8</span></div>
-              </div>
+    <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
 
-              <div class="settings-group">
-                <div class="speed-setting"><label class="setting-label compact">Límite global de velocidad</label><div class="speed-row"><input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5"><select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select><span>/s</span></div><small>Usa 0 para quitar el límite.</small></div>
-                <FolderPicker v-model="settings.download_folder" />
-              </div>
+    <div class="app-shell">
+      <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
+        <div class="sidebar-main">
+          <div class="brand">
+            <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
+            <div class="brand-text">
+              <span>Telegram<span class="brand-accent">DL</span></span>
+              <span class="version-tag" v-if="version">v{{ version }}</span>
+            </div>
+            <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen">
+              <X v-if="mobileMenuOpen" :size="20" />
+              <Menu v-else :size="20" />
+            </button>
+          </div>
+          <p class="sidebar-copy">Centro de descargas personal</p>
+          <nav class="sidebar-nav">
+            <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
+            <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
+            <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
+          </nav>
 
-              <div class="settings-group color-group">
-                <span class="setting-label">Color de Acento y Tema</span>
-                <div class="color-selector-container">
-                  <div class="color-row">
-                    <button
-                      v-for="id in [0,1,2,3,4,5,6,7]"
-                      :key="id"
-                      class="color-dot"
-                      :class="{ active: settings.color_id === id }"
-                      :style="{ background: themeMap[id].gradient }"
-                      @click="settings.color_id = id"
-                    ></button>
-                  </div>
-                  <div class="color-row">
-                    <button
-                      v-for="id in [8,9,10,11,12,13,14,15]"
-                      :key="id"
-                      class="color-dot gradient-dot"
-                      :class="{ active: settings.color_id === id }"
-                      :style="{ background: `linear-gradient(135deg, ${themeMap[id].primary} 49.8%, ${themeMap[id].secondary} 50.2%)` }"
-                      @click="settings.color_id = id"
-                    ></button>
+          <div v-if="authStatus.user" class="sidebar-user-badge">
+            <div class="user-info">
+              <UserCheck :size="14" class="user-icon" />
+              <span class="user-name">{{ authStatus.user.first_name }}</span>
+            </div>
+            <button class="logout-btn" title="Cerrar sesión de Telegram" @click="logoutTelegram">
+              <LogOut :size="13" />
+            </button>
+          </div>
+
+          <div class="sidebar-status" :class="{ 'is-disconnected': !websocketConnected }">
+            <span class="status-dot" :class="{ 'disconnected': !websocketConnected }"></span>
+            <span>{{ websocketConnected ? 'Servicio conectado' : 'Servicio desconectado' }}</span>
+          </div>
+        </div>
+        <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">PANEL DE CONTROL</span>
+            <h1>{{ activeView === 'downloads' ? 'Descargas' : (activeView === 'listener' ? 'Escucha' : 'Ajustes') }}</h1>
+          </div>
+          <div class="topbar-meta">Velocidad total: {{ totalSpeed }}</div>
+        </header>
+
+        <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
+        <div v-if="error" class="toast danger">{{ error }}</div>
+
+        <div class="view-container">
+          <!-- Vista de Descargas -->
+          <template v-if="activeView === 'downloads'">
+            <section class="hero-card">
+              <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
+              <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><ArrowUpRight :size="18" /></button></div>
+            </section>
+
+            <section class="stats-grid">
+              <div class="stat-card"><span class="stat-icon blue"><Activity :size="19" /></span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
+              <div class="stat-card"><span class="stat-icon amber"><Clock3 :size="19" /></span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
+              <div class="stat-card"><span class="stat-icon green"><CheckCircle2 :size="19" /></span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
+              <div class="stat-card"><span class="stat-icon gray"><FileCheck :size="19" /></span><div><span class="stat-label">OMITIDAS</span><strong>{{ skippedCount }}</strong><small>ya existían</small></div></div>
+            </section>
+
+            <div class="content-grid-single">
+              <section class="panel activity-panel">
+                <div class="panel-heading">
+                  <div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div>
+                  <div class="header-actions">
+                    <div v-if="disk" class="disk-monitor">
+                      <div class="disk-bar"><div class="fill" :style="{ width: disk.percent + '%', backgroundColor: disk.status === 'red' ? '#ff4d4d' : '#4dff4d' }"></div></div>
+                      <small>Total/Libre: ({{ disk.total_str }} / {{ disk.projected_free_str }})</small>
+                    </div>
+                    <span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span>
                   </div>
                 </div>
-                <button class="reset-button-alt" @click="resetColor">
-                  <Zap :size="14" /> Restablecer color de la cuenta
-                </button>
-              </div>
+                <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
+                <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row">
+                  <div class="file-symbol"><FileDown :size="16" /></div>
+                  <div class="file-info">
+                    <strong :title="item.file_name">{{ item.file_name }}</strong>
+                    <span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span>
+                    <div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div>
+                  </div>
+                  <div class="row-side">
+                    <b>{{ progress(item).toFixed(0) }}%</b>
+                    <span>{{ statusText(item.status) }}</span>
+                    <button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button>
+                    <button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button>
+                    <button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button>
+                  </div>
+                </div>
+              </section>
             </div>
 
-            <div class="settings-actions">
-              <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar historial</button>
-              <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+            <section class="panel recent-panel">
+              <div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div>
+              <div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div>
+              <div v-for="item in recentDownloads" :key="item.id" class="recent-row">
+                <span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span>
+                <strong>{{ item.file_name }}</strong>
+                <span class="recent-size">{{ item.total_str }}</span>
+                <span class="badge" :class="item.status">{{ statusText(item.status) }}</span>
+                <button v-if="item.status === 'completed'" class="open-button" type="button" title="Abrir archivo" aria-label="Abrir archivo" @click="openFile(item)"><ExternalLink :size="14" /></button>
+                <button v-if="['failed', 'cancelled'].includes(item.status)" class="retry-button" type="button" title="Reintentar descarga" aria-label="Reintentar descarga" @click="retryDownload(item)"><RotateCcw :size="14" /></button>
+                <button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button>
+              </div>
+            </section>
+          </template>
+
+          <!-- Vista de Escucha (Mantenida viva con v-show) -->
+          <ListenerView v-show="activeView === 'listener'" :notify="showMessage" :disk="disk" :initialItems="listenerItems" />
+
+          <!-- Vista de Ajustes -->
+          <template v-if="activeView === 'settings'">
+            <div class="content-grid-single">
+              <aside class="panel settings-panel-full">
+                <div class="panel-heading">
+                  <div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración General</h2></div>
+                  <span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span>
+                </div>
+                <div class="settings-sections-grid">
+                  <div class="settings-group">
+                    <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label>
+                    <input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input">
+                    <div class="range-hints"><span>1</span><span>16</span></div>
+                    <div class="setting-line">
+                      <div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div>
+                      <label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label>
+                    </div>
+                    <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label>
+                    <input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input">
+                    <div class="range-hints"><span>1</span><span>8</span></div>
+                  </div>
+
+                  <div class="settings-group">
+                    <div class="speed-setting">
+                      <label class="setting-label compact">Límite global de velocidad</label>
+                      <div class="speed-row">
+                        <input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5">
+                        <select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select>
+                        <span>/s</span>
+                      </div>
+                      <small>Usa 0 para quitar el límite.</small>
+                    </div>
+                    <FolderPicker v-model="settings.download_folder" />
+                  </div>
+
+                  <div class="settings-group color-group">
+                    <span class="setting-label">Color de Acento y Tema</span>
+                    <div class="color-selector-container">
+                      <div class="color-row">
+                        <button v-for="id in [0,1,2,3,4,5,6,7]" :key="id" class="color-dot" :class="{ active: settings.color_id === id }" :style="{ background: themeMap[id].gradient }" @click="settings.color_id = id"></button>
+                      </div>
+                      <div class="color-row">
+                        <button v-for="id in [8,9,10,11,12,13,14,15]" :key="id" class="color-dot gradient-dot" :class="{ active: settings.color_id === id }" :style="{ background: `linear-gradient(135deg, ${themeMap[id].primary} 49.8%, ${themeMap[id].secondary} 50.2%)` }" @click="settings.color_id = id"></button>
+                      </div>
+                    </div>
+                    <button class="reset-button-alt" @click="resetColor">
+                      <Zap :size="14" /> Restablecer color de la cuenta
+                    </button>
+                  </div>
+                </div>
+
+                <div class="settings-actions">
+                  <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar historial</button>
+                  <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
+                </div>
+              </aside>
             </div>
-          </aside>
+          </template>
         </div>
-      </template>
-      <ConfirmModal
-        :show="modal.show"
-        :title="modal.title"
-        :message="modal.message"
-        :confirmText="modal.confirmText"
-        :cancelText="modal.cancelText"
-        :type="modal.type"
-        @confirm="handleConfirm"
-        @cancel="modal.show = false"
-      />
-      <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>
-    </main>
-  </div>
+
+        <ConfirmModal
+          :show="modal.show"
+          :title="modal.title"
+          :message="modal.message"
+          :confirmText="modal.confirmText"
+          :cancelText="modal.cancelText"
+          :type="modal.type"
+          @confirm="handleConfirm"
+          @cancel="modal.show = false"
+        />
+        <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>
+      </main>
+    </div>
   </template>
 </template>
 

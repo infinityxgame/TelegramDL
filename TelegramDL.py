@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import math
 import os
 import re
@@ -19,15 +20,17 @@ from storage import Storage
 if os.name == "nt" and getattr(sys, "frozen", False):
     try:
         import ctypes
-        if not ctypes.windll.kernel32.AttachConsole(-1):
-            # Usar os.devnull es más compatible que una clase personalizada
-            # ya que proporciona fileno() y otros métodos que librerías como uvicorn esperan.
-            null_file = open(os.devnull, "w")
-            sys.stdout = null_file
-            sys.stderr = null_file
-        else:
-            sys.stdout = open("CONOUT$", "w", buffering=1)
-            sys.stderr = open("CONOUT$", "w", buffering=1)
+        # Solo redirigir si no tenemos una consola propia (GetConsoleWindow)
+        # y no podemos adjuntarnos a una existente (AttachConsole)
+        if not ctypes.windll.kernel32.GetConsoleWindow():
+            if not ctypes.windll.kernel32.AttachConsole(-1):
+                null_file = open(os.devnull, "w")
+                sys.stdout = null_file
+                sys.stderr = null_file
+            else:
+                # Si logramos adjuntarnos, asegurar que la salida vaya a esa consola
+                sys.stdout = open("CONOUT$", "w", buffering=1)
+                sys.stderr = open("CONOUT$", "w", buffering=1)
     except Exception:
         pass
 elif sys.stdout is None:
@@ -87,7 +90,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.1.6"
+APP_VERSION = "2.1.7"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -290,10 +293,23 @@ downloader_lock = None
 websocket_clients: Set[WebSocket] = set()
 websocket_broadcast_task: Optional[asyncio.Task] = None
 websocket_broadcast_dirty = False
+cached_disk_info = None
+last_db_save: Dict[str, float] = {}
 
+async def disk_monitor_task():
+    global cached_disk_info
+    while not shutting_down:
+        try:
+            cached_disk_info = await get_disk_info()
+            if websocket_clients:
+                schedule_websocket_broadcast()
+        except Exception as e:
+            print(f"Error en monitor de disco: {e}")
+        await asyncio.sleep(5)
 
 def save_downloads_state() -> None:
     global state_dirty
+    # Para el cierre, sí guardamos síncronamente para asegurar
     for item in downloads_state.values():
         storage.save_download(item["id"], item)
     state_dirty = False
@@ -309,52 +325,62 @@ def load_downloads_state() -> None:
 
 
 def websocket_snapshot() -> Dict[str, Any]:
+    # Limitar el número de descargas enviadas para mejorar rendimiento
+    all_items = sorted(
+        downloads_state.values(),
+        key=lambda item: (
+            item.get("status") == "downloading",
+            item.get("status") == "paused",
+            (item.get("progress") or 0) > 0,
+            item.get("created_at", item.get("updated_at", 0))
+        ),
+        reverse=True,
+    )
+
     downloads = [
         {key: value for key, value in item.items() if key != "file_path"}
-        for item in sorted(
-            downloads_state.values(),
-            key=lambda item: (
-                item.get("status") == "downloading",
-                item.get("status") == "paused",
-                (item.get("progress") or 0) > 0,
-                item.get("created_at", item.get("updated_at", 0))
-            ),
-            reverse=True,
-        )
+        for item in all_items[:100] # Solo enviar las 100 más relevantes
     ]
+
     listener = downloader_instance.get_listener_items() if downloader_instance else []
     return {
         "type": "state",
         "downloads": downloads,
         "listener": listener,
         "settings": public_config(runtime_config),
-        "disk": get_disk_info(),
+        "disk": cached_disk_info,
         "server_time": time.time(),
     }
 
 
 async def broadcast_websocket_state() -> None:
     global websocket_broadcast_task, websocket_broadcast_dirty
-    while websocket_clients:
-        websocket_broadcast_dirty = False
-        payload = websocket_snapshot()
-        disconnected = set()
-        for client in tuple(websocket_clients):
+    try:
+        while websocket_clients:
+            websocket_broadcast_dirty = False
             try:
-                await client.send_json(payload)
-            except Exception:
-                disconnected.add(client)
-        websocket_clients.difference_update(disconnected)
+                payload = websocket_snapshot()
+            except Exception as e:
+                print(f"Error generando snapshot: {e}")
+                await asyncio.sleep(2)
+                continue
 
-        # Esperar un poco antes de la siguiente iteración si no hay cambios pendientes
-        # Pero permitimos que el bucle continúe si alguien marcó dirty
-        if not websocket_broadcast_dirty:
-            await asyncio.sleep(2) # Actualización base cada 2 segundos para el disco
-            websocket_broadcast_dirty = True
-        else:
-            await asyncio.sleep(0.5)
+            disconnected = set()
+            for client in tuple(websocket_clients):
+                try:
+                    await client.send_json(payload)
+                except Exception:
+                    disconnected.add(client)
+            websocket_clients.difference_update(disconnected)
 
-    websocket_broadcast_task = None
+            # Esperar antes de la siguiente actualización.
+            # Actualizamos máximo cada 3 segundos si no hay cambios, o 0.5s si los hay.
+            for _ in range(6):
+                if websocket_broadcast_dirty or not websocket_clients:
+                    break
+                await asyncio.sleep(0.5)
+    finally:
+        websocket_broadcast_task = None
 
 
 def schedule_websocket_broadcast() -> None:
@@ -387,6 +413,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
             "speed": "0 B/s",
             "kind": "desconocido",
             "total_bytes": 0,
+            "current_bytes": 0,
             "file_path": None,
             "updated_at": time.time(),
             "created_at": time.time(),
@@ -395,17 +422,50 @@ def update_state(item_id: str, **kwargs: Any) -> None:
         downloads_state[item_id]["created_at"] = downloads_state[item_id].get(
             "updated_at", time.time()
         )
+
+    # Si intentamos actualizar algo que ya fue cancelado por el usuario,
+    # y no es para ponerlo en un estado terminal o descargar, respetamos la cancelación
+    if downloads_state[item_id].get("status") == "cancelled" and kwargs.get("status") not in [None, "failed", "completed"]:
+        # Solo permitir re-encolar si es un reintento explícito (que no pasa por aquí normalmente)
+        return
+
     downloads_state[item_id].update(kwargs)
     downloads_state[item_id]["updated_at"] = time.time()
     state_dirty = True
-    storage.save_download(item_id, downloads_state[item_id])
+
+    # Guardar en base de datos sin bloquear el hilo principal
+    asyncio.create_task(async_save_download(item_id, downloads_state[item_id].copy()))
+
     _prune_state()
     schedule_websocket_broadcast()
 
+async def async_save_download(item_id, data):
+    # Si es una actualización de progreso, no saturar SQLite (máximo 1 vez por segundo por archivo)
+    if data.get("status") == "downloading":
+        now = time.time()
+        if now - last_db_save.get(item_id, 0) < 1.0:
+            return
+        last_db_save[item_id] = now
+
+    try:
+        # Usar un thread pool para la operación bloqueante de SQLite
+        await asyncio.to_thread(storage.save_download, item_id, data)
+    except Exception as e:
+        print(f"Error guardando en DB: {e}")
+
+
+_last_prune_time = 0
 
 def _prune_state() -> None:
+    global _last_prune_time
     if len(downloads_state) <= MAX_STATE_ITEMS:
         return
+
+    now = time.time()
+    if now - _last_prune_time < 10.0:
+        return
+    _last_prune_time = now
+
     terminal = sorted(
         (
             (item_id, item.get("updated_at", 0))
@@ -414,9 +474,15 @@ def _prune_state() -> None:
         ),
         key=lambda item: item[1],
     )
-    for item_id, _ in terminal[: max(0, len(downloads_state) - MAX_STATE_ITEMS)]:
+
+    items_to_delete = terminal[: max(0, len(downloads_state) - MAX_STATE_ITEMS)]
+    for item_id, _ in items_to_delete:
         downloads_state.pop(item_id, None)
-        storage.delete_download(item_id)
+        # Usamos un task para no bloquear el hilo principal con borrados de DB
+        if asyncio.get_event_loop().is_running():
+            asyncio.create_task(asyncio.to_thread(storage.delete_download, item_id))
+        else:
+            storage.delete_download(item_id)
 
 
 # --- Auth & Session Manager ---
@@ -559,24 +625,27 @@ def format_bytes(size: float) -> str:
     return f"{value:.1f} TB"
 
 
-def get_disk_info() -> Optional[Dict[str, Any]]:
+async def get_disk_info() -> Optional[Dict[str, Any]]:
     folder = runtime_config.get("download_folder")
     if not folder:
         folder = str(Path.cwd())
 
-    try:
-        path = Path(folder).resolve()
+    def _get_usage(path_str):
+        path = Path(path_str).resolve()
         while not path.exists() and path.parent != path:
             path = path.parent
+        return shutil.disk_usage(str(path))
 
-        usage = shutil.disk_usage(str(path))
+    try:
+        loop = asyncio.get_event_loop()
+        usage = await loop.run_in_executor(None, _get_usage, folder)
 
         # Calcular espacio pendiente por descargar en la cola
         projected_needed = 0
         for item in downloads_state.values():
             if item.get("status") in ["pending", "queued", "downloading", "paused"]:
-                total = item.get("total_bytes", 0)
-                current = item.get("current_bytes", 0)
+                total = item.get("total_bytes") or 0
+                current = item.get("current_bytes") or 0
                 # Solo contamos lo que FALTA por descargar
                 projected_needed += max(0, total - current)
 
@@ -596,7 +665,8 @@ def get_disk_info() -> Optional[Dict[str, Any]]:
             "percent": round(percent_used, 1),
             "status": "red" if (display_free / usage.total) <= 0.1 else "green"
         }
-    except Exception:
+    except Exception as e:
+        print(f"Error en get_disk_info: {e}")
         return None
 
 
@@ -890,11 +960,16 @@ async def delete_download(item_id: str, delete_file: bool = True) -> Dict[str, A
         if target != download_root and download_root not in target.parents:
             raise HTTPException(status_code=403, detail="La ruta del archivo no es válida")
         try:
-            if target.exists():
-                if not target.is_file():
-                    raise HTTPException(status_code=409, detail="La ruta no corresponde a un archivo")
-                target.unlink()
-                deleted_file = True
+            loop = asyncio.get_event_loop()
+            def _unlink_sync():
+                if target.exists():
+                    if not target.is_file():
+                        return False
+                    target.unlink()
+                    return True
+                return False
+
+            deleted_file = await loop.run_in_executor(None, _unlink_sync)
         except OSError as error:
             raise HTTPException(status_code=500, detail=f"No se pudo borrar el archivo: {error}") from error
 
@@ -1126,7 +1201,7 @@ async def cancel_download(payload: Dict[str, Any]) -> Dict[str, Any]:
     state = downloads_state.get(item_id, state)
     file_path = state.get("file_path")
     if file_path and downloader_instance:
-        downloader_instance._cleanup_files(file_path)
+        await downloader_instance._cleanup_files(file_path)
     update_state(item_id, status="cancelled", progress=0)
     active_tasks.pop(item_id, None)
     return {"status": "ok"}
@@ -1234,26 +1309,34 @@ async def start_download(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             detail=f"El rango máximo es de {MAX_MESSAGES_PER_JOB} mensajes",
         )
 
-    # Verificar espacio en disco antes de empezar
-    total_size = await downloader_instance.get_range_total_size(chat_id, start_id, end_id)
-    disk = get_disk_info()
-    if disk and total_size > disk["projected_free"]:
-        needed = format_bytes(total_size - disk["projected_free"])
-        raise HTTPException(
-            status_code=400,
-            detail=f"El espacio no es suficiente necesitas {needed}, libera espacio o cambia la ubicación de descarga"
-        )
-
+    # Crear Job ID y tarea de descarga de forma asíncrona inmediata
     job_id = uuid.uuid4().hex
-    task = asyncio.create_task(
-        downloader_instance.download_from_url(url, job_id=job_id, parsed=parsed)
-    )
+
+    # Esta tarea se encarga de validar el espacio Y de iniciar las descargas sin bloquear la respuesta de la API
+    async def process_download_request():
+        try:
+            # Validación de espacio asíncrona (esto puede tardar segundos)
+            total_size = await downloader_instance.get_range_total_size(chat_id, start_id, end_id)
+            disk = cached_disk_info or await get_disk_info()
+            if disk and total_size > disk["projected_free"]:
+                needed = format_bytes(total_size - disk["projected_free"])
+                # Notificar error vía socket o actualizar estado del primer item para mostrar error
+                # Por ahora, simplemente no iniciamos y registramos el fallo
+                print(f"Error: Espacio insuficiente para job {job_id}")
+                return
+
+            await downloader_instance.download_from_url(url, job_id=job_id, parsed=parsed)
+        except Exception as e:
+            print(f"Error procesando petición de descarga: {e}")
+
+    task = asyncio.create_task(process_download_request())
     active_jobs[job_id] = task
     task.add_done_callback(lambda finished, current_job=job_id: active_jobs.pop(current_job, None))
+
     return {
         "status": "ok",
         "job_id": job_id,
-        "max_concurrent_downloads": downloader_instance.max_concurrent_downloads,
+        "message": "Analizando mensajes e iniciando descarga..."
     }
 
 
@@ -1262,33 +1345,36 @@ async def download_listener_item(data: Dict[str, Any] = Body(...)) -> Dict[str, 
     item_id = str(data.get("id", "")).strip()
     if not downloader_instance:
         raise HTTPException(status_code=503, detail="El cliente no está listo")
+
     listener_item = downloader_instance.listener_messages.get(item_id)
     if not listener_item:
         raise HTTPException(status_code=404, detail="Multimedia no encontrado")
+
     message, chat_id = listener_item
 
-    # Verificar espacio en disco
-    info = downloader_instance._extract_media_info(message)
-    if info:
-        disk = get_disk_info()
-        if disk and info.file_size > disk["projected_free"]:
-            needed = format_bytes(info.file_size - disk["projected_free"])
-            raise HTTPException(
-                status_code=400,
-                detail=f"El espacio no es suficiente necesitas {needed}, libera espacio del disco o cancela archivos de la cola para alcanzar el espacio"
-            )
-
-    state = downloads_state.get(item_id, {})
-    if state.get("status") in {"queued", "downloading", "completed"}:
-        return {"status": "ok", "message": "La multimedia ya está gestionándose"}
+    # Estado intermedio inmediato para feedback visual
     update_state(item_id, status="queued")
-    task = asyncio.create_task(
-        downloader_instance.download_file_from_message(message, chat_id, item_id)
-    )
+
+    async def process_listener_request():
+        try:
+            info = downloader_instance._extract_media_info(message)
+            if info:
+                disk = cached_disk_info or await get_disk_info()
+                if disk and info.file_size > disk["projected_free"]:
+                    needed = format_bytes(info.file_size - disk["projected_free"])
+                    print(f"Error: Espacio insuficiente para {item_id}")
+                    # Volvemos a 'available' si no hay espacio
+                    update_state(item_id, status="available")
+                    return
+
+            await downloader_instance.download_file_from_message(message, chat_id, item_id)
+        except Exception as e:
+            print(f"Error en descarga de escucha: {e}")
+
+    task = asyncio.create_task(process_listener_request())
     active_tasks[item_id] = task
-    task.add_done_callback(
-        lambda finished, current_item=item_id: active_tasks.pop(current_item, None)
-    )
+    task.add_done_callback(lambda f, i=item_id: active_tasks.pop(i, None))
+
     return {"status": "ok"}
 
 
@@ -1657,6 +1743,11 @@ class TelegramDownloader:
 
                 for message_id in batch_ids:
                     item_id = self._item_id(job_id, message_id)
+
+                    # Si el usuario ya canceló este item antes de que el job lo procese, saltar
+                    if downloads_state.get(item_id, {}).get("status") == "cancelled":
+                        continue
+
                     message = message_map.get(message_id)
                     if not message or message.empty:
                         update_state(item_id, status="skipped")
@@ -1734,6 +1825,10 @@ class TelegramDownloader:
                 update_state(item_id, status="failed")
 
     async def download_file_from_message(self, message: Any, chat_id: Any, item_id: str) -> None:
+        # Verificar si fue cancelada mientras estaba en cola
+        if downloads_state.get(item_id, {}).get("status") == "cancelled":
+            return
+
         info = self._extract_media_info(message)
         if not info:
             update_state(item_id, status="skipped")
@@ -1750,16 +1845,30 @@ class TelegramDownloader:
         pause_event = self.pause_events.get(item_id)
         if pause_event is None:
             pause_event = asyncio.Event()
-            # Si el estado persistido es 'paused', el evento empieza bloqueado
             if downloads_state.get(item_id, {}).get("status") == "paused":
                 pause_event.clear()
             else:
                 pause_event.set()
             self.pause_events[item_id] = pause_event
-        await pause_event.wait()
-        await self._acquire_download_slot()
+
+        try:
+            await pause_event.wait()
+
+            # Doble verificación tras la pausa
+            if downloads_state.get(item_id, {}).get("status") == "cancelled":
+                return
+
+            await self._acquire_download_slot()
+        except asyncio.CancelledError:
+            if not shutting_down:
+                update_state(item_id, status="cancelled", progress=0)
+            raise
+
         reserved_path: Optional[str] = None
         try:
+            # Triple verificación antes de empezar a escribir en disco
+            if downloads_state.get(item_id, {}).get("status") == "cancelled":
+                return
             file_path, file_name, already_exists = await self._reserve_download_path(
                 info.file_name, message.id, info.file_size
             )
@@ -1856,7 +1965,17 @@ class TelegramDownloader:
         temp_path = f"{file_path}.temp"
         total_chunks = math.ceil(file_size / CHUNK_SIZE)
 
-        downloaded_chunks = storage.chunks(item_id)
+        loop = asyncio.get_running_loop()
+
+        def _prepare_file():
+            if not os.path.exists(temp_path) or os.path.getsize(temp_path) != file_size:
+                with open(temp_path, "w+b") as file_handle:
+                    file_handle.truncate(file_size)
+                storage.delete_chunks(item_id)
+                return set()
+            return storage.chunks(item_id)
+
+        downloaded_chunks = await loop.run_in_executor(None, _prepare_file)
 
         progress = DownloadProgress(
             item_id,
@@ -1865,11 +1984,6 @@ class TelegramDownloader:
             initial=len(downloaded_chunks) * CHUNK_SIZE,
             kind=info.kind
         )
-
-        if not os.path.exists(temp_path) or os.path.getsize(temp_path) != file_size:
-            with open(temp_path, "w+b") as file_handle:
-                file_handle.truncate(file_size)
-            downloaded_chunks = set()
 
         queue: asyncio.Queue[int] = asyncio.Queue()
         for index in range(total_chunks):
@@ -1889,6 +2003,12 @@ class TelegramDownloader:
                 else:
                     queue.task_done()
 
+        def _write_chunk_sync(data, offset, chunk_index):
+            with open(temp_path, "r+b") as file_handle:
+                file_handle.seek(offset)
+                file_handle.write(data)
+            storage.add_chunk(item_id, chunk_index)
+
         async def worker() -> None:
             nonlocal downloaded
             pause_event = self.pause_events.setdefault(item_id, asyncio.Event())
@@ -1900,17 +2020,16 @@ class TelegramDownloader:
                     return
                 try:
                     chunk_data = await self._fetch_chunk(file_id, file_size, index)
-                    with open(temp_path, "r+b") as file_handle:
-                        file_handle.seek(index * CHUNK_SIZE)
-                        file_handle.write(chunk_data)
+
+                    await loop.run_in_executor(
+                        None, _write_chunk_sync, chunk_data, index * CHUNK_SIZE, index
+                    )
 
                     async with state_lock:
                         downloaded_chunks.add(index)
                         downloaded += len(chunk_data)
                         progress.update(downloaded)
                         
-                        storage.add_chunk(item_id, index)
-
                     await self.throttle(len(chunk_data))
                 except asyncio.CancelledError:
                     raise
@@ -1934,12 +2053,16 @@ class TelegramDownloader:
 
         if errors:
             raise RuntimeError(f"Falló un chunk: {errors[0]}") from errors[0]
-        if not os.path.exists(temp_path):
-            raise IOError("No se generó el archivo temporal")
-        os.replace(temp_path, file_path)
-        with storage._lock:
-            storage.db.execute("DELETE FROM download_chunks WHERE download_id=?", (item_id,))
-            storage.db.commit()
+
+        def _finalize_file():
+            if not os.path.exists(temp_path):
+                raise IOError("No se generó el archivo temporal")
+            os.replace(temp_path, file_path)
+            with storage._lock:
+                storage.db.execute("DELETE FROM download_chunks WHERE download_id=?", (item_id,))
+                storage.db.commit()
+
+        await loop.run_in_executor(None, _finalize_file)
 
     def _extract_media_info(self, message: Any) -> Optional[MediaInfo]:
         media = (
@@ -2014,36 +2137,44 @@ class TelegramDownloader:
         if not safe_name:
             safe_name = f"file_{message_id}"
         stem, extension = os.path.splitext(safe_name)
-        candidate = safe_name
-        counter = 1
-        async with self._reserved_paths_lock:
-            while True:
-                path = str(self.download_folder / candidate)
-                if os.path.exists(path) and path not in self._reserved_paths:
-                    try:
-                        if os.path.getsize(path) == expected_size:
-                            return path, candidate, True
-                    except OSError:
-                        pass
 
-                if not os.path.exists(path) and path not in self._reserved_paths:
-                    self._reserved_paths.add(path)
-                    return path, candidate, False
-                counter += 1
-                candidate = f"{stem} ({counter}){extension}"
+        async with self._reserved_paths_lock:
+            def _find_available():
+                candidate = safe_name
+                counter = 1
+                while True:
+                    path = str(self.download_folder / candidate)
+                    if os.path.exists(path) and path not in self._reserved_paths:
+                        try:
+                            if os.path.getsize(path) == expected_size:
+                                return path, candidate, True
+                        except OSError:
+                            pass
+
+                    if not os.path.exists(path) and path not in self._reserved_paths:
+                        self._reserved_paths.add(path)
+                        return path, candidate, False
+                    counter += 1
+                    candidate = f"{stem} ({counter}){extension}"
+
+            return await asyncio.to_thread(_find_available)
 
     async def _release_download_path(self, path: str) -> None:
         async with self._reserved_paths_lock:
             self._reserved_paths.discard(path)
 
-    def _cleanup_files(self, path: str) -> None:
-        for candidate in (path, f"{path}.temp", f"{path}.temp.state.json"):
-            try:
-                os.remove(candidate)
-            except FileNotFoundError:
-                pass
-            except OSError as error:
-                print(f"⚠️ No se pudo limpiar {candidate}: {error}")
+    async def _cleanup_files(self, path: str) -> None:
+        def _remove_sync():
+            for candidate in (path, f"{path}.temp", f"{path}.temp.state.json"):
+                try:
+                    os.remove(candidate)
+                except FileNotFoundError:
+                    pass
+                except OSError as error:
+                    print(f"⚠️ No se pudo limpiar {candidate}: {error}")
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _remove_sync)
 
 
 # --- Utilities ---
@@ -2203,6 +2334,9 @@ def check_webview2_runtime() -> bool:
 
 async def main(server_mode: bool = False) -> None:
     global downloader_instance, shutting_down
+
+    # Iniciar monitor de disco
+    asyncio.create_task(disk_monitor_task())
 
     # Asegurar que el directorio de datos existe
     DATA_DIR.mkdir(parents=True, exist_ok=True)
