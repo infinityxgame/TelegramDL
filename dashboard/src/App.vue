@@ -527,7 +527,7 @@ onMounted(async () => {
   }
 
   connectWebSocket()
-  timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
+  timer = setInterval(fetchDownloads, 1000)
   setInterval(() => checkForUpdates(false), 60 * 1000)
 })
 

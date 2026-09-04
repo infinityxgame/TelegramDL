@@ -19,14 +19,14 @@ import (
 )
 
 type ListenerItem struct {
-	ID        string `json:"id"`
-	MessageID int64  `json:"message_id"`
-	ChatID    int64  `json:"chat_id"`
-	ChatName  string `json:"chat_name"`
-	FileName  string `json:"file_name"`
-	Kind      string `json:"kind"`
-	TotalStr  string `json:"total_str"`
-	Status    string `json:"status"` // "available"
+	ID        string  `json:"id"`
+	MessageID int64   `json:"message_id"`
+	ChatID    int64   `json:"chat_id"`
+	ChatName  string  `json:"chat_name"`
+	FileName  string  `json:"file_name"`
+	Kind      string  `json:"kind"`
+	TotalStr  string  `json:"total_str"`
+	Status    string  `json:"status"` // "available"
 	UpdatedAt float64 `json:"updated_at"`
 }
 
@@ -198,11 +198,11 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	log.Printf("[LISTENER] Mensaje recibido -> ID: %d, PeerID: %d, FromID: %d, Out: %v", msg.ID, peerID, fromID, msg.Out)
 
 	if !enabled {
-		log.Printf("[LISTENER] Ignorado: Escucha global desactivada en configuración.")
+		//log.Printf("[LISTENER] Ignorado: Escucha global desactivada en configuración.")
 		return nil
 	}
 	if msg.Out {
-		log.Printf("[LISTENER] Ignorado: Es mensaje saliente (enviado por ti).")
+		//log.Printf("[LISTENER] Ignorado: Es mensaje saliente (enviado por ti).")
 		return nil
 	}
 
@@ -214,11 +214,11 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 			peerID = fromID
 		}
 	}
-	totalWatched := len(le.chatMap)
+	//totalWatched := len(le.chatMap)
 	le.mu.RUnlock()
 
 	if !watched {
-		log.Printf("[LISTENER] Ignorado: Chat/Usuario (PeerID: %d, FromID: %d) NO coincide con ningún chat vigilado (%d configurados)", peerID, fromID, totalWatched)
+		//log.Printf("[LISTENER] Ignorado: Chat/Usuario (PeerID: %d, FromID: %d) NO coincide con ningún chat vigilado (%d configurados)", peerID, fromID, totalWatched)
 		return nil
 	}
 

@@ -73,6 +73,9 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 			}
 			copyItem := item
 			eng.downloads[id] = &copyItem
+			if copyItem.Status == "queued" {
+				go eng.startDownloadJob(id)
+			}
 		}
 	}
 
@@ -602,6 +605,24 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 				log.Printf("[DOWNLOAD FETCH] Canal %d sin accessHash en caché. Consultando dialogs...", channelID)
 				_ = e.clientMgr.FetchDialogs(ctx)
 				accessHash, found = e.clientMgr.GetChannelAccessHash(channelID)
+			}
+			if !found {
+				log.Printf("[DOWNLOAD FETCH] Canal %d sigue sin accessHash. Consultando ChannelsGetChannels...", channelID)
+				if chatsRes, err := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
+					&tg.InputChannel{ChannelID: channelID, AccessHash: 0},
+				}); err == nil {
+					if mc, ok := chatsRes.(*tg.MessagesChats); ok {
+						for _, c := range mc.Chats {
+							if ch, ok := c.(*tg.Channel); ok && ch.ID == channelID {
+								accessHash = ch.AccessHash
+								found = true
+								e.clientMgr.SetChannelAccessHash(channelID, accessHash)
+								log.Printf("[DOWNLOAD FETCH] Canal %d resuelto exitosamente: AccessHash=%d", channelID, accessHash)
+								break
+							}
+						}
+					}
+				}
 			}
 			log.Printf("[DOWNLOAD FETCH] Consultando ChannelsGetMessages (Canal: %d, AccessHash: %d, MsgID: %d, Found: %v)...", channelID, accessHash, msgID, found)
 

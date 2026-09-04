@@ -189,6 +189,18 @@ func (cm *ClientManager) cacheEntities(entities tg.Entities) {
 	}
 }
 
+func (cm *ClientManager) SetChannelAccessHash(channelID int64, accessHash int64) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.channelAccessHashes[channelID] = accessHash
+}
+
+func (cm *ClientManager) SetUserAccessHash(userID int64, accessHash int64) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.userAccessHashes[userID] = accessHash
+}
+
 func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 	cm.mu.RLock()
 	raw := cm.rawClient
@@ -197,38 +209,60 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 		return errors.New("cliente no conectado")
 	}
 
-	res, err := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
-		OffsetPeer: &tg.InputPeerEmpty{},
-		Limit:      100,
-	})
-	if err != nil {
-		return err
-	}
+	var offsetPeer tg.InputPeerClass = &tg.InputPeerEmpty{}
+	var offsetID int = 0
+	var offsetDate int = 0
 
-	var chats []tg.ChatClass
-	var users []tg.UserClass
-
-	switch d := res.(type) {
-	case *tg.MessagesDialogs:
-		chats = d.Chats
-		users = d.Users
-	case *tg.MessagesDialogsSlice:
-		chats = d.Chats
-		users = d.Users
-	}
-
-	cm.mu.Lock()
-	for _, c := range chats {
-		if ch, ok := c.(*tg.Channel); ok {
-			cm.channelAccessHashes[ch.ID] = ch.AccessHash
+	for page := 0; page < 5; page++ {
+		res, err := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+			OffsetPeer: offsetPeer,
+			OffsetID:   offsetID,
+			OffsetDate: offsetDate,
+			Limit:      100,
+		})
+		if err != nil {
+			return err
 		}
-	}
-	for _, u := range users {
-		if usr, ok := u.(*tg.User); ok {
-			cm.userAccessHashes[usr.ID] = usr.AccessHash
+
+		var chats []tg.ChatClass
+		var users []tg.UserClass
+		var messages []tg.MessageClass
+
+		switch d := res.(type) {
+		case *tg.MessagesDialogs:
+			chats = d.Chats
+			users = d.Users
+			messages = d.Messages
+		case *tg.MessagesDialogsSlice:
+			chats = d.Chats
+			users = d.Users
+			messages = d.Messages
 		}
+
+		cm.mu.Lock()
+		for _, c := range chats {
+			if ch, ok := c.(*tg.Channel); ok {
+				cm.channelAccessHashes[ch.ID] = ch.AccessHash
+			}
+		}
+		for _, u := range users {
+			if usr, ok := u.(*tg.User); ok {
+				cm.userAccessHashes[usr.ID] = usr.AccessHash
+			}
+		}
+		cm.mu.Unlock()
+
+		if len(messages) == 0 || len(chats) == 0 {
+			break
+		}
+
+		lastMsg, ok := messages[len(messages)-1].(*tg.Message)
+		if !ok {
+			break
+		}
+		offsetID = lastMsg.ID
+		offsetDate = lastMsg.Date
 	}
-	cm.mu.Unlock()
 
 	return nil
 }

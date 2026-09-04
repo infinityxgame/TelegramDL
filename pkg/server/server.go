@@ -528,21 +528,20 @@ func (s *Server) handleStartDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := uuid.New().String()
-	go func() {
-		// Crear items para el rango de mensajes
-		for msgID := parsed.StartMsgID; msgID <= parsed.EndMsgID; msgID++ {
-			item := storage.DownloadItem{
-				ID:        uuid.New().String(),
-				JobID:     jobID,
-				MessageID: int64(msgID),
-				ChatID:    chatID,
-				Status:    "queued",
-				Source:    "manual",
-				FileName:  fmt.Sprintf("mensaje_%d", msgID),
-			}
-			s.downloader.QueueItem(item)
+	// Crear items para el rango de mensajes
+	for msgID := parsed.StartMsgID; msgID <= parsed.EndMsgID; msgID++ {
+		item := storage.DownloadItem{
+			ID:        uuid.New().String(),
+			JobID:     jobID,
+			MessageID: int64(msgID),
+			ChatID:    chatID,
+			Status:    "queued",
+			Source:    "manual",
+			FileName:  fmt.Sprintf("mensaje_%d", msgID),
 		}
-	}()
+		s.downloader.QueueItem(item)
+	}
+	s.broadcastState()
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{
 		"status":  "ok",
