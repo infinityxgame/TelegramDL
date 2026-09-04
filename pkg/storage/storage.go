@@ -156,9 +156,37 @@ func (s *Storage) GetCredentials() (string, string, error) {
 	if apiID == "" || apiHash == "" {
 		// Fallback a variables de entorno / .env
 		envID, envHash := config.LoadEnvCredentials()
-		if envID != "" && envHash != "" {
+		if envID != "" {
 			apiID = envID
+		}
+		if envHash != "" {
 			apiHash = envHash
+		}
+
+		// Si aún falta apiID, buscar en downloader_session.session de Pyrogram
+		if apiID == "" {
+			sessionFiles := []string{
+				filepath.Join(config.DataDir, "downloader_session.session"),
+				filepath.Join(config.BaseDir, "downloader_session.session"),
+			}
+			for _, sf := range sessionFiles {
+				if _, err := os.Stat(sf); err == nil {
+					db, err := sql.Open("sqlite", sf)
+					if err == nil {
+						var id int
+						if err := db.QueryRow("SELECT api_id FROM sessions LIMIT 1").Scan(&id); err == nil && id != 0 {
+							apiID = strconv.Itoa(id)
+						}
+						db.Close()
+					}
+					if apiID != "" {
+						break
+					}
+				}
+			}
+		}
+
+		if apiID != "" && apiHash != "" {
 			go func(id, hash string) {
 				_ = s.SaveCredentials(id, hash)
 			}(apiID, apiHash)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	_ "modernc.org/sqlite"
 
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
@@ -73,10 +70,34 @@ func NewClientManager() *ClientManager {
 	return cm
 }
 
+func GetPyrogramCredentials() (string, error) {
+	sessionFiles := []string{
+		filepath.Join(config.DataDir, "downloader_session.session"),
+		filepath.Join(config.BaseDir, "downloader_session.session"),
+	}
+	for _, sf := range sessionFiles {
+		if _, err := os.Stat(sf); err == nil {
+			db, err := sql.Open("sqlite", sf)
+			if err == nil {
+				defer db.Close()
+				var apiID int
+				if err := db.QueryRow("SELECT api_id FROM sessions LIMIT 1").Scan(&apiID); err == nil && apiID != 0 {
+					return strconv.Itoa(apiID), nil
+				}
+			}
+		}
+	}
+	return "", errors.New("not found")
+}
+
 func importPyrogramSession(targetJSONPath string) {
-	// Si ya existe la sesión de gotd, no sobreescribir
-	if _, err := os.Stat(targetJSONPath); err == nil {
-		return
+	// Si ya tenemos una sesión válida con clave de 256 bytes, no sobreescribir
+	if fi, err := os.Stat(targetJSONPath); err == nil && fi.Size() > 100 {
+		fileStorage := &session.FileStorage{Path: targetJSONPath}
+		loader := &session.Loader{Storage: fileStorage}
+		if data, err := loader.Load(context.Background()); err == nil && data != nil && len(data.AuthKey) == 256 {
+			return
+		}
 	}
 
 	sessionFiles := []string{
@@ -101,49 +122,48 @@ func importPyrogramSession(targetJSONPath string) {
 	}
 	defer db.Close()
 
-	var dcID int
+	var dcID, apiID, port int
 	var authKey []byte
 	var userID int64
-	row := db.QueryRow("SELECT dc_id, auth_key, user_id FROM sessions LIMIT 1")
-	if err := row.Scan(&dcID, &authKey, &userID); err != nil || len(authKey) != 256 {
+	var serverAddr string
+	row := db.QueryRow("SELECT dc_id, api_id, auth_key, user_id, server_address, port FROM sessions LIMIT 1")
+	if err := row.Scan(&dcID, &apiID, &authKey, &userID, &serverAddr, &port); err != nil || len(authKey) != 256 {
 		return
 	}
 
+	if serverAddr == "" {
+		switch dcID {
+		case 1:
+			serverAddr = "149.154.175.53"
+		case 2:
+			serverAddr = "149.154.167.50"
+		case 3:
+			serverAddr = "149.154.175.100"
+		case 4:
+			serverAddr = "149.154.167.91"
+		case 5:
+			serverAddr = "91.108.56.165"
+		default:
+			serverAddr = "149.154.175.53"
+		}
+	}
+	if port == 0 {
+		port = 443
+	}
+
 	h := sha1.Sum(authKey)
-	authKeyID := h[len(h)-8:]
+	keyID := h[len(h)-8:]
 
-	dcIP := "149.154.175.50"
-	switch dcID {
-	case 1:
-		dcIP = "149.154.175.50"
-	case 2:
-		dcIP = "149.154.167.50"
-	case 3:
-		dcIP = "149.154.175.100"
-	case 4:
-		dcIP = "149.154.167.91"
-	case 5:
-		dcIP = "91.108.56.165"
+	data := session.Data{
+		DC:        dcID,
+		Addr:      fmt.Sprintf("%s:%d", serverAddr, port),
+		AuthKey:   authKey,
+		AuthKeyID: keyID,
 	}
 
-	sess := map[string]any{
-		"Version": 1,
-		"Data": map[string]any{
-			"Config": map[string]any{
-				"ThisDC": dcID,
-			},
-			"DC":        dcID,
-			"Addr":      fmt.Sprintf("%s:443", dcIP),
-			"AuthKey":   authKey,
-			"AuthKeyID": authKeyID,
-			"Salt":      0,
-		},
-	}
-
-	data, err := json.Marshal(sess)
-	if err == nil {
-		_ = os.WriteFile(targetJSONPath, data, 0600)
-	}
+	fileStorage := &session.FileStorage{Path: targetJSONPath}
+	loader := &session.Loader{Storage: fileStorage}
+	_ = loader.Save(context.Background(), &data)
 }
 
 func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error) {
