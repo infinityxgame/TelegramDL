@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -28,12 +29,16 @@ type Engine struct {
 	config       config.Config
 	reservations *PathReservations
 
-	mu             sync.RWMutex
-	downloads      map[string]*storage.DownloadItem
-	cancelFuncs    map[string]context.CancelFunc
-	pauseStates    map[string]bool
-	activeSem      chan struct{}
-	stateListeners []DownloadStateListener
+	mu                 sync.RWMutex
+	downloads          map[string]*storage.DownloadItem
+	cancelFuncs        map[string]context.CancelFunc
+	pauseStates        map[string]bool
+	activeSem          chan struct{}
+	stateListeners     []DownloadStateListener
+	startTimes         map[string]time.Time
+	lastBroadcastTimes map[string]time.Time
+	lastSaveTimes      map[string]time.Time
+	itemSpeeds         map[string]float64
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -44,14 +49,18 @@ type Engine struct {
 func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Config) *Engine {
 	cfg = config.NormalizeConfig(cfg)
 	eng := &Engine{
-		clientMgr:    cm,
-		storage:      st,
-		config:       cfg,
-		reservations: NewPathReservations(),
-		downloads:    make(map[string]*storage.DownloadItem),
-		cancelFuncs:  make(map[string]context.CancelFunc),
-		pauseStates:  make(map[string]bool),
-		activeSem:    make(chan struct{}, cfg.MaxConcurrentDownloads),
+		clientMgr:          cm,
+		storage:            st,
+		config:             cfg,
+		reservations:       NewPathReservations(),
+		downloads:          make(map[string]*storage.DownloadItem),
+		cancelFuncs:        make(map[string]context.CancelFunc),
+		pauseStates:        make(map[string]bool),
+		activeSem:          make(chan struct{}, cfg.MaxConcurrentDownloads),
+		startTimes:         make(map[string]time.Time),
+		lastBroadcastTimes: make(map[string]time.Time),
+		lastSaveTimes:      make(map[string]time.Time),
+		itemSpeeds:         make(map[string]float64),
 	}
 
 	// Cargar descargas previas desde SQLite
@@ -105,7 +114,45 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 	for _, item := range e.downloads {
 		res = append(res, *item)
 	}
+
+	sort.Slice(res, func(i, j int) bool {
+		sI := statusPriority(res[i].Status)
+		sJ := statusPriority(res[j].Status)
+		if sI != sJ {
+			return sI > sJ
+		}
+		if res[i].Progress != res[j].Progress {
+			return res[i].Progress > res[j].Progress
+		}
+		return res[i].CreatedAt > res[j].CreatedAt
+	})
+
 	return res
+}
+
+func statusPriority(status string) int {
+	switch status {
+	case "downloading":
+		return 4
+	case "paused":
+		return 3
+	case "queued", "pending":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func (e *Engine) GetTotalSpeedBytes() int64 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	var total float64
+	for id, speed := range e.itemSpeeds {
+		if item, ok := e.downloads[id]; ok && item.Status == "downloading" {
+			total += speed
+		}
+	}
+	return int64(total)
 }
 
 func (e *Engine) GetItem(id string) (*storage.DownloadItem, bool) {
@@ -313,6 +360,7 @@ func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes
 		return
 	}
 
+	now := time.Now()
 	item.CurrentBytes += bytesJustDownloaded
 	if totalBytes > 0 {
 		item.TotalBytes = totalBytes
@@ -320,13 +368,42 @@ func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes
 		item.TotalStr = config.FormatBytes(float64(totalBytes))
 	}
 	item.CurrentStr = config.FormatBytes(float64(item.CurrentBytes))
-	item.UpdatedAt = float64(time.Now().Unix())
+	item.UpdatedAt = float64(now.Unix())
+
+	startTime, hasStart := e.startTimes[itemID]
+	if !hasStart {
+		startTime = now
+		e.startTimes[itemID] = startTime
+	}
+	elapsed := now.Sub(startTime).Seconds()
+	if elapsed > 0.05 {
+		speedVal := float64(item.CurrentBytes) / elapsed
+		item.Speed = config.FormatBytes(speedVal) + "/s"
+		e.itemSpeeds[itemID] = speedVal
+	}
+
+	lastBroadcast, hasBroadcast := e.lastBroadcastTimes[itemID]
+	shouldBroadcast := !hasBroadcast || now.Sub(lastBroadcast) >= 200*time.Millisecond
+	if shouldBroadcast {
+		e.lastBroadcastTimes[itemID] = now
+	}
+
+	lastSave, hasSave := e.lastSaveTimes[itemID]
+	shouldSave := !hasSave || now.Sub(lastSave) >= 1*time.Second
+	if shouldSave {
+		e.lastSaveTimes[itemID] = now
+	}
 
 	cp := *item
 	e.mu.Unlock()
 
-	_ = e.storage.SaveDownload(cp)
-	e.notifyState(cp)
+	if shouldSave && e.storage != nil {
+		_ = e.storage.SaveDownload(cp)
+	}
+
+	if shouldBroadcast {
+		e.notifyState(cp)
+	}
 }
 
 func (e *Engine) startDownloadJob(itemID string) {
@@ -343,13 +420,21 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancelFuncs[itemID] = cancel
+	e.startTimes[itemID] = time.Now()
+	e.lastBroadcastTimes[itemID] = time.Now()
 	item.Status = "downloading"
+	item.Speed = "0 B/s"
+	e.itemSpeeds[itemID] = 0
 	e.notifyState(*item)
 	e.mu.Unlock()
 
 	defer func() {
 		e.mu.Lock()
 		delete(e.cancelFuncs, itemID)
+		delete(e.startTimes, itemID)
+		delete(e.lastBroadcastTimes, itemID)
+		delete(e.lastSaveTimes, itemID)
+		delete(e.itemSpeeds, itemID)
 		e.mu.Unlock()
 	}()
 
@@ -378,7 +463,9 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	curItem.UpdatedAt = float64(time.Now().Unix())
-	_ = e.storage.SaveDownload(*curItem)
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(*curItem)
+	}
 	e.notifyState(*curItem)
 }
 

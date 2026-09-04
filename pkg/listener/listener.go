@@ -29,15 +29,18 @@ type ListenerItem struct {
 	UpdatedAt float64 `json:"updated_at"`
 }
 
+type ListenerStateListener func(item ListenerItem)
+
 type ListenerEngine struct {
 	clientMgr *telegram.ClientManager
 	storage   *storage.Storage
 	engine    *downloader.Engine
 
-	mu         sync.RWMutex
-	config     config.Config
-	items      map[string]*ListenerItem
-	chatMap    map[int64]config.ListenerChat
+	mu             sync.RWMutex
+	config         config.Config
+	items          map[string]*ListenerItem
+	chatMap        map[int64]config.ListenerChat
+	stateListeners []ListenerStateListener
 }
 
 func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *downloader.Engine, cfg config.Config) *ListenerEngine {
@@ -86,6 +89,22 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 	return le
 }
 
+func (le *ListenerEngine) OnStateChange(listener ListenerStateListener) {
+	le.mu.Lock()
+	defer le.mu.Unlock()
+	le.stateListeners = append(le.stateListeners, listener)
+}
+
+func (le *ListenerEngine) notifyState(item ListenerItem) {
+	le.mu.RLock()
+	listeners := append([]ListenerStateListener(nil), le.stateListeners...)
+	le.mu.RUnlock()
+
+	for _, l := range listeners {
+		l(item)
+	}
+}
+
 func (le *ListenerEngine) updateChatMap(cfg config.Config) {
 	le.chatMap = make(map[int64]config.ListenerChat)
 	for _, c := range cfg.ListenerChats {
@@ -98,6 +117,30 @@ func (le *ListenerEngine) UpdateConfig(cfg config.Config) {
 	defer le.mu.Unlock()
 	le.config = config.NormalizeConfig(cfg)
 	le.updateChatMap(le.config)
+}
+
+func (le *ListenerEngine) matchChatID(peerID int64) (config.ListenerChat, bool) {
+	if cfg, ok := le.chatMap[peerID]; ok {
+		return cfg, true
+	}
+	s := fmt.Sprintf("%d", peerID)
+	if strings.HasPrefix(s, "-100") && len(s) > 4 {
+		if rawID, err := strconv.ParseInt(s[4:], 10, 64); err == nil {
+			if cfg, ok := le.chatMap[rawID]; ok {
+				return cfg, true
+			}
+			if cfg, ok := le.chatMap[-rawID]; ok {
+				return cfg, true
+			}
+		}
+	} else if peerID > 0 {
+		if fullID, err := strconv.ParseInt(fmt.Sprintf("-100%d", peerID), 10, 64); err == nil {
+			if cfg, ok := le.chatMap[fullID]; ok {
+				return cfg, true
+			}
+		}
+	}
+	return config.ListenerChat{}, false
 }
 
 func (le *ListenerEngine) GetItems() []ListenerItem {
@@ -132,7 +175,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	}
 
 	le.mu.RLock()
-	chatCfg, watched := le.chatMap[peerID]
+	chatCfg, watched := le.matchChatID(peerID)
 	le.mu.RUnlock()
 
 	if !watched {
@@ -218,6 +261,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		le.mu.Lock()
 		le.items[itemID] = item
 		le.mu.Unlock()
+		le.notifyState(*item)
 	}
 
 	return nil
@@ -231,7 +275,9 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		return errors.New("multimedia no encontrado en escucha")
 	}
 	item.Status = "queued"
+	cp := *item
 	le.mu.Unlock()
+	le.notifyState(cp)
 
 	dlItem := storage.DownloadItem{
 		ID:        item.ID,
@@ -258,8 +304,14 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 
 func (le *ListenerEngine) RemoveItem(itemID string) {
 	le.mu.Lock()
-	defer le.mu.Unlock()
-	delete(le.items, itemID)
+	item, ok := le.items[itemID]
+	if ok {
+		delete(le.items, itemID)
+	}
+	le.mu.Unlock()
+	if ok && item != nil {
+		le.notifyState(*item)
+	}
 }
 
 func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (string, error) {

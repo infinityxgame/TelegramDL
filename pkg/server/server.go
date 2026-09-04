@@ -79,6 +79,11 @@ func NewServer(
 		s.broadcastState()
 	})
 
+	// Escuchar cambios de estado en el motor de escucha para emitir a los WebSockets
+	le.OnStateChange(func(item listener.ListenerItem) {
+		s.broadcastState()
+	})
+
 	return s
 }
 
@@ -271,26 +276,58 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) periodicBroadcastLoop() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	broadcastTicker := time.NewTicker(1 * time.Second)
+	diskTicker := time.NewTicker(3 * time.Second)
+	defer broadcastTicker.Stop()
+	defer diskTicker.Stop()
 
-	for range ticker.C {
-		s.broadcastState()
+	for {
+		select {
+		case <-diskTicker.C:
+			s.mu.RLock()
+			folder := s.config.DownloadFolder
+			s.mu.RUnlock()
+
+			if disk, err := downloader.GetDiskUsage(folder, s.downloader.GetDownloads()...); err == nil {
+				s.mu.Lock()
+				s.cachedDisk = disk
+				s.mu.Unlock()
+			}
+		case <-broadcastTicker.C:
+			s.broadcastState()
+		}
 	}
 }
 
 func (s *Server) broadcastState() {
-	snap := s.buildStateSnapshot()
-
 	s.mu.RLock()
+	if len(s.wsClients) == 0 {
+		s.mu.RUnlock()
+		return
+	}
 	clients := make([]*websocket.Conn, 0, len(s.wsClients))
 	for c := range s.wsClients {
 		clients = append(clients, c)
 	}
 	s.mu.RUnlock()
 
+	snap := s.buildStateSnapshot()
+
+	var toRemove []*websocket.Conn
 	for _, c := range clients {
-		_ = c.WriteJSON(snap)
+		_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		if err := c.WriteJSON(snap); err != nil {
+			toRemove = append(toRemove, c)
+		}
+	}
+
+	if len(toRemove) > 0 {
+		s.mu.Lock()
+		for _, c := range toRemove {
+			delete(s.wsClients, c)
+			_ = c.Close()
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -298,7 +335,6 @@ func (s *Server) buildStateSnapshot() map[string]any {
 	downloads := s.downloader.GetDownloads()
 	activeCount := 0
 	queuedCount := 0
-	var speedBytes int64 = 0
 
 	for _, d := range downloads {
 		if d.Status == "downloading" {
@@ -308,24 +344,22 @@ func (s *Server) buildStateSnapshot() map[string]any {
 		}
 	}
 
+	speedBytes := s.downloader.GetTotalSpeedBytes()
+
 	s.mu.RLock()
 	folder := s.config.DownloadFolder
-	s.mu.RUnlock()
-
-	disk, _ := downloader.GetDiskUsage(folder, downloads...)
-	if disk != nil {
-		s.mu.Lock()
-		s.cachedDisk = disk
-		s.mu.Unlock()
-	} else {
-		s.mu.RLock()
-		disk = s.cachedDisk
-		s.mu.RUnlock()
-	}
-
-	s.mu.RLock()
+	disk := s.cachedDisk
 	cfg := s.config
 	s.mu.RUnlock()
+
+	if disk == nil {
+		if d, err := downloader.GetDiskUsage(folder, downloads...); err == nil {
+			s.mu.Lock()
+			s.cachedDisk = d
+			disk = d
+			s.mu.Unlock()
+		}
+	}
 
 	listenerItems := s.listener.GetItems()
 
@@ -382,14 +416,23 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAuthSendCode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Phone string `json:"phone"`
+		Phone       string `json:"phone"`
+		PhoneNumber string `json:"phone_number"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Phone == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.errorResponse(w, http.StatusUnprocessableEntity, "Datos inválidos")
+		return
+	}
+	phone := strings.TrimSpace(body.Phone)
+	if phone == "" {
+		phone = strings.TrimSpace(body.PhoneNumber)
+	}
+	if phone == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "Teléfono requerido")
 		return
 	}
 
-	hash, err := s.clientMgr.SendCode(r.Context(), body.Phone)
+	hash, err := s.clientMgr.SendCode(r.Context(), phone)
 	if err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -401,15 +444,25 @@ func (s *Server) handleAuthSendCode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthVerifyCode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Phone         string `json:"phone"`
+		PhoneNumber   string `json:"phone_number"`
 		Code          string `json:"code"`
 		PhoneCodeHash string `json:"phone_code_hash"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Code == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.errorResponse(w, http.StatusUnprocessableEntity, "Datos inválidos")
+		return
+	}
+	phone := strings.TrimSpace(body.Phone)
+	if phone == "" {
+		phone = strings.TrimSpace(body.PhoneNumber)
+	}
+	code := strings.TrimSpace(body.Code)
+	if code == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "Código requerido")
 		return
 	}
 
-	status, err := s.clientMgr.VerifyCode(r.Context(), body.Phone, body.Code, body.PhoneCodeHash)
+	status, err := s.clientMgr.VerifyCode(r.Context(), phone, code, body.PhoneCodeHash)
 	if err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -496,29 +549,39 @@ func (s *Server) handleStartDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCancelDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
 
-	_ = s.downloader.CancelDownload(body.ID)
+	_ = s.downloader.CancelDownload(id)
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
 
-	if err := s.downloader.PauseDownload(body.ID); err != nil {
+	if err := s.downloader.PauseDownload(id); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -527,15 +590,20 @@ func (s *Server) handlePauseDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
 
-	if err := s.downloader.ResumeDownload(r.Context(), body.ID); err != nil {
+	if err := s.downloader.ResumeDownload(r.Context(), id); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -544,15 +612,20 @@ func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
 
-	if err := s.downloader.ResumeDownload(r.Context(), body.ID); err != nil {
+	if err := s.downloader.ResumeDownload(r.Context(), id); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -573,7 +646,7 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if subpath == "history" {
-		if r.Method == http.MethodDelete || r.Method == http.MethodPost {
+		if r.Method == http.MethodDelete {
 			s.handleClearHistory(w, r)
 			return
 		}
@@ -611,13 +684,18 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID         string `json:"id"`
+		ItemID     string `json:"item_id"`
 		DeleteFile *bool  `json:"delete_file"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
-		body.ID = r.URL.Query().Get("id")
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
 	}
-	if body.ID == "" {
+	if id == "" {
+		id = r.URL.Query().Get("id")
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
@@ -631,8 +709,8 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = s.downloader.DeleteDownload(body.ID, delFile)
-	s.listener.RemoveItem(body.ID)
+	_ = s.downloader.DeleteDownload(id, delFile)
+	s.listener.RemoveItem(id)
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -643,10 +721,15 @@ func (s *Server) handleClearHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleOpenDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	item, ok := s.downloader.GetItem(body.ID)
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	item, ok := s.downloader.GetItem(id)
 	if !ok || item.FilePath == "" {
 		s.errorResponse(w, http.StatusNotFound, "Archivo no encontrado")
 		return
@@ -656,14 +739,14 @@ func (s *Server) handleOpenDownload(w http.ResponseWriter, r *http.Request) {
 		target := item.FilePath
 		if runtime.GOOS == "windows" {
 			if _, err := os.Stat(target); err == nil {
-				_ = exec.Command("explorer.exe", "/select,", target).Start()
+				_ = exec.Command("cmd", "/c", "start", "", target).Start()
 			} else {
 				_ = exec.Command("explorer.exe", filepath.Dir(target)).Start()
 			}
 		} else if runtime.GOOS == "darwin" {
-			_ = exec.Command("open", "-R", target).Start()
+			_ = exec.Command("open", target).Start()
 		} else {
-			_ = exec.Command("xdg-open", filepath.Dir(target)).Start()
+			_ = exec.Command("xdg-open", target).Start()
 		}
 	}()
 
@@ -683,27 +766,85 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var newCfg config.Config
-	if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
+	var raw map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "Configuración inválida")
 		return
 	}
 
-	newCfg = config.NormalizeConfig(newCfg)
 	s.mu.Lock()
-	s.config = newCfg
+	cfg := s.config
+
+	if v, ok := raw["max_concurrent_downloads"]; ok && v != nil {
+		cfg.MaxConcurrentDownloads = int(config.ParseInt64(v))
+	}
+	if v, ok := raw["parallel_chunks"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.ParallelChunks = b
+		}
+	}
+	if v, ok := raw["chunk_workers"]; ok && v != nil {
+		cfg.ChunkWorkers = int(config.ParseInt64(v))
+	}
+	if v, ok := raw["download_folder"]; ok && v != nil {
+		if sVal, ok := v.(string); ok && strings.TrimSpace(sVal) != "" {
+			cfg.DownloadFolder = sVal
+		}
+	}
+	if v, ok := raw["color_id"]; ok {
+		if v == nil {
+			cfg.ColorID = nil
+		} else {
+			c := int(config.ParseInt64(v))
+			cfg.ColorID = &c
+		}
+	}
+	if v, ok := raw["speed_limit"].(map[string]any); ok {
+		if val, ok := v["value"]; ok && val != nil {
+			if f, ok := val.(float64); ok {
+				cfg.SpeedLimit.Value = f
+			} else {
+				cfg.SpeedLimit.Value = float64(config.ParseInt64(val))
+			}
+		}
+		if unit, ok := v["unit"].(string); ok && strings.TrimSpace(unit) != "" {
+			cfg.SpeedLimit.Unit = unit
+		}
+	}
+	if v, ok := raw["listener_enabled"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.ListenerEnabled = b
+		}
+	}
+	if v, ok := raw["listener_chats"]; ok && v != nil {
+		if chatBytes, err := json.Marshal(v); err == nil {
+			var parsedChats []config.ListenerChat
+			if json.Unmarshal(chatBytes, &parsedChats) == nil {
+				cfg.ListenerChats = parsedChats
+			}
+		}
+	}
+
+	cfg = config.NormalizeConfig(cfg)
+	s.config = cfg
 	s.mu.Unlock()
 
-	_ = s.storage.SaveConfig(newCfg)
-	s.downloader.UpdateConfig(newCfg)
-	s.listener.UpdateConfig(newCfg)
+	_ = s.storage.SaveConfig(cfg)
+	s.downloader.UpdateConfig(cfg)
+	s.listener.UpdateConfig(cfg)
+	s.broadcastState()
 
-	s.jsonResponse(w, http.StatusOK, newCfg)
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"settings": cfg,
+	})
 }
 
 func (s *Server) handleSpeedLimit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		SpeedLimit config.SpeedLimit `json:"speed_limit"`
+		Value      *float64          `json:"value"`
+		Unit       *string           `json:"unit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "Datos inválidos")
@@ -711,14 +852,27 @@ func (s *Server) handleSpeedLimit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	s.config.SpeedLimit = body.SpeedLimit
+	if body.Value != nil {
+		body.SpeedLimit.Value = *body.Value
+	}
+	if body.Unit != nil {
+		body.SpeedLimit.Unit = *body.Unit
+	}
+	if body.SpeedLimit.Unit != "" || body.SpeedLimit.Value >= 0 {
+		s.config.SpeedLimit = body.SpeedLimit
+	}
+	s.config = config.NormalizeConfig(s.config)
 	cfg := s.config
 	s.mu.Unlock()
 
 	_ = s.storage.SaveConfig(cfg)
 	s.downloader.UpdateConfig(cfg)
+	s.broadcastState()
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"settings": cfg,
+	})
 }
 
 // Listener Handlers
@@ -737,25 +891,99 @@ func (s *Server) handleListenerSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var body struct {
-		ListenerEnabled bool                  `json:"listener_enabled"`
-		ListenerChats   []config.ListenerChat `json:"listener_chats"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var raw map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "Datos inválidos")
 		return
 	}
 
 	s.mu.Lock()
-	s.config.ListenerEnabled = body.ListenerEnabled
-	s.config.ListenerChats = body.ListenerChats
-	savedCfg := s.config
+	cfg = s.config
+
+	// Enabled: puede venir como "enabled" o "listener_enabled"
+	if v, ok := raw["enabled"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.ListenerEnabled = b
+		}
+	} else if v, ok := raw["listener_enabled"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.ListenerEnabled = b
+		}
+	}
+
+	// Chats: puede venir como "chats", "listener_chats", "chat_ids", o "listener_chat_ids"
+	var rawChats any
+	if v, ok := raw["chats"]; ok && v != nil {
+		rawChats = v
+	} else if v, ok := raw["listener_chats"]; ok && v != nil {
+		rawChats = v
+	}
+
+	if rawChats != nil {
+		if chatBytes, err := json.Marshal(rawChats); err == nil {
+			var parsedChats []config.ListenerChat
+			if err := json.Unmarshal(chatBytes, &parsedChats); err == nil {
+				cfg.ListenerChats = parsedChats
+			}
+		}
+	} else {
+		var rawIDs any
+		if v, ok := raw["chat_ids"]; ok && v != nil {
+			rawIDs = v
+		} else if v, ok := raw["listener_chat_ids"]; ok && v != nil {
+			rawIDs = v
+		}
+		if rawIDs != nil {
+			if idBytes, err := json.Marshal(rawIDs); err == nil {
+				var ids []int64
+				if err := json.Unmarshal(idBytes, &ids); err == nil {
+					newChats := make([]config.ListenerChat, 0, len(ids))
+					for _, id := range ids {
+						var existingChat config.ListenerChat
+						exists := false
+						for _, old := range cfg.ListenerChats {
+							if old.ID == id {
+								existingChat = old
+								exists = true
+								break
+							}
+						}
+						if exists {
+							newChats = append(newChats, existingChat)
+						} else {
+							newChats = append(newChats, config.ListenerChat{
+								ID:           id,
+								Name:         fmt.Sprintf("%d", id),
+								AutoDownload: false,
+								FPhotos:      true,
+								FVideos:      true,
+								FAudios:      true,
+								FDocs:        true,
+								FStickers:    true,
+							})
+						}
+					}
+					cfg.ListenerChats = newChats
+				}
+			}
+		}
+	}
+
+	cfg = config.NormalizeConfig(cfg)
+	s.config = cfg
 	s.mu.Unlock()
 
-	_ = s.storage.SaveConfig(savedCfg)
-	s.listener.UpdateConfig(savedCfg)
+	_ = s.storage.SaveConfig(cfg)
+	s.downloader.UpdateConfig(cfg)
+	s.listener.UpdateConfig(cfg)
+	s.broadcastState()
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"enabled":  cfg.ListenerEnabled,
+		"chats":    cfg.ListenerChats,
+		"chat_ids": cfg.ListenerChatIDs,
+	})
 }
 
 func (s *Server) handleListenerItems(w http.ResponseWriter, r *http.Request) {
@@ -764,15 +992,20 @@ func (s *Server) handleListenerItems(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListenerDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.ID == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
 	}
 
-	if err := s.listener.DownloadItem(body.ID); err != nil {
+	if err := s.listener.DownloadItem(id); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
