@@ -113,17 +113,29 @@ func LoadEnvCredentials() (string, string) {
 	// Cargar primero desde UserEnvPath
 	_ = godotenv.Load(UserEnvPath)
 
-	apiID := os.Getenv("API_ID")
-	apiHash := os.Getenv("API_HASH")
+	apiID := os.Getenv("TGDL_API_ID")
+	if apiID == "" {
+		apiID = os.Getenv("API_ID")
+	}
+	apiHash := os.Getenv("TGDL_API_HASH")
+	if apiHash == "" {
+		apiHash = os.Getenv("API_HASH")
+	}
 
 	if apiID == "" || apiHash == "" {
 		// Intentar leer desde BaseDir/.env
 		_ = godotenv.Load(filepath.Join(BaseDir, ".env"))
 		if apiID == "" {
-			apiID = os.Getenv("API_ID")
+			apiID = os.Getenv("TGDL_API_ID")
+			if apiID == "" {
+				apiID = os.Getenv("API_ID")
+			}
 		}
 		if apiHash == "" {
-			apiHash = os.Getenv("API_HASH")
+			apiHash = os.Getenv("TGDL_API_HASH")
+			if apiHash == "" {
+				apiHash = os.Getenv("API_HASH")
+			}
 		}
 	}
 
@@ -135,7 +147,7 @@ func SaveEnvCredentials(apiID, apiHash string) error {
 	apiID = strings.TrimSpace(apiID)
 	apiHash = strings.TrimSpace(apiHash)
 
-	content := fmt.Sprintf("API_ID=%s\nAPI_HASH=%s\n", apiID, apiHash)
+	content := fmt.Sprintf("API_ID=%s\nAPI_HASH=%s\nTGDL_API_ID=%s\nTGDL_API_HASH=%s\n", apiID, apiHash, apiID, apiHash)
 	err := os.WriteFile(UserEnvPath, []byte(content), 0600)
 	if err != nil {
 		return err
@@ -143,6 +155,8 @@ func SaveEnvCredentials(apiID, apiHash string) error {
 
 	_ = os.Setenv("API_ID", apiID)
 	_ = os.Setenv("API_HASH", apiHash)
+	_ = os.Setenv("TGDL_API_ID", apiID)
+	_ = os.Setenv("TGDL_API_HASH", apiHash)
 	return nil
 }
 

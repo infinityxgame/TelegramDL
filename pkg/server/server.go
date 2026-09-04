@@ -164,10 +164,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings/speed-limit", s.handleSpeedLimit)
 
 	// Listener
+	mux.HandleFunc("/api/listener", s.handleListenerItems)
 	mux.HandleFunc("/api/listener/settings", s.handleListenerSettings)
 	mux.HandleFunc("/api/listener/items", s.handleListenerItems)
 	mux.HandleFunc("/api/listener/download", s.handleListenerDownload)
 	mux.HandleFunc("/api/listener/resolve-chat", s.handleListenerResolveChat)
+	mux.HandleFunc("/api/listener/chat/", s.handleListenerResolveChatPath)
 
 	// Filesystem & System
 	mux.HandleFunc("/api/fs/browse", s.handleFSBrowse)
@@ -264,13 +266,23 @@ func (s *Server) buildStateSnapshot() map[string]any {
 		s.mu.RUnlock()
 	}
 
+	s.mu.RLock()
+	cfg := s.config
+	s.mu.RUnlock()
+
+	listenerItems := s.listener.GetItems()
+
 	return map[string]any{
+		"type":         "state",
 		"downloads":    downloads,
+		"listener":     listenerItems,
+		"settings":     cfg,
 		"active_count": activeCount,
 		"queued_count": queuedCount,
 		"speed_total":  config.FormatBytes(float64(speedBytes)) + "/s",
 		"speed_bytes":  speedBytes,
 		"disk":         disk,
+		"server_time":  float64(time.Now().Unix()),
 	}
 }
 
@@ -528,7 +540,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		cfg := s.config
 		s.mu.RUnlock()
-		s.jsonResponse(w, http.StatusOK, cfg)
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status":   "ok",
+			"settings": cfg,
+		})
 		return
 	}
 
@@ -578,8 +593,10 @@ func (s *Server) handleListenerSettings(w http.ResponseWriter, r *http.Request) 
 
 	if r.Method == http.MethodGet {
 		s.jsonResponse(w, http.StatusOK, map[string]any{
-			"listener_enabled": cfg.ListenerEnabled,
-			"listener_chats":   cfg.ListenerChats,
+			"status":   "ok",
+			"enabled":  cfg.ListenerEnabled,
+			"chats":    cfg.ListenerChats,
+			"chat_ids": cfg.ListenerChatIDs,
 		})
 		return
 	}
@@ -636,7 +653,49 @@ func (s *Server) handleListenerResolveChat(w http.ResponseWriter, r *http.Reques
 	}
 
 	name, _ := s.listener.ResolveChat(r.Context(), chatID)
-	s.jsonResponse(w, http.StatusOK, map[string]any{"id": chatID, "name": name})
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status": "ok",
+		"chat": map[string]any{
+			"id":            chatID,
+			"name":          name,
+			"auto_download": false,
+			"f_photos":      true,
+			"f_videos":      true,
+			"f_audios":      true,
+			"f_docs":        true,
+			"f_stickers":    true,
+		},
+	})
+}
+
+func (s *Server) handleListenerResolveChatPath(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 {
+		s.errorResponse(w, http.StatusBadRequest, "chat_id requerido en la ruta")
+		return
+	}
+
+	chatIDStr := parts[3]
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		s.errorResponse(w, http.StatusBadRequest, "chat_id inválido")
+		return
+	}
+
+	name, _ := s.listener.ResolveChat(r.Context(), chatID)
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status": "ok",
+		"chat": map[string]any{
+			"id":            chatID,
+			"name":          name,
+			"auto_download": false,
+			"f_photos":      true,
+			"f_videos":      true,
+			"f_audios":      true,
+			"f_docs":        true,
+			"f_stickers":    true,
+		},
+	})
 }
 
 // Filesystem & System

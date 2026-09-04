@@ -22,3 +22,4 @@ dashboard/node_modules/
 *.spec
 downloads.json
 pendientes.txt
+*.exe

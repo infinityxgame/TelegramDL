@@ -29,10 +29,13 @@ type UserInfo struct {
 }
 
 type AuthStatus struct {
-	Configured bool      `json:"configured"`
-	Authorized bool      `json:"authorized"`
-	Phone      string    `json:"phone,omitempty"`
-	User       *UserInfo `json:"user,omitempty"`
+	Configured     bool      `json:"configured"`
+	HasCredentials bool      `json:"has_credentials"`
+	Authorized     bool      `json:"authorized"`
+	Authenticated  bool      `json:"authenticated"`
+	State          string    `json:"state"`
+	Phone          string    `json:"phone,omitempty"`
+	User           *UserInfo `json:"user,omitempty"`
 }
 
 type ClientManager struct {
@@ -188,25 +191,49 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	cm.mu.RUnlock()
 
 	if apiID == 0 || apiHash == "" || client == nil {
-		return AuthStatus{Configured: false, Authorized: false}
+		return AuthStatus{
+			Configured:     false,
+			HasCredentials: false,
+			Authorized:     false,
+			Authenticated:  false,
+			State:          "UNCONFIGURED",
+		}
 	}
 
 	// Esperar brevemente a que el cliente MTProto esté conectado
 	waitCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	if err := cm.WaitReady(waitCtx); err != nil {
-		return AuthStatus{Configured: true, Authorized: false}
+		return AuthStatus{
+			Configured:     true,
+			HasCredentials: true,
+			Authorized:     false,
+			Authenticated:  false,
+			State:          "NEED_PHONE",
+		}
 	}
 
 	authClient := client.Auth()
 	status, err := authClient.Status(ctx)
 	if err != nil || !status.Authorized {
-		return AuthStatus{Configured: true, Authorized: false}
+		return AuthStatus{
+			Configured:     true,
+			HasCredentials: true,
+			Authorized:     false,
+			Authenticated:  false,
+			State:          "NEED_PHONE",
+		}
 	}
 
 	user, err := client.Self(ctx)
 	if err != nil {
-		return AuthStatus{Configured: true, Authorized: true}
+		return AuthStatus{
+			Configured:     true,
+			HasCredentials: true,
+			Authorized:     true,
+			Authenticated:  true,
+			State:          "LOGGED_IN",
+		}
 	}
 
 	var colorID *int
@@ -217,9 +244,12 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	}
 
 	return AuthStatus{
-		Configured: true,
-		Authorized: true,
-		Phone:      user.Phone,
+		Configured:     true,
+		HasCredentials: true,
+		Authorized:     true,
+		Authenticated:  true,
+		State:          "LOGGED_IN",
+		Phone:          user.Phone,
 		User: &UserInfo{
 			ID:        user.ID,
 			FirstName: user.FirstName,
