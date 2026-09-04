@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -973,6 +974,7 @@ func (s *Server) handleListenerSettings(w http.ResponseWriter, r *http.Request) 
 	s.config = cfg
 	s.mu.Unlock()
 
+	log.Printf("[SERVER] Configuración de escucha guardada: Activa=%v, %d chats configurados", cfg.ListenerEnabled, len(cfg.ListenerChats))
 	_ = s.storage.SaveConfig(cfg)
 	s.downloader.UpdateConfig(cfg)
 	s.listener.UpdateConfig(cfg)

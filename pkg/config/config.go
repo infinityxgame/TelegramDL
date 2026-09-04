@@ -115,7 +115,7 @@ func DefaultConfig() Config {
 			Value: 0,
 			Unit:  "MB",
 		},
-		ListenerEnabled: false,
+		ListenerEnabled: true,
 		ListenerChats:   []ListenerChat{},
 		ListenerChatIDs: []int64{},
 	}
