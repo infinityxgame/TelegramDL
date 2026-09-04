@@ -528,7 +528,13 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		item.TotalBytes = mediaInfo.FileSize
 		item.TotalStr = config.FormatBytes(float64(mediaInfo.FileSize))
 	}
+	cp := *item
 	e.mu.Unlock()
+
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(cp)
+	}
+	e.notifyState(cp)
 
 	tempPath := finalPath + ".temp"
 	tempFile, err := os.OpenFile(tempPath, os.O_CREATE|os.O_RDWR, 0666)
