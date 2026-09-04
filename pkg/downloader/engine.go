@@ -119,7 +119,7 @@ func (e *Engine) GetItem(id string) (*storage.DownloadItem, bool) {
 	return &cp, true
 }
 
-func (e *Engine) ClearHistory() error {
+func (e *Engine) ClearHistory() (int64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -129,6 +129,9 @@ func (e *Engine) ClearHistory() error {
 		}
 	}
 
+	if e.storage == nil {
+		return 0, nil
+	}
 	return e.storage.ClearFinishedDownloads()
 }
 

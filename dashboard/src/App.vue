@@ -452,10 +452,33 @@ watch(() => disk.value, (newDisk) => {
   }
 }, { deep: true })
 
-const connectWebSocket = () => {
+const connectWebSocket = async () => {
+  let wsHost = window.location.host
+
+  if (window.go?.main?.App?.GetServerInfo) {
+    try {
+      const sInfo = await window.go.main.App.GetServerInfo()
+      if (sInfo && sInfo.port) {
+        const h = (sInfo.host && sInfo.host !== '0.0.0.0') ? sInfo.host : '127.0.0.1'
+        wsHost = `${h}:${sInfo.port}`
+      }
+    } catch (e) {
+      console.warn('Error obteniendo ServerInfo via Wails:', e)
+    }
+  } else if (!wsHost || wsHost.includes('wails') || wsHost.includes(':8080')) {
+    try {
+      const res = await fetch('/api/system/info')
+      if (res.ok) {
+        const sInfo = await res.json()
+        const h = (sInfo.host && sInfo.host !== '0.0.0.0') ? sInfo.host : '127.0.0.1'
+        wsHost = `${h}:${sInfo.port}`
+      }
+    } catch (e) {
+      // Fallback si la petición falla
+    }
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const isWails = window.location.hostname.includes('wails') || (window.location.hostname === 'localhost' && window.location.port === '8080')
-  const wsHost = isWails ? '127.0.0.1:8000' : window.location.host
   socket = new WebSocket(`${protocol}//${wsHost}/api/ws`)
   socket.onopen = () => { websocketConnected.value = true }
   socket.onmessage = event => {

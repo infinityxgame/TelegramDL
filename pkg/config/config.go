@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	AppVersion = "2.1.0"
+	AppVersion = "2.1.7"
 	GithubRepo = "infinityxgame/tgdown"
 )
 
@@ -85,7 +85,20 @@ func InitPaths() {
 				if content, rerr := os.ReadFile(legacyEnv); rerr == nil {
 					_ = os.WriteFile(UserEnvPath, content, 0600)
 				}
+			} else if _, cerr := os.Stat(".env"); cerr == nil {
+				if content, rerr := os.ReadFile(".env"); rerr == nil {
+					_ = os.WriteFile(UserEnvPath, content, 0600)
+				}
 			}
+		}
+
+		// Cargar variables de entorno prioritariamente desde UserEnvPath (.tgdown/.env)
+		if _, err := os.Stat(UserEnvPath); err == nil {
+			_ = godotenv.Overload(UserEnvPath)
+		} else if _, err := os.Stat(legacyEnv); err == nil {
+			_ = godotenv.Overload(legacyEnv)
+		} else if _, err := os.Stat(".env"); err == nil {
+			_ = godotenv.Overload(".env")
 		}
 	})
 }
@@ -161,6 +174,7 @@ func SaveEnvCredentials(apiID, apiHash string) error {
 }
 
 func GetServerPort() int {
+	InitPaths()
 	portStr := os.Getenv("TGDL_PORT")
 	if portStr == "" {
 		portStr = os.Getenv("PORT")
@@ -172,6 +186,7 @@ func GetServerPort() int {
 }
 
 func GetServerHost() string {
+	InitPaths()
 	host := os.Getenv("TGDL_BIND_HOST")
 	if host == "" {
 		host = os.Getenv("BIND_HOST")

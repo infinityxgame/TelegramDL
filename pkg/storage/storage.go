@@ -635,10 +635,14 @@ func (s *Storage) DeleteChunks(downloadID string) error {
 	return err
 }
 
-func (s *Storage) ClearFinishedDownloads() error {
+func (s *Storage) ClearFinishedDownloads() (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.Exec("DELETE FROM downloads WHERE status IN ('completed', 'skipped', 'failed', 'cancelled')")
-	return err
+	res, err := s.db.Exec("DELETE FROM downloads WHERE status IN ('completed', 'skipped', 'failed', 'cancelled')")
+	if err != nil {
+		return 0, err
+	}
+	rows, _ := res.RowsAffected()
+	return rows, nil
 }

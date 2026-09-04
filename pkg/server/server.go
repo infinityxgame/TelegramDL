@@ -189,8 +189,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/verify-2fa", s.handleAuthVerify2FA)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
 
-	// Downloads
-	mux.HandleFunc("/api/downloads", s.handleGetDownloads)
+	// Downloads (Soporta /api/downloads, /api/downloads/history, /api/downloads/open, /api/downloads/{id})
+	mux.HandleFunc("/api/downloads", s.handleDownloadsRoute)
+	mux.HandleFunc("/api/downloads/", s.handleDownloadsRoute)
 	mux.HandleFunc("/api/download", s.handleStartDownload)
 	mux.HandleFunc("/api/cancel", s.handleCancelDownload)
 	mux.HandleFunc("/api/pause", s.handlePauseDownload)
@@ -202,6 +203,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Settings
 	mux.HandleFunc("/api/settings", s.handleSettings)
+	mux.HandleFunc("/api/settings/speed", s.handleSpeedLimit)
 	mux.HandleFunc("/api/settings/speed-limit", s.handleSpeedLimit)
 
 	// Listener
@@ -216,13 +218,19 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/filesystem", s.handleFSBrowse)
 	mux.HandleFunc("/api/fs/browse", s.handleFSBrowse)
 	mux.HandleFunc("/api/system/disk", s.handleSystemDisk)
+	mux.HandleFunc("/api/system/info", s.handleSystemInfo)
+	mux.HandleFunc("/api/server/info", s.handleSystemInfo)
 
-	// Updates
+	// Updates (Soporta tanto singular /update/ como plural /updates/)
+	mux.HandleFunc("/api/update/check", s.handleCheckUpdate)
 	mux.HandleFunc("/api/updates/check", s.handleCheckUpdate)
+	mux.HandleFunc("/api/update/progress", s.handleUpdateProgress)
 	mux.HandleFunc("/api/updates/progress", s.handleUpdateProgress)
+	mux.HandleFunc("/api/update/install", s.handleInstallUpdate)
 	mux.HandleFunc("/api/updates/install", s.handleInstallUpdate)
 
-	// App Exit
+	// App Exit (Soporta /api/app/exit y /api/exit)
+	mux.HandleFunc("/api/app/exit", s.handleExit)
 	mux.HandleFunc("/api/exit", s.handleExit)
 }
 
@@ -544,12 +552,64 @@ func (s *Server) handleRetryDownload(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
+	subpath := strings.TrimPrefix(r.URL.Path, "/api/downloads")
+	subpath = strings.TrimPrefix(subpath, "/")
+
+	if subpath == "" {
+		if r.Method == http.MethodGet {
+			s.handleGetDownloads(w, r)
+			return
+		}
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+
+	if subpath == "history" {
+		if r.Method == http.MethodDelete || r.Method == http.MethodPost {
+			s.handleClearHistory(w, r)
+			return
+		}
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+
+	if subpath == "open" {
+		if r.Method == http.MethodPost {
+			s.handleOpenDownload(w, r)
+			return
+		}
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+
+	// Subpath es el ID de la descarga (ej. DELETE /api/downloads/{id})
+	if r.Method == http.MethodDelete {
+		delFile := true
+		if q := r.URL.Query().Get("delete_file"); q != "" {
+			if strings.ToLower(q) == "false" || q == "0" {
+				delFile = false
+			}
+		}
+
+		_ = s.downloader.DeleteDownload(subpath, delFile)
+		s.listener.RemoveItem(subpath)
+		s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
+	s.errorResponse(w, http.StatusNotFound, "Ruta no encontrada")
+}
+
 func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID         string `json:"id"`
 		DeleteFile *bool  `json:"delete_file"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.ID == "" {
+		body.ID = r.URL.Query().Get("id")
+	}
 	if body.ID == "" {
 		s.errorResponse(w, http.StatusUnprocessableEntity, "ID requerido")
 		return
@@ -558,6 +618,10 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	delFile := true
 	if body.DeleteFile != nil {
 		delFile = *body.DeleteFile
+	} else if q := r.URL.Query().Get("delete_file"); q != "" {
+		if strings.ToLower(q) == "false" || q == "0" {
+			delFile = false
+		}
 	}
 
 	_ = s.downloader.DeleteDownload(body.ID, delFile)
@@ -566,8 +630,8 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleClearHistory(w http.ResponseWriter, r *http.Request) {
-	_ = s.downloader.ClearHistory()
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	removed, _ := s.downloader.ClearHistory()
+	s.jsonResponse(w, http.StatusOK, map[string]any{"status": "ok", "removed": removed})
 }
 
 func (s *Server) handleOpenDownload(w http.ResponseWriter, r *http.Request) {
@@ -845,15 +909,23 @@ func (s *Server) handleSystemDisk(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, disk)
 }
 
+func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"host":    config.GetServerHost(),
+		"port":    config.GetServerPort(),
+		"version": config.AppVersion,
+	})
+}
+
 // Updater
 func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
-	rel, err := s.updater.CheckForUpdate()
+	rel, asset, err := s.updater.CheckForUpdate()
 	if err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	if rel != nil {
+	if rel != nil && asset != nil {
 		s.mu.Lock()
 		s.latestRel = rel
 		s.mu.Unlock()
@@ -862,6 +934,7 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 			"latest":           rel.TagName,
 			"version":          rel.TagName,
 			"current":          config.AppVersion,
+			"size_bytes":       asset.Size,
 			"changelog":        rel.Body,
 		})
 		return
@@ -869,7 +942,9 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 
 	s.jsonResponse(w, http.StatusOK, map[string]any{
 		"update_available": false,
+		"latest":           nil,
 		"current":          config.AppVersion,
+		"size_bytes":       0,
 	})
 }
 
@@ -882,17 +957,24 @@ func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 	rel := s.latestRel
 	s.mu.RUnlock()
 
+	var err error
 	if rel == nil {
-		s.errorResponse(w, http.StatusBadRequest, "No hay actualización disponible")
-		return
+		rel, _, err = s.updater.CheckForUpdate()
+		if err != nil || rel == nil {
+			s.errorResponse(w, http.StatusBadRequest, "No hay actualizaciones disponibles")
+			return
+		}
 	}
 
 	if err := s.updater.InstallUpdate(rel); err != nil {
-		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.jsonResponse(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"message": "Iniciando descarga e instalación",
+	})
 }
 
 func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {

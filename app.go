@@ -115,3 +115,16 @@ func (a *App) SelectDirectory() (string, error) {
 	}
 	return selected, nil
 }
+
+type ServerInfo struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+func (a *App) GetServerInfo() ServerInfo {
+	return ServerInfo{
+		Host: config.GetServerHost(),
+		Port: config.GetServerPort(),
+	}
+}
+

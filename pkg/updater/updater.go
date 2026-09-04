@@ -1,7 +1,9 @@
 package updater
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -109,61 +111,86 @@ func isNewer(latest, current string) bool {
 	return l3 > c3
 }
 
-func (u *AppUpdater) CheckForUpdate() (*ReleaseInfo, error) {
+func (u *AppUpdater) CheckForUpdate() (*ReleaseInfo, *ReleaseAsset, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", u.repoURL)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", "TGDown-Updater")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API devolvió código %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("GitHub API devolvió código %d", resp.StatusCode)
 	}
 
 	var rel ReleaseInfo
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if isNewer(rel.TagName, u.currentVersion) {
-		return &rel, nil
+		asset := u.findAssetForPlatform(rel.Assets)
+		if asset != nil {
+			return &rel, asset, nil
+		}
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (u *AppUpdater) findAssetForPlatform(assets []ReleaseAsset) *ReleaseAsset {
 	sys := runtime.GOOS
 
+	// 1. Coincidencia específica por plataforma
 	for _, a := range assets {
 		name := strings.ToLower(a.Name)
-		if sys == "windows" && (strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".exe")) {
-			if strings.Contains(name, "win") || strings.Contains(name, "windows") {
+		if sys == "windows" {
+			if strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".exe") {
+				if strings.Contains(name, "win") || strings.Contains(name, "windows") {
+					return &a
+				}
+			}
+		} else if sys == "linux" {
+			if strings.HasSuffix(name, ".appimage") || (strings.HasSuffix(name, ".zip") && strings.Contains(name, "linux")) {
 				return &a
 			}
-		} else if sys == "linux" && (strings.HasSuffix(name, ".appimage") || (strings.HasSuffix(name, ".zip") && strings.Contains(name, "linux"))) {
-			return &a
-		} else if sys == "darwin" && strings.HasSuffix(name, ".zip") && (strings.Contains(name, "mac") || strings.Contains(name, "darwin")) {
-			return &a
+		} else if sys == "darwin" {
+			if strings.HasSuffix(name, ".zip") && (strings.Contains(name, "mac") || strings.Contains(name, "darwin") || strings.Contains(name, "osx") || strings.Contains(name, "apple")) {
+				return &a
+			}
 		}
 	}
 
-	// Fallback genérico
+	// 2. Coincidencia genérica excluyendo otras plataformas
 	for _, a := range assets {
 		name := strings.ToLower(a.Name)
-		if sys == "windows" && (strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".exe")) {
-			return &a
+		if !strings.HasSuffix(name, ".zip") && !strings.HasSuffix(name, ".appimage") && !strings.HasSuffix(name, ".exe") && !strings.HasSuffix(name, ".tar.gz") {
+			continue
+		}
+
+		if sys == "windows" {
+			if !strings.Contains(name, "mac") && !strings.Contains(name, "darwin") && !strings.Contains(name, "osx") && !strings.Contains(name, "linux") && !strings.Contains(name, "appimage") {
+				return &a
+			}
+		} else if sys == "darwin" {
+			if !strings.Contains(name, "win") && !strings.Contains(name, "windows") && !strings.Contains(name, "linux") && !strings.Contains(name, "appimage") {
+				return &a
+			}
+		} else if sys == "linux" {
+			if !strings.Contains(name, "win") && !strings.Contains(name, "windows") && !strings.Contains(name, "mac") && !strings.Contains(name, "darwin") && !strings.Contains(name, "osx") {
+				return &a
+			}
 		}
 	}
 
+	// 3. Fallback: primer asset compatible
 	if len(assets) > 0 {
 		return &assets[0]
 	}
@@ -177,7 +204,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 	}
 
 	go func() {
-		u.setProgress("downloading", 0, asset.Size)
+		u.setProgress("starting", 0, asset.Size)
 		_ = os.RemoveAll(u.tempDir)
 		_ = os.MkdirAll(u.tempDir, 0755)
 
@@ -188,6 +215,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 			return
 		}
 
+		u.setProgress("downloading", 0, asset.Size)
 		resp, err := http.Get(asset.DownloadURL)
 		if err != nil {
 			out.Close()
@@ -214,43 +242,150 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 		out.Close()
 
+		if strings.HasSuffix(strings.ToLower(archivePath), ".appimage") {
+			u.setProgress("finishing", asset.Size, asset.Size)
+			u.finishAppImageUpdate(archivePath)
+			return
+		}
+
 		u.setProgress("extracting", downloaded, asset.Size)
 		extractPath := filepath.Join(u.tempDir, "extracted")
 		_ = os.MkdirAll(extractPath, 0755)
 
-		if strings.HasSuffix(strings.ToLower(archivePath), ".zip") {
+		lowerArch := strings.ToLower(archivePath)
+		if strings.HasSuffix(lowerArch, ".zip") {
 			_ = unzip(archivePath, extractPath)
+		} else if strings.HasSuffix(lowerArch, ".tar.gz") || strings.HasSuffix(lowerArch, ".tgz") {
+			_ = untarGz(archivePath, extractPath)
 		}
 
+		// Buscar raíz de aplicación (directorio con .app, _internal, o binario ejecutable)
+		finalSrc := extractPath
+		_ = filepath.Walk(extractPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				name := strings.ToLower(info.Name())
+				if name == "telegramdl.app" || name == "tgdown.app" || name == "_internal" {
+					finalSrc = filepath.Dir(path)
+					if strings.HasSuffix(name, ".app") {
+						finalSrc = path
+					}
+					return filepath.SkipDir
+				}
+			} else {
+				name := strings.ToLower(info.Name())
+				if name == "telegramdl.exe" || name == "tgdown.exe" || name == "telegramdl" || name == "tgdown" {
+					finalSrc = filepath.Dir(path)
+				}
+			}
+			return nil
+		})
+
 		u.setProgress("finishing", asset.Size, asset.Size)
-		u.createFinishScript(extractPath)
+		u.createFinishScript(finalSrc)
 	}()
 
 	return nil
 }
 
+func (u *AppUpdater) finishAppImageUpdate(newAppImagePath string) {
+	runningAppImage := os.Getenv("APPIMAGE")
+	if runningAppImage == "" {
+		// Modo desarrollo en Linux
+		return
+	}
+
+	scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
+	appImageFilename := filepath.Base(runningAppImage)
+
+	scriptContent := fmt.Sprintf(`#!/bin/bash
+sleep 2
+pkill -9 -f "%s" 2>/dev/null
+mv "%s" "%s"
+chmod +x "%s"
+"%s" &
+rm "$0"
+`, appImageFilename, newAppImagePath, runningAppImage, runningAppImage, runningAppImage)
+
+	_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	cmd := exec.Command("/bin/bash", scriptPath)
+	_ = cmd.Start()
+	time.Sleep(500 * time.Millisecond)
+	os.Exit(0)
+}
+
 func (u *AppUpdater) createFinishScript(srcPath string) {
+	execPath, err := os.Executable()
+	if err != nil {
+		execPath = filepath.Join(u.baseDir, "tgdown.exe")
+	}
+	exeName := filepath.Base(execPath)
+
 	if runtime.GOOS == "windows" {
 		scriptPath := filepath.Join(u.baseDir, "finish_update.bat")
-		exeName := "tgdown.exe"
-		exePath := filepath.Join(u.baseDir, exeName)
 
 		batContent := fmt.Sprintf(`@echo off
-title Actualizando TGDown...
+setlocal enabledelayedexpansion
+title Actualizando TelegramDL...
 :wait_process
 taskkill /f /im "%s" >nul 2>&1
 timeout /t 1 /nobreak >nul
 tasklist /FI "IMAGENAME eq %s" 2>NUL | find /I /N "%s">NUL
 if "%%ERRORLEVEL%%"=="0" goto wait_process
 
-robocopy "%s" "%s" /e /move /is /it /xf .env config.json downloads.json tg_session.json /r:3 /w:1 /nfl /ndl /njh /njs > nul
+robocopy "%s" "%s" /e /move /is /it /xf .env config.json downloads.json tgdown.sqlite3 tg_session.json downloader_session.session downloader_session.session-journal /xd descargas cache update_temp .git .github /r:5 /w:2 /nfl /ndl /njh /njs > nul
 if exist "%s" rd /s /q "%s" >nul 2>&1
 start "" "%s"
+endlocal
 (goto) 2>nul & del "%%~f0"
-`, exeName, exeName, exeName, srcPath, u.baseDir, u.tempDir, u.tempDir, exePath)
+`, exeName, exeName, exeName, srcPath, u.baseDir, u.tempDir, u.tempDir, execPath)
 
 		_ = os.WriteFile(scriptPath, []byte(batContent), 0644)
-		cmd := exec.Command("cmd.exe", "/C", scriptPath)
+		cmd := exec.Command("cmd.exe", "/C", "start", "", scriptPath)
+		_ = cmd.Start()
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	} else if runtime.GOOS == "darwin" {
+		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
+		targetAppPath := u.baseDir
+		if filepath.Base(targetAppPath) == "MacOS" && filepath.Base(filepath.Dir(targetAppPath)) == "Contents" {
+			targetAppPath = filepath.Dir(filepath.Dir(targetAppPath))
+		}
+
+		scriptContent := fmt.Sprintf(`#!/bin/bash
+sleep 2
+pkill -9 -f "%s" 2>/dev/null
+pkill -9 -f "TelegramDL" 2>/dev/null
+pkill -9 -f "tgdown" 2>/dev/null
+rm -rf "%s"
+cp -R "%s" "%s"
+rm -rf "%s"
+open "%s"
+rm "$0"
+`, exeName, targetAppPath, srcPath, filepath.Dir(targetAppPath), u.tempDir, targetAppPath)
+
+		_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+		cmd := exec.Command("/bin/bash", scriptPath)
+		_ = cmd.Start()
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	} else {
+		// Linux estándar
+		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
+		scriptContent := fmt.Sprintf(`#!/bin/bash
+sleep 2
+pkill -9 -f "%s" 2>/dev/null
+cp -R "%s"/* "%s"/ 2>/dev/null || cp "%s" "%s"/
+chmod +x "%s"
+rm -rf "%s"
+"%s" &
+rm "$0"
+`, exeName, srcPath, u.baseDir, srcPath, u.baseDir, execPath, u.tempDir, execPath)
+
+		_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+		cmd := exec.Command("/bin/bash", scriptPath)
 		_ = cmd.Start()
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
@@ -288,6 +423,46 @@ func unzip(src, dest string) error {
 		_, _ = io.Copy(outFile, rc)
 		outFile.Close()
 		rc.Close()
+	}
+	return nil
+}
+
+func untarGz(src, dest string) error {
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dest, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			_ = os.MkdirAll(target, 0755)
+		case tar.TypeReg:
+			_ = os.MkdirAll(filepath.Dir(target), 0755)
+			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			_, _ = io.Copy(outFile, tr)
+			outFile.Close()
+		}
 	}
 	return nil
 }

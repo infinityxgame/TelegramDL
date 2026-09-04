@@ -29,6 +29,12 @@ func ParseURL(url string) (*ParsedURL, error) {
 		return nil, errors.New("URL vacía")
 	}
 
+	if strings.HasPrefix(clean, "http://") {
+		clean = "https://" + strings.TrimPrefix(clean, "http://")
+	} else if !strings.HasPrefix(clean, "https://") {
+		clean = "https://" + clean
+	}
+
 	if match := channelRegex.FindStringSubmatch(clean); match != nil {
 		startID, _ := strconv.Atoi(match[2])
 		endID := startID
