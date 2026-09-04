@@ -365,11 +365,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok {
-			return nil
-		}
-		log.Printf("[TG UPDATES] Mensaje privado/grupo recibido (ID: %d, Out: %v, Peer: %+v, From: %+v)", msg.ID, msg.Out, msg.PeerID, msg.FromID)
-		if msg.Out {
+		if !ok || msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -384,11 +380,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok {
-			return nil
-		}
-		log.Printf("[TG UPDATES] Mensaje de canal recibido (ID: %d, Out: %v, Peer: %+v, From: %+v)", msg.ID, msg.Out, msg.PeerID, msg.FromID)
-		if msg.Out {
+		if !ok || msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -403,11 +395,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok {
-			return nil
-		}
-		log.Printf("[TG UPDATES] Mensaje editado en privado/grupo (ID: %d, Out: %v, Peer: %+v)", msg.ID, msg.Out, msg.PeerID)
-		if msg.Out {
+		if !ok || msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -422,11 +410,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok {
-			return nil
-		}
-		log.Printf("[TG UPDATES] Mensaje editado en canal (ID: %d, Out: %v, Peer: %+v)", msg.ID, msg.Out, msg.PeerID)
-		if msg.Out {
+		if !ok || msg.Out {
 			return nil
 		}
 		cm.mu.RLock()

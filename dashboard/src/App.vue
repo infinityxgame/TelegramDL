@@ -403,9 +403,7 @@ const checkForUpdates = async (force = false) => {
     version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
-      if (force) {
-        isUpdateForced.value = true
-      } else if (!isUpdateForced.value && !modal.show) {
+      if (!isUpdateForced.value && !modal.show) {
         openConfirm({
           title: 'Nueva versión disponible',
           message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
@@ -513,12 +511,9 @@ const connectWebSocket = async () => {
 onMounted(async () => {
   disposed = false
   try {
-    await Promise.all([
-      fetchAuthStatus(),
-      checkForUpdates(true)
-    ])
+    await fetchAuthStatus()
     if (authStatus.value.authenticated) {
-      await Promise.all([fetchSettings(), fetchDownloads()])
+      await Promise.all([fetchSettings(), fetchDownloads()]).catch(() => {})
     }
   } catch (err) {
     console.error('Error durante el arranque:', err)
@@ -528,6 +523,7 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(fetchDownloads, 1000)
+  setTimeout(() => checkForUpdates(false), 2000)
   setInterval(() => checkForUpdates(false), 60 * 1000)
 })
 

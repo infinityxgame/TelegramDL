@@ -195,14 +195,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		}
 	}
 
-	log.Printf("[LISTENER] Mensaje recibido -> ID: %d, PeerID: %d, FromID: %d, Out: %v", msg.ID, peerID, fromID, msg.Out)
-
-	if !enabled {
-		//log.Printf("[LISTENER] Ignorado: Escucha global desactivada en configuración.")
-		return nil
-	}
-	if msg.Out {
-		//log.Printf("[LISTENER] Ignorado: Es mensaje saliente (enviado por ti).")
+	if !enabled || msg.Out {
 		return nil
 	}
 
@@ -214,49 +207,37 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 			peerID = fromID
 		}
 	}
-	//totalWatched := len(le.chatMap)
 	le.mu.RUnlock()
 
 	if !watched {
-		//log.Printf("[LISTENER] Ignorado: Chat/Usuario (PeerID: %d, FromID: %d) NO coincide con ningún chat vigilado (%d configurados)", peerID, fromID, totalWatched)
 		return nil
 	}
-
-	log.Printf("[LISTENER] ¡Mensaje de chat vigilado (%s, ID: %d)! Analizando contenido...", chatCfg.Name, peerID)
 
 	mediaInfo := downloader.ExtractMediaInfo(msg)
 	if mediaInfo == nil {
-		log.Printf("[LISTENER] El mensaje ID=%d no contiene multimedia reconocible (Texto: %q, Media: %+v)", msg.ID, msg.Message, msg.Media)
 		return nil
 	}
-
-	log.Printf("[LISTENER] ¡MULTIMEDIA DETECTADA! Tipo: %s, Archivo: %q, Tamaño: %d bytes (%s)", mediaInfo.Kind, mediaInfo.FileName, mediaInfo.FileSize, config.FormatBytes(float64(mediaInfo.FileSize)))
 
 	// Filtros por tipo de medio
 	switch mediaInfo.Kind {
 	case downloader.KindPhoto:
 		if !chatCfg.FPhotos {
-			log.Printf("[LISTENER] Rechazado por filtro: fotos desactivadas (f_photos=false)")
 			return nil
 		}
 	case downloader.KindVideo:
 		if !chatCfg.FVideos {
-			log.Printf("[LISTENER] Rechazado por filtro: videos desactivados (f_videos=false)")
 			return nil
 		}
 	case downloader.KindSong:
 		if !chatCfg.FAudios {
-			log.Printf("[LISTENER] Rechazado por filtro: audios desactivados (f_audios=false)")
 			return nil
 		}
 	case downloader.KindSticker:
 		if !chatCfg.FStickers {
-			log.Printf("[LISTENER] Rechazado por filtro: stickers desactivados (f_stickers=false)")
 			return nil
 		}
 	case downloader.KindFile:
 		if !chatCfg.FDocs {
-			log.Printf("[LISTENER] Rechazado por filtro: documentos desactivados (f_docs=false)")
 			return nil
 		}
 	}
@@ -285,7 +266,6 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	}
 
 	if chatCfg.AutoDownload {
-		log.Printf("[LISTENER] AutoDownload activado para %s. Añadiendo directamente a cola de descargas...", chatName)
 		dlItem.Status = "queued"
 		if le.storage != nil {
 			_ = le.storage.SaveDownload(dlItem)
@@ -294,7 +274,6 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 			le.engine.QueueItem(dlItem)
 		}
 	} else {
-		log.Printf("[LISTENER] Añadiendo a lista 'Multimedia Detectada' (ID: %s, Chat: %s, Archivo: %s)", itemID, chatName, mediaInfo.FileName)
 		if le.storage != nil {
 			_ = le.storage.SaveDownload(dlItem)
 		}
