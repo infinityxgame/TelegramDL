@@ -13,7 +13,7 @@ import (
 var assets embed.FS
 
 func main() {
-	app := NewApp()
+	app := NewApp(assets)
 
 	err := wails.Run(&options.App{
 		Title:     "Telegram DL",
@@ -22,7 +22,8 @@ func main() {
 		MinWidth:  950,
 		MinHeight: 680,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: app.Handler(),
 		},
 		BackgroundColour: &options.RGBA{R: 7, G: 17, B: 31, A: 255},
 		OnStartup:        app.startup,

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"io/fs"
+	"net/http"
 	"path/filepath"
 	"sync"
 
@@ -25,55 +27,67 @@ type App struct {
 	updater    *updater.AppUpdater
 	server     *server.Server
 	config     config.Config
+	assets     fs.FS
 	mu         sync.Mutex
 }
 
-func NewApp() *App {
-	return &App{}
-}
-
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+func NewApp(assets fs.FS) *App {
 	config.InitPaths()
 
-	dbPath := filepath.Join(config.DataDir, "tgdown.db")
+	// 1. Usar base de datos SQLite original de Python (tgdown.sqlite3)
+	dbPath := filepath.Join(config.DataDir, "tgdown.sqlite3")
 	st, err := storage.NewStorage(dbPath)
 	if err != nil {
-		wailsRuntime.LogErrorf(ctx, "Error al iniciar storage: %v", err)
-		return
+		// Fallback si no se puede abrir tgdown.sqlite3
+		dbPath = filepath.Join(config.DataDir, "tgdown.db")
+		st, _ = storage.NewStorage(dbPath)
 	}
-	a.storage = st
 
+	// 2. Cargar configuración previa de SQLite o migrar desde config.json legacy
 	cfg, err := st.LoadConfig(config.DefaultConfig(), filepath.Join(config.BaseDir, "config.json"))
 	if err != nil {
 		cfg = config.DefaultConfig()
 	}
-	a.config = cfg
 
 	cm := telegram.NewClientManager()
-	a.clientMgr = cm
+	eng := downloader.NewEngine(cm, st, cfg)
+	le := listener.NewListenerEngine(cm, st, eng, cfg)
+	up := updater.NewAppUpdater()
 
-	// Iniciar cliente si hay credenciales en .env
-	apiID, apiHash := config.LoadEnvCredentials()
-	if apiID != "" && apiHash != "" {
-		_ = cm.InitClient(apiID, apiHash)
+	app := &App{
+		clientMgr:  cm,
+		storage:    st,
+		downloader: eng,
+		listener:   le,
+		updater:    up,
+		config:     cfg,
+		assets:     assets,
 	}
 
-	eng := downloader.NewEngine(cm, st, cfg)
-	a.downloader = eng
-
-	le := listener.NewListenerEngine(cm, st, eng, cfg)
-	a.listener = le
-
-	up := updater.NewAppUpdater()
-	a.updater = up
-
-	srv := server.NewServer(cm, st, eng, le, up, cfg, func() {
-		wailsRuntime.Quit(a.ctx)
+	srv := server.NewServer(cm, st, eng, le, up, cfg, assets, func() {
+		if app.ctx != nil {
+			wailsRuntime.Quit(app.ctx)
+		}
 	})
-	a.server = srv
+	app.server = srv
 
-	_ = srv.Start(8000)
+	// Iniciar servidor HTTP/WS INMEDIATAMENTE en el puerto configurado (default 8000)
+	port := config.GetServerPort()
+	_ = srv.Start(port)
+
+	// Conectar cliente de Telegram de forma asíncrona para no retrasar el inicio de la app
+	go func() {
+		apiID, apiHash := config.LoadEnvCredentials()
+		if apiID != "" && apiHash != "" {
+			_ = cm.InitClient(apiID, apiHash)
+		}
+	}()
+
+	return app
+}
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -83,6 +97,13 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.storage != nil {
 		_ = a.storage.Close()
 	}
+}
+
+func (a *App) Handler() http.Handler {
+	if a.server != nil {
+		return a.server.Handler()
+	}
+	return nil
 }
 
 // SelectDirectory abre el diálogo nativo del sistema para seleccionar carpetas

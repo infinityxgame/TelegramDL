@@ -160,6 +160,28 @@ func SaveEnvCredentials(apiID, apiHash string) error {
 	return nil
 }
 
+func GetServerPort() int {
+	portStr := os.Getenv("TGDL_PORT")
+	if portStr == "" {
+		portStr = os.Getenv("PORT")
+	}
+	if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+		return p
+	}
+	return 8000
+}
+
+func GetServerHost() string {
+	host := os.Getenv("TGDL_BIND_HOST")
+	if host == "" {
+		host = os.Getenv("BIND_HOST")
+	}
+	if host == "" {
+		return "127.0.0.1"
+	}
+	return host
+}
+
 func NormalizeConfig(raw Config) Config {
 	if raw.MaxConcurrentDownloads < 1 {
 		raw.MaxConcurrentDownloads = 1

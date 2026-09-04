@@ -2,6 +2,9 @@ package telegram
 
 import (
 	"context"
+	"crypto/sha1"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
@@ -56,11 +61,87 @@ type ClientManager struct {
 
 func NewClientManager() *ClientManager {
 	config.InitPaths()
+	sessPath := filepath.Join(config.DataDir, "tg_session.json")
+	importPyrogramSession(sessPath)
+
 	cm := &ClientManager{
-		sessionPath: filepath.Join(config.DataDir, "tg_session.json"),
+		sessionPath: sessPath,
 		dispatcher:  tg.NewUpdateDispatcher(),
 	}
 	return cm
+}
+
+func importPyrogramSession(targetJSONPath string) {
+	// Si ya existe la sesión de gotd, no sobreescribir
+	if _, err := os.Stat(targetJSONPath); err == nil {
+		return
+	}
+
+	sessionFiles := []string{
+		filepath.Join(config.DataDir, "downloader_session.session"),
+		filepath.Join(config.BaseDir, "downloader_session.session"),
+	}
+
+	var foundPath string
+	for _, sf := range sessionFiles {
+		if _, err := os.Stat(sf); err == nil {
+			foundPath = sf
+			break
+		}
+	}
+	if foundPath == "" {
+		return
+	}
+
+	db, err := sql.Open("sqlite", foundPath)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	var dcID int
+	var authKey []byte
+	var userID int64
+	row := db.QueryRow("SELECT dc_id, auth_key, user_id FROM sessions LIMIT 1")
+	if err := row.Scan(&dcID, &authKey, &userID); err != nil || len(authKey) != 256 {
+		return
+	}
+
+	h := sha1.Sum(authKey)
+	authKeyID := h[len(h)-8:]
+
+	dcIP := "149.154.175.50"
+	switch dcID {
+	case 1:
+		dcIP = "149.154.175.50"
+	case 2:
+		dcIP = "149.154.167.50"
+	case 3:
+		dcIP = "149.154.175.100"
+	case 4:
+		dcIP = "149.154.167.91"
+	case 5:
+		dcIP = "91.108.56.165"
+	}
+
+	sess := map[string]any{
+		"Version": 1,
+		"Data": map[string]any{
+			"Config": map[string]any{
+				"ThisDC": dcID,
+			},
+			"DC":        dcID,
+			"Addr":      fmt.Sprintf("%s:443", dcIP),
+			"AuthKey":   authKey,
+			"AuthKeyID": authKeyID,
+			"Salt":      0,
+		},
+	}
+
+	data, err := json.Marshal(sess)
+	if err == nil {
+		_ = os.WriteFile(targetJSONPath, data, 0600)
+	}
 }
 
 func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error) {

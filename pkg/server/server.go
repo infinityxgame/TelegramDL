@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -33,8 +34,10 @@ type Server struct {
 	listener   *listener.ListenerEngine
 	updater    *updater.AppUpdater
 	config     config.Config
+	assets     fs.FS
 
 	mu           sync.RWMutex
+	mux          *http.ServeMux
 	wsClients    map[*websocket.Conn]bool
 	upgrader     websocket.Upgrader
 	httpServer   *http.Server
@@ -50,6 +53,7 @@ func NewServer(
 	le *listener.ListenerEngine,
 	up *updater.AppUpdater,
 	cfg config.Config,
+	assets fs.FS,
 	exitCb func(),
 ) *Server {
 	s := &Server{
@@ -59,12 +63,16 @@ func NewServer(
 		listener:   le,
 		updater:    up,
 		config:     cfg,
+		assets:     assets,
 		wsClients:  make(map[*websocket.Conn]bool),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		exitCallback: exitCb,
+		mux:          http.NewServeMux(),
 	}
+
+	s.registerRoutes(s.mux)
 
 	// Escuchar cambios de estado en el motor de descargas para emitir a los WebSockets
 	dl.OnStateChange(func(item storage.DownloadItem) {
@@ -74,15 +82,16 @@ func NewServer(
 	return s
 }
 
-func (s *Server) Start(port int) error {
-	mux := http.NewServeMux()
-	s.registerRoutes(mux)
+func (s *Server) Handler() http.Handler {
+	return s.corsMiddleware(s.mux)
+}
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+func (s *Server) Start(port int) error {
+	addr := fmt.Sprintf("%s:%d", config.GetServerHost(), port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		// Fallback a cualquier puerto disponible si 8000 está ocupado
-		addr = "127.0.0.1:0"
+		// Fallback a 127.0.0.1 si 0.0.0.0 falla o viceversa
+		addr = fmt.Sprintf("127.0.0.1:%d", port)
 		listener, err = net.Listen("tcp", addr)
 		if err != nil {
 			return err
@@ -90,7 +99,7 @@ func (s *Server) Start(port int) error {
 	}
 
 	s.httpServer = &http.Server{
-		Handler: s.corsMiddleware(mux),
+		Handler: s.Handler(),
 	}
 
 	// Tarea de refresco y broadcast periódico
@@ -137,6 +146,34 @@ func (s *Server) errorResponse(w http.ResponseWriter, status int, message string
 }
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
+	// Redirección de / hacia /dashboard/
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "" || r.URL.Path == "/dashboard" {
+			http.Redirect(w, r, "/dashboard/", http.StatusFound)
+			return
+		}
+		if r.URL.Path == "/favicon.ico" {
+			http.Redirect(w, r, "/dashboard/favicon.ico", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	// Servir panel estático en /dashboard/
+	if s.assets != nil {
+		sub, err := fs.Sub(s.assets, "dashboard/dist")
+		if err == nil {
+			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.FS(sub))))
+		} else {
+			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.FS(s.assets))))
+		}
+	} else {
+		distDir := filepath.Join(config.BaseDir, "dashboard", "dist")
+		if fi, err := os.Stat(distDir); err == nil && fi.IsDir() {
+			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.Dir(distDir))))
+		}
+	}
+
 	// WebSocket
 	mux.HandleFunc("/api/ws", s.handleWebSocket)
 

@@ -31,7 +31,7 @@ func TestServerEndpoints(t *testing.T) {
 	le := listener.NewListenerEngine(cm, st, eng, cfg)
 	up := updater.NewAppUpdater()
 
-	srv := NewServer(cm, st, eng, le, up, cfg, func() {})
+	srv := NewServer(cm, st, eng, le, up, cfg, nil, func() {})
 	mux := http.NewServeMux()
 	srv.registerRoutes(mux)
 
@@ -69,6 +69,25 @@ func TestServerEndpoints(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	// Probar redirección de / hacia /dashboard/
+	req = httptest.NewRequest("GET", "/", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/dashboard/" {
+		t.Errorf("expected redirect to /dashboard/, got %s", loc)
+	}
+
+	// Probar redirección de /favicon.ico hacia /dashboard/favicon.ico
+	req = httptest.NewRequest("GET", "/favicon.ico", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", w.Code)
 	}
 
 	_ = os.RemoveAll(tmpDir)

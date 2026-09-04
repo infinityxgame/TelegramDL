@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -144,6 +145,18 @@ func (s *Storage) setConfigKey(key, value string) error {
 	return err
 }
 
+func findExistingFile(paths ...string) string {
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
 func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -164,9 +177,11 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 		}
 	}
 
-	// Si está vacío e invocan con legacy JSON
-	if len(kv) == 0 && legacyPath != "" {
-		if data, err := os.ReadFile(legacyPath); err == nil {
+	// Si está vacío e invocan con legacy JSON o existe en DataDir/BaseDir
+	if len(kv) == 0 {
+		targetLegacy := findExistingFile(legacyPath, filepath.Join(config.DataDir, "config.json"), filepath.Join(config.BaseDir, "config.json"))
+		if targetLegacy != "" {
+			if data, err := os.ReadFile(targetLegacy); err == nil {
 			var raw map[string]any
 			if json.Unmarshal(data, &raw) == nil {
 				for _, k := range []string{"max_concurrent_downloads", "parallel_chunks", "chunk_workers", "download_folder", "listener_enabled", "color_id"} {
@@ -191,6 +206,7 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 			}
 		}
 	}
+}
 
 	if val, ok := kv["max_concurrent_downloads"]; ok {
 		if n, err := strconv.Atoi(val); err == nil {
@@ -322,7 +338,14 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		}
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err == nil {
+		if data, jerr := json.MarshalIndent(cfg, "", "  "); jerr == nil {
+			_ = os.WriteFile(filepath.Join(config.BaseDir, "config.json"), data, 0644)
+			_ = os.WriteFile(filepath.Join(config.DataDir, "config.json"), data, 0644)
+		}
+	}
+	return err
 }
 
 func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, error) {
@@ -334,8 +357,10 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 	// Importación legacy si no hay datos
 	var count int
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM downloads").Scan(&count)
-	if count == 0 && legacyPath != "" {
-		if data, err := os.ReadFile(legacyPath); err == nil {
+	if count == 0 {
+		targetLegacy := findExistingFile(legacyPath, filepath.Join(config.DataDir, "downloads.json"), filepath.Join(config.BaseDir, "downloads.json"))
+		if targetLegacy != "" {
+			if data, err := os.ReadFile(targetLegacy); err == nil {
 			var raw map[string]map[string]any
 			if json.Unmarshal(data, &raw) == nil {
 				now := float64(time.Now().Unix())
@@ -367,6 +392,7 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 			}
 		}
 	}
+}
 
 	rows, err := s.db.Query("SELECT id, job_id, message_id, chat_id, file_name, status, progress, total_str, current_str, speed, kind, file_path, source, updated_at, created_at, total_bytes, current_bytes FROM downloads ORDER BY updated_at DESC")
 	if err != nil {
