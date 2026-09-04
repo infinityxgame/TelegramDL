@@ -328,7 +328,7 @@ const resetFlow = async () => {
 .auth-overlay {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 1000;
   background: color-mix(in srgb, var(--user-bg-base), transparent 8%);
   backdrop-filter: blur(12px);
   display: grid;

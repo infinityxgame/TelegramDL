@@ -572,7 +572,7 @@ onUnmounted(() => {
     <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
 
     <!-- Estructura Principal de la Aplicación -->
-    <div class="app-shell">
+    <div v-else class="app-shell">
       <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
         <div class="sidebar-main">
           <div class="brand">
