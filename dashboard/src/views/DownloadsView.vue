@@ -269,11 +269,11 @@ const progress = (item) => Math.max(0, Math.min(100, Number(item.progress || 0))
           <RotateCcw :size="14" />
         </button>
         <button
-          v-if="item.status === 'completed'"
+          v-if="['completed', 'failed', 'cancelled', 'skipped'].includes(item.status)"
           class="delete-button"
           type="button"
-          title="Borrar archivo"
-          aria-label="Borrar archivo"
+          title="Eliminar del historial"
+          aria-label="Eliminar del historial"
           @click="emit('delete-download', item)"
         >
           <Trash2 :size="14" />

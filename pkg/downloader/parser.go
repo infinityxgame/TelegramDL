@@ -17,8 +17,9 @@ type ParsedURL struct {
 }
 
 var (
-	channelRegex  = regexp.MustCompile(`^https://t\.me/c/(\d+)/(\d+)(?:-(\d+))?(?:[?#].*)?$`)
-	usernameRegex = regexp.MustCompile(`^https://t\.me/([A-Za-z0-9_]{1,64})/(\d+)(?:-(\d+))?(?:[?#].*)?$`)
+	channelRegex  = regexp.MustCompile(`^https://t\.me/c/(\d+)/(\d+)(?:-(\d+))?(?:/)?(?:[?#].*)?$`)
+	botRegex      = regexp.MustCompile(`^https://t\.me/b/([A-Za-z0-9_]{1,64})/(\d+)(?:-(\d+))?(?:/)?(?:[?#].*)?$`)
+	usernameRegex = regexp.MustCompile(`^https://t\.me/([A-Za-z0-9_]{1,64})/(\d+)(?:-(\d+))?(?:/)?(?:[?#].*)?$`)
 )
 
 const MaxMessagesPerJob = 500
@@ -29,9 +30,13 @@ func ParseURL(url string) (*ParsedURL, error) {
 		return nil, errors.New("URL vacía")
 	}
 
+	clean = strings.Replace(clean, "http://telegram.me/", "https://t.me/", 1)
+	clean = strings.Replace(clean, "https://telegram.me/", "https://t.me/", 1)
+	clean = strings.Replace(clean, "telegram.me/", "https://t.me/", 1)
+
 	if strings.HasPrefix(clean, "http://") {
 		clean = "https://" + strings.TrimPrefix(clean, "http://")
-	} else if !strings.HasPrefix(clean, "https://") {
+	} else if !strings.HasPrefix(clean, "https://") && !strings.HasPrefix(clean, "tg://") {
 		clean = "https://" + clean
 	}
 
@@ -56,6 +61,28 @@ func ParseURL(url string) (*ParsedURL, error) {
 			IsChannelID: true,
 			StartMsgID:  startID,
 			EndMsgID:    endID,
+		}, nil
+	}
+
+	if match := botRegex.FindStringSubmatch(clean); match != nil {
+		username := match[1]
+		startID, _ := strconv.Atoi(match[2])
+		endID := startID
+		if len(match) > 3 && match[3] != "" {
+			endID, _ = strconv.Atoi(match[3])
+		}
+		if endID < startID {
+			return nil, errors.New("el mensaje final no puede ser menor que el inicial")
+		}
+		if endID-startID+1 > MaxMessagesPerJob {
+			return nil, fmt.Errorf("el rango máximo es de %d mensajes", MaxMessagesPerJob)
+		}
+
+		return &ParsedURL{
+			ChatUsername: username,
+			IsChannelID:  false,
+			StartMsgID:   startID,
+			EndMsgID:     endID,
 		}, nil
 	}
 
