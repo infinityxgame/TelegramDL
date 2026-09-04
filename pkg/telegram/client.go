@@ -262,6 +262,23 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 		}
 		offsetID = lastMsg.ID
 		offsetDate = lastMsg.Date
+
+		switch p := lastMsg.PeerID.(type) {
+		case *tg.PeerChannel:
+			cm.mu.RLock()
+			hash := cm.channelAccessHashes[p.ChannelID]
+			cm.mu.RUnlock()
+			offsetPeer = &tg.InputPeerChannel{ChannelID: p.ChannelID, AccessHash: hash}
+		case *tg.PeerUser:
+			cm.mu.RLock()
+			hash := cm.userAccessHashes[p.UserID]
+			cm.mu.RUnlock()
+			offsetPeer = &tg.InputPeerUser{UserID: p.UserID, AccessHash: hash}
+		case *tg.PeerChat:
+			offsetPeer = &tg.InputPeerChat{ChatID: p.ChatID}
+		default:
+			offsetPeer = &tg.InputPeerEmpty{}
+		}
 	}
 
 	return nil

@@ -39,12 +39,30 @@ type Server struct {
 
 	mu           sync.RWMutex
 	mux          *http.ServeMux
-	wsClients    map[*websocket.Conn]bool
+	wsClients    map[*wsClient]bool
 	upgrader     websocket.Upgrader
 	httpServer   *http.Server
 	latestRel    *updater.ReleaseInfo
 	cachedDisk   *downloader.DiskInfo
 	exitCallback func()
+}
+
+type wsClient struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (c *wsClient) writeJSON(v any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	return c.conn.WriteJSON(v)
+}
+
+func (c *wsClient) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_ = c.conn.Close()
 }
 
 func NewServer(
@@ -65,7 +83,7 @@ func NewServer(
 		updater:    up,
 		config:     cfg,
 		assets:     assets,
-		wsClients:  make(map[*websocket.Conn]bool),
+		wsClients:  make(map[*wsClient]bool),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -256,20 +274,22 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client := &wsClient{conn: conn}
+
 	s.mu.Lock()
-	s.wsClients[conn] = true
+	s.wsClients[client] = true
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
-		delete(s.wsClients, conn)
+		delete(s.wsClients, client)
 		s.mu.Unlock()
-		_ = conn.Close()
+		client.close()
 	}()
 
 	// Enviar estado inicial inmediato
 	snap := s.buildStateSnapshot()
-	_ = conn.WriteJSON(snap)
+	_ = client.writeJSON(snap)
 
 	for {
 		_, _, err := conn.ReadMessage()
@@ -309,7 +329,7 @@ func (s *Server) broadcastState() {
 		s.mu.RUnlock()
 		return
 	}
-	clients := make([]*websocket.Conn, 0, len(s.wsClients))
+	clients := make([]*wsClient, 0, len(s.wsClients))
 	for c := range s.wsClients {
 		clients = append(clients, c)
 	}
@@ -317,10 +337,9 @@ func (s *Server) broadcastState() {
 
 	snap := s.buildStateSnapshot()
 
-	var toRemove []*websocket.Conn
+	var toRemove []*wsClient
 	for _, c := range clients {
-		_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
-		if err := c.WriteJSON(snap); err != nil {
+		if err := c.writeJSON(snap); err != nil {
 			toRemove = append(toRemove, c)
 		}
 	}
@@ -329,7 +348,7 @@ func (s *Server) broadcastState() {
 		s.mu.Lock()
 		for _, c := range toRemove {
 			delete(s.wsClients, c)
-			_ = c.Close()
+			c.close()
 		}
 		s.mu.Unlock()
 	}
