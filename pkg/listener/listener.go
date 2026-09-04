@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gotd/td/tg"
 
 	"tgdown/pkg/config"
@@ -53,9 +53,34 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 
 	le.updateChatMap(cfg)
 
-	// Conectar callback en ClientManager si está disponible
+	// Cargar items de escucha existentes desde SQLite (source='listener')
+	if st != nil {
+		if saved, err := st.LoadDownloads(""); err == nil {
+			for id, d := range saved {
+				if d.Source == "listener" && (d.Status == "available" || d.Status == "cancelled") {
+					chatName := strconv.FormatInt(d.ChatID, 10)
+					if cfgChat, ok := le.chatMap[d.ChatID]; ok && cfgChat.Name != "" {
+						chatName = cfgChat.Name
+					}
+					le.items[id] = &ListenerItem{
+						ID:        d.ID,
+						MessageID: d.MessageID,
+						ChatID:    d.ChatID,
+						ChatName:  chatName,
+						FileName:  d.FileName,
+						Kind:      d.Kind,
+						TotalStr:  d.TotalStr,
+						Status:    d.Status,
+						UpdatedAt: d.UpdatedAt,
+					}
+				}
+			}
+		}
+	}
+
+	// Conectar callback genérico en ClientManager
 	if cm != nil {
-		cm.SetMessageCallback(le.HandleChannelMessage)
+		cm.SetMessageCallback(le.HandleMessage)
 	}
 
 	return le
@@ -86,17 +111,12 @@ func (le *ListenerEngine) GetItems() []ListenerItem {
 	return res
 }
 
-func (le *ListenerEngine) HandleChannelMessage(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entities, msg *tg.Message) error {
 	le.mu.RLock()
 	enabled := le.config.ListenerEnabled
 	le.mu.RUnlock()
 
-	if !enabled || update == nil {
-		return nil
-	}
-
-	msg, ok := update.Message.(*tg.Message)
-	if !ok || msg.Out {
+	if !enabled || msg == nil || msg.Out {
 		return nil
 	}
 
@@ -153,27 +173,36 @@ func (le *ListenerEngine) HandleChannelMessage(ctx context.Context, entities tg.
 		chatName = strconv.FormatInt(peerID, 10)
 	}
 
-	itemID := uuid.New().String()
+	itemID := fmt.Sprintf("listener:%d:%d", peerID, msg.ID)
 	now := float64(time.Now().Unix())
 
+	dlItem := storage.DownloadItem{
+		ID:         itemID,
+		JobID:      fmt.Sprintf("listener:%d", peerID),
+		MessageID:  int64(msg.ID),
+		ChatID:     peerID,
+		FileName:   mediaInfo.FileName,
+		Status:     "available",
+		Kind:       string(mediaInfo.Kind),
+		TotalStr:   config.FormatBytes(float64(mediaInfo.FileSize)),
+		TotalBytes: mediaInfo.FileSize,
+		Source:     "listener",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+
 	if chatCfg.AutoDownload {
-		// Descarga automática inmediata
-		dlItem := storage.DownloadItem{
-			ID:         itemID,
-			MessageID:  int64(msg.ID),
-			ChatID:     peerID,
-			FileName:   mediaInfo.FileName,
-			Status:     "queued",
-			Kind:       string(mediaInfo.Kind),
-			TotalStr:   config.FormatBytes(float64(mediaInfo.FileSize)),
-			TotalBytes: mediaInfo.FileSize,
-			Source:     "listener",
-			CreatedAt:  now,
-			UpdatedAt:  now,
+		dlItem.Status = "queued"
+		if le.storage != nil {
+			_ = le.storage.SaveDownload(dlItem)
 		}
-		le.engine.QueueItem(dlItem)
+		if le.engine != nil {
+			le.engine.QueueItem(dlItem)
+		}
 	} else {
-		// Modo manual: guardar como disponible
+		if le.storage != nil {
+			_ = le.storage.SaveDownload(dlItem)
+		}
 		item := &ListenerItem{
 			ID:        itemID,
 			MessageID: int64(msg.ID),
@@ -201,11 +230,12 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		le.mu.Unlock()
 		return errors.New("multimedia no encontrado en escucha")
 	}
-	delete(le.items, itemID)
+	item.Status = "queued"
 	le.mu.Unlock()
 
 	dlItem := storage.DownloadItem{
 		ID:        item.ID,
+		JobID:     fmt.Sprintf("listener:%d", item.ChatID),
 		MessageID: item.MessageID,
 		ChatID:    item.ChatID,
 		FileName:  item.FileName,
@@ -217,8 +247,19 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		UpdatedAt: float64(time.Now().Unix()),
 	}
 
-	le.engine.QueueItem(dlItem)
+	if le.storage != nil {
+		_ = le.storage.SaveDownload(dlItem)
+	}
+	if le.engine != nil {
+		le.engine.QueueItem(dlItem)
+	}
 	return nil
+}
+
+func (le *ListenerEngine) RemoveItem(itemID string) {
+	le.mu.Lock()
+	defer le.mu.Unlock()
+	delete(le.items, itemID)
 }
 
 func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (string, error) {
@@ -238,14 +279,32 @@ func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (string
 			}
 		}
 
+		accessHash, _ := le.clientMgr.GetChannelAccessHash(channelID)
 		res, err := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
-			&tg.InputChannel{ChannelID: channelID, AccessHash: 0},
+			&tg.InputChannel{ChannelID: channelID, AccessHash: accessHash},
 		})
 		if err == nil {
 			chats := res.GetChats()
 			if len(chats) > 0 {
 				if ch, ok := chats[0].(*tg.Channel); ok {
 					return ch.Title, nil
+				}
+			}
+		}
+	} else {
+		// Usuario
+		accessHash, _ := le.clientMgr.GetUserAccessHash(chatID)
+		res, err := raw.UsersGetUsers(ctx, []tg.InputUserClass{
+			&tg.InputUser{UserID: chatID, AccessHash: accessHash},
+		})
+		if err == nil && len(res) > 0 {
+			if u, ok := res[0].(*tg.User); ok {
+				name := strings.TrimSpace(u.FirstName + " " + u.LastName)
+				if name == "" {
+					name = u.Username
+				}
+				if name != "" {
+					return name, nil
 				}
 			}
 		}

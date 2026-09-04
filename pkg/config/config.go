@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	AppVersion = "2.2.0"
+	AppVersion = "2.1.0"
 	GithubRepo = "infinityxgame/tgdown"
 )
 
@@ -53,10 +53,10 @@ type Config struct {
 }
 
 var (
-	DataDir      string
-	UserEnvPath  string
-	BaseDir      string
-	initDirOnce  sync.Once
+	DataDir     string
+	UserEnvPath string
+	BaseDir     string
+	initDirOnce sync.Once
 )
 
 func InitPaths() {

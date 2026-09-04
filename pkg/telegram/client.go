@@ -43,19 +43,21 @@ type AuthStatus struct {
 }
 
 type ClientManager struct {
-	apiID         int
-	apiHash       string
-	client        *telegram.Client
-	rawClient     *tg.Client
-	sessionPath   string
-	cancelRun     context.CancelFunc
-	runWg         sync.WaitGroup
-	mu            sync.RWMutex
-	readyChan     chan struct{}
-	phoneCodeHash string
-	pendingPhone  string
-	dispatcher    tg.UpdateDispatcher
-	onNewMessage  func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error
+	apiID               int
+	apiHash             string
+	client              *telegram.Client
+	rawClient           *tg.Client
+	sessionPath         string
+	cancelRun           context.CancelFunc
+	runWg               sync.WaitGroup
+	mu                  sync.RWMutex
+	readyChan           chan struct{}
+	phoneCodeHash       string
+	pendingPhone        string
+	dispatcher          tg.UpdateDispatcher
+	channelAccessHashes map[int64]int64
+	userAccessHashes    map[int64]int64
+	onGenericMessage    func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
 }
 
 func NewClientManager() *ClientManager {
@@ -64,8 +66,10 @@ func NewClientManager() *ClientManager {
 	importPyrogramSession(sessPath)
 
 	cm := &ClientManager{
-		sessionPath: sessPath,
-		dispatcher:  tg.NewUpdateDispatcher(),
+		sessionPath:         sessPath,
+		dispatcher:          tg.NewUpdateDispatcher(),
+		channelAccessHashes: make(map[int64]int64),
+		userAccessHashes:    make(map[int64]int64),
 	}
 	return cm
 }
@@ -166,10 +170,122 @@ func importPyrogramSession(targetJSONPath string) {
 	_ = loader.Save(context.Background(), &data)
 }
 
-func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error) {
+func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entities tg.Entities, msg *tg.Message) error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.onNewMessage = cb
+	cm.onGenericMessage = cb
+}
+
+func (cm *ClientManager) cacheEntities(entities tg.Entities) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	for id, ch := range entities.Channels {
+		cm.channelAccessHashes[id] = ch.AccessHash
+	}
+	for id, u := range entities.Users {
+		cm.userAccessHashes[id] = u.AccessHash
+	}
+}
+
+func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
+	cm.mu.RLock()
+	raw := cm.rawClient
+	cm.mu.RUnlock()
+	if raw == nil {
+		return errors.New("cliente no conectado")
+	}
+
+	res, err := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+		OffsetPeer: &tg.InputPeerEmpty{},
+		Limit:      100,
+	})
+	if err != nil {
+		return err
+	}
+
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	var chats []tg.ChatClass
+	var users []tg.UserClass
+
+	switch d := res.(type) {
+	case *tg.MessagesDialogs:
+		chats = d.Chats
+		users = d.Users
+	case *tg.MessagesDialogsSlice:
+		chats = d.Chats
+		users = d.Users
+	}
+
+	for _, c := range chats {
+		if ch, ok := c.(*tg.Channel); ok {
+			cm.channelAccessHashes[ch.ID] = ch.AccessHash
+		}
+	}
+	for _, u := range users {
+		if usr, ok := u.(*tg.User); ok {
+			cm.userAccessHashes[usr.ID] = usr.AccessHash
+		}
+	}
+	return nil
+}
+
+func (cm *ClientManager) GetChannelAccessHash(channelID int64) (int64, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	h, ok := cm.channelAccessHashes[channelID]
+	return h, ok
+}
+
+func (cm *ClientManager) GetUserAccessHash(userID int64) (int64, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	h, ok := cm.userAccessHashes[userID]
+	return h, ok
+}
+
+func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (int64, error) {
+	cm.mu.RLock()
+	raw := cm.rawClient
+	cm.mu.RUnlock()
+	if raw == nil {
+		return 0, errors.New("cliente no conectado")
+	}
+
+	username = strings.TrimPrefix(username, "@")
+	res, err := raw.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{
+		Username: username,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("no se pudo resolver @%s: %w", username, err)
+	}
+
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	for _, c := range res.Chats {
+		if ch, ok := c.(*tg.Channel); ok {
+			cm.channelAccessHashes[ch.ID] = ch.AccessHash
+		}
+	}
+	for _, u := range res.Users {
+		if usr, ok := u.(*tg.User); ok {
+			cm.userAccessHashes[usr.ID] = usr.AccessHash
+		}
+	}
+
+	switch p := res.Peer.(type) {
+	case *tg.PeerChannel:
+		tgID, _ := strconv.ParseInt(fmt.Sprintf("-100%d", p.ChannelID), 10, 64)
+		return tgID, nil
+	case *tg.PeerChat:
+		return -p.ChatID, nil
+	case *tg.PeerUser:
+		return p.UserID, nil
+	}
+
+	return 0, errors.New("tipo de chat desconocido")
 }
 
 func (cm *ClientManager) RawClient() *tg.Client {
@@ -209,13 +325,33 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.apiHash = apiHash
 	cm.readyChan = make(chan struct{})
 
-	// Configurar dispatcher de actualizaciones
-	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+	// Configurar dispatcher de actualizaciones para mensajes normales (chats privados/grupos) y canales
+	cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
+		cm.cacheEntities(entities)
+		msg, ok := update.Message.(*tg.Message)
+		if !ok || msg.Out {
+			return nil
+		}
 		cm.mu.RLock()
-		cb := cm.onNewMessage
+		cb := cm.onGenericMessage
 		cm.mu.RUnlock()
 		if cb != nil {
-			return cb(ctx, entities, update)
+			return cb(ctx, entities, msg)
+		}
+		return nil
+	})
+
+	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+		cm.cacheEntities(entities)
+		msg, ok := update.Message.(*tg.Message)
+		if !ok || msg.Out {
+			return nil
+		}
+		cm.mu.RLock()
+		cb := cm.onGenericMessage
+		cm.mu.RUnlock()
+		if cb != nil {
+			return cb(ctx, entities, msg)
 		}
 		return nil
 	})
@@ -247,6 +383,10 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		err := client.Run(ctx, func(runCtx context.Context) error {
 			readyOnce.Do(func() {
 				close(cm.readyChan)
+				go func() {
+					time.Sleep(300 * time.Millisecond)
+					_ = cm.FetchDialogs(context.Background())
+				}()
 			})
 			<-runCtx.Done()
 			return runCtx.Err()

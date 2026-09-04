@@ -297,7 +297,7 @@ func (s *Server) buildStateSnapshot() map[string]any {
 	folder := s.config.DownloadFolder
 	s.mu.RUnlock()
 
-	disk, _ := downloader.GetDiskUsage(folder)
+	disk, _ := downloader.GetDiskUsage(folder, downloads...)
 	if disk != nil {
 		s.mu.Lock()
 		s.cachedDisk = disk
@@ -445,6 +445,16 @@ func (s *Server) handleStartDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chatID := parsed.ChatID
+	if chatID == 0 && parsed.ChatUsername != "" {
+		resolvedID, err := s.clientMgr.ResolveUsername(r.Context(), parsed.ChatUsername)
+		if err != nil {
+			s.errorResponse(w, http.StatusBadRequest, fmt.Sprintf("No se pudo encontrar el canal o usuario: %s", err.Error()))
+			return
+		}
+		chatID = resolvedID
+	}
+
 	jobID := uuid.New().String()
 	go func() {
 		// Crear items para el rango de mensajes
@@ -453,7 +463,7 @@ func (s *Server) handleStartDownload(w http.ResponseWriter, r *http.Request) {
 				ID:        uuid.New().String(),
 				JobID:     jobID,
 				MessageID: int64(msgID),
-				ChatID:    parsed.ChatID,
+				ChatID:    chatID,
 				Status:    "queued",
 				Source:    "manual",
 				FileName:  fmt.Sprintf("mensaje_%d", msgID),
@@ -551,6 +561,7 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.downloader.DeleteDownload(body.ID, delFile)
+	s.listener.RemoveItem(body.ID)
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -825,7 +836,7 @@ func (s *Server) handleSystemDisk(w http.ResponseWriter, r *http.Request) {
 	folder := s.config.DownloadFolder
 	s.mu.RUnlock()
 
-	disk, err := downloader.GetDiskUsage(folder)
+	disk, err := downloader.GetDiskUsage(folder, s.downloader.GetDownloads()...)
 	if err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, err.Error())
 		return

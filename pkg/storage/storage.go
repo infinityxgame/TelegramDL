@@ -323,6 +323,51 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 		cfg.ListenerChats = chats
 	}
 
+	// Si no hay chats en SQLite, migrar desde config.json legacy (de BaseDir o DataDir)
+	if len(cfg.ListenerChats) == 0 {
+		targetLegacy := findExistingFile(legacyPath, filepath.Join(config.BaseDir, "config.json"), filepath.Join(config.DataDir, "config.json"))
+		if targetLegacy != "" {
+			if data, err := os.ReadFile(targetLegacy); err == nil {
+				var raw struct {
+					ListenerChats   []config.ListenerChat `json:"listener_chats"`
+					ListenerChatIDs []int64               `json:"listener_chat_ids"`
+				}
+				if json.Unmarshal(data, &raw) == nil {
+					imported := raw.ListenerChats
+					if len(imported) == 0 && len(raw.ListenerChatIDs) > 0 {
+						for _, id := range raw.ListenerChatIDs {
+							imported = append(imported, config.ListenerChat{
+								ID:           id,
+								Name:         fmt.Sprintf("%d", id),
+								AutoDownload: false,
+								FPhotos:      true,
+								FVideos:      true,
+								FAudios:      true,
+								FDocs:        true,
+								FStickers:    true,
+							})
+						}
+					}
+					for _, c := range imported {
+						if c.Name == "" {
+							c.Name = fmt.Sprintf("%d", c.ID)
+						}
+						c.FPhotos = true
+						c.FVideos = true
+						c.FAudios = true
+						c.FDocs = true
+						c.FStickers = true
+						_, _ = s.db.Exec(`
+							INSERT OR REPLACE INTO listener_chats(chat_id, name, auto_download, f_photos, f_videos, f_audios, f_docs, f_stickers)
+							VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+						`, c.ID, c.Name, c.AutoDownload, c.FPhotos, c.FVideos, c.FAudios, c.FDocs, c.FStickers)
+						cfg.ListenerChats = append(cfg.ListenerChats, c)
+					}
+				}
+			}
+		}
+	}
+
 	return config.NormalizeConfig(cfg), nil
 }
 

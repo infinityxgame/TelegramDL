@@ -137,7 +137,9 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	item, ok := e.downloads[id]
 	if !ok {
 		e.mu.Unlock()
-		return errors.New("descarga no encontrada")
+		_ = e.storage.DeleteDownload(id)
+		_ = e.storage.DeleteChunks(id)
+		return nil
 	}
 
 	if cancel, exists := e.cancelFuncs[id]; exists {
@@ -476,48 +478,83 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 		return nil, errors.New("cliente no conectado")
 	}
 
-	// Construir InputPeer
-	var peer tg.InputPeerClass
+	var messages []tg.MessageClass
 	if chatID < 0 {
-		// Canal o supergrupo (-100...)
+		isChannel := false
 		channelID := -chatID
-		if strings.HasPrefix(fmt.Sprintf("%d", chatID), "-100") {
-			channelID, _ = strconvParse(fmt.Sprintf("%d", chatID)[4:])
+		s := fmt.Sprintf("%d", chatID)
+		if strings.HasPrefix(s, "-100") && len(s) > 4 {
+			isChannel = true
+			if parsed, err := strconvParse(s[4:]); err == nil {
+				channelID = parsed
+			}
 		}
-		peer = &tg.InputPeerChannel{
-			ChannelID:  channelID,
-			AccessHash: 0,
+
+		if isChannel {
+			accessHash, found := e.clientMgr.GetChannelAccessHash(channelID)
+			if !found {
+				_ = e.clientMgr.FetchDialogs(ctx)
+				accessHash, _ = e.clientMgr.GetChannelAccessHash(channelID)
+			}
+
+			req := &tg.ChannelsGetMessagesRequest{
+				Channel: &tg.InputChannel{
+					ChannelID:  channelID,
+					AccessHash: accessHash,
+				},
+				ID: []tg.InputMessageClass{
+					&tg.InputMessageID{ID: msgID},
+				},
+			}
+
+			res, err := raw.ChannelsGetMessages(ctx, req)
+			if err != nil {
+				return nil, fmt.Errorf("ChannelsGetMessages error: %w", err)
+			}
+
+			switch m := res.(type) {
+			case *tg.MessagesMessages:
+				messages = m.Messages
+			case *tg.MessagesMessagesSlice:
+				messages = m.Messages
+			case *tg.MessagesChannelMessages:
+				messages = m.Messages
+			}
+		} else {
+			// Chat grupal básico
+			res, err := raw.MessagesGetMessages(ctx, []tg.InputMessageClass{
+				&tg.InputMessageID{ID: msgID},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("MessagesGetMessages error: %w", err)
+			}
+
+			switch m := res.(type) {
+			case *tg.MessagesMessages:
+				messages = m.Messages
+			case *tg.MessagesMessagesSlice:
+				messages = m.Messages
+			case *tg.MessagesChannelMessages:
+				messages = m.Messages
+			}
 		}
 	} else {
-		peer = &tg.InputPeerUser{
-			UserID:     chatID,
-			AccessHash: 0,
-		}
-	}
-
-	req := &tg.ChannelsGetMessagesRequest{
-		Channel: &tg.InputChannel{
-			ChannelID:  peer.(*tg.InputPeerChannel).ChannelID,
-			AccessHash: 0,
-		},
-		ID: []tg.InputMessageClass{
+		// Usuario / Chat privado (chatID > 0)
+		res, err := raw.MessagesGetMessages(ctx, []tg.InputMessageClass{
 			&tg.InputMessageID{ID: msgID},
-		},
-	}
+		})
+		if err != nil {
+			return nil, fmt.Errorf("MessagesGetMessages error: %w", err)
+		}
 
-	res, err := raw.ChannelsGetMessages(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	var messages []tg.MessageClass
-	switch m := res.(type) {
-	case *tg.MessagesMessages:
-		messages = m.Messages
-	case *tg.MessagesMessagesSlice:
-		messages = m.Messages
-	case *tg.MessagesChannelMessages:
-		messages = m.Messages
+		switch m := res.(type) {
+		case *tg.MessagesMessages:
+			messages = m.Messages
+		case *tg.MessagesMessagesSlice:
+			messages = m.Messages
+		case *tg.MessagesChannelMessages:
+			messages = m.Messages
+		}
 	}
 
 	if len(messages) == 0 {
