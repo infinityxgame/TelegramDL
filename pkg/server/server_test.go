@@ -71,23 +71,21 @@ func TestServerEndpoints(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	// Probar redirección de / hacia /dashboard/
+	// Probar que srv.Handler() delega rutas no-API a Wails AssetServer (404 para que Wails sirva los assets)
+	handler := srv.Handler()
 	req = httptest.NewRequest("GET", "/", nil)
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-	if w.Code != http.StatusFound {
-		t.Errorf("expected status 302, got %d", w.Code)
-	}
-	if loc := w.Header().Get("Location"); loc != "/dashboard/" {
-		t.Errorf("expected redirect to /dashboard/, got %s", loc)
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for root on Wails handler, got %d", w.Code)
 	}
 
-	// Probar redirección de /favicon.ico hacia /dashboard/favicon.ico
-	req = httptest.NewRequest("GET", "/favicon.ico", nil)
+	// Probar que srv.Handler() atiende peticiones /api/ correctamente
+	req = httptest.NewRequest("GET", "/api/auth/status", nil)
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-	if w.Code != http.StatusFound {
-		t.Errorf("expected status 302, got %d", w.Code)
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200 for /api/ on Wails handler, got %d", w.Code)
 	}
 
 	_ = os.RemoveAll(tmpDir)

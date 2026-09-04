@@ -83,6 +83,18 @@ func NewServer(
 }
 
 func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			s.corsMiddleware(s.mux).ServeHTTP(w, r)
+			return
+		}
+		// Para cualquier ruta de frontend, devolver 404 para que Wails AssetServer
+		// sirva index.html e inyecte los bindings e IPC nativos.
+		http.NotFound(w, r)
+	})
+}
+
+func (s *Server) WebHandler() http.Handler {
 	return s.corsMiddleware(s.mux)
 }
 
@@ -99,7 +111,7 @@ func (s *Server) Start(port int) error {
 	}
 
 	s.httpServer = &http.Server{
-		Handler: s.Handler(),
+		Handler: s.WebHandler(),
 	}
 
 	// Tarea de refresco y broadcast periódico
@@ -146,32 +158,24 @@ func (s *Server) errorResponse(w http.ResponseWriter, status int, message string
 }
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
-	// Redirección de / hacia /dashboard/
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || r.URL.Path == "" || r.URL.Path == "/dashboard" {
-			http.Redirect(w, r, "/dashboard/", http.StatusFound)
-			return
-		}
-		if r.URL.Path == "/favicon.ico" {
-			http.Redirect(w, r, "/dashboard/favicon.ico", http.StatusFound)
-			return
-		}
-		http.NotFound(w, r)
-	})
-
-	// Servir panel estático en /dashboard/
+	// Servir panel estático en /dashboard/ y en / para el servidor web en puerto 8000
+	var staticHandler http.Handler
 	if s.assets != nil {
-		sub, err := fs.Sub(s.assets, "dashboard/dist")
-		if err == nil {
-			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.FS(sub))))
+		if sub, err := fs.Sub(s.assets, "dashboard/dist"); err == nil {
+			staticHandler = http.FileServer(http.FS(sub))
 		} else {
-			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.FS(s.assets))))
+			staticHandler = http.FileServer(http.FS(s.assets))
 		}
 	} else {
 		distDir := filepath.Join(config.BaseDir, "dashboard", "dist")
 		if fi, err := os.Stat(distDir); err == nil && fi.IsDir() {
-			mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.Dir(distDir))))
+			staticHandler = http.FileServer(http.Dir(distDir))
 		}
+	}
+
+	if staticHandler != nil {
+		mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", staticHandler))
+		mux.Handle("/", staticHandler)
 	}
 
 	// WebSocket
