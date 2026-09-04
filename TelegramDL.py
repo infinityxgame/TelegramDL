@@ -328,6 +328,7 @@ def websocket_snapshot() -> Dict[str, Any]:
         "downloads": downloads,
         "listener": listener,
         "settings": public_config(runtime_config),
+        "disk": get_disk_info(),
         "server_time": time.time(),
     }
 
@@ -378,6 +379,7 @@ def update_state(item_id: str, **kwargs: Any) -> None:
             "current_str": "0 B",
             "speed": "0 B/s",
             "kind": "desconocido",
+            "total_bytes": 0,
             "file_path": None,
             "updated_at": time.time(),
             "created_at": time.time(),
@@ -525,6 +527,67 @@ async def check_auth_status() -> Dict[str, Any]:
             "has_credentials": True,
             "phone_number": auth_session.get("phone_number"),
         }
+
+
+INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+    "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
+
+
+def sanitize_file_name(name: Any) -> str:
+    clean = INVALID_FILENAME_CHARS.sub("_", str(name)).strip().rstrip(". ")
+    if clean.upper().split(".", 1)[0] in WINDOWS_RESERVED_NAMES:
+        clean = f"_{clean}"
+    return clean[:240].rstrip(". ")
+
+
+def format_bytes(size: float) -> str:
+    value = float(size or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024:
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
+
+
+def get_disk_info() -> Optional[Dict[str, Any]]:
+    folder = runtime_config.get("download_folder")
+    if not folder:
+        folder = str(Path.cwd())
+
+    try:
+        path = Path(folder).resolve()
+        while not path.exists() and path.parent != path:
+            path = path.parent
+
+        usage = shutil.disk_usage(str(path))
+
+        # Calcular espacio ocupado por descargas en curso/cola
+        projected_occupied = 0
+        for item in downloads_state.values():
+            if item.get("status") in ["pending", "queued", "downloading"]:
+                projected_occupied += item.get("total_bytes", 0)
+
+        free_after_queued = usage.free - projected_occupied
+        if free_after_queued < 0:
+            free_after_queued = 0
+
+        percent_free = (free_after_queued / usage.total) * 100 if usage.total > 0 else 0
+
+        return {
+            "total": usage.total,
+            "free": usage.free,
+            "projected_free": free_after_queued,
+            "total_str": format_bytes(usage.total),
+            "free_str": format_bytes(usage.free),
+            "projected_free_str": format_bytes(free_after_queued),
+            "percent": round(percent_free, 1),
+            "status": "red" if percent_free <= 10 else "green"
+        }
+    except Exception:
+        return None
 
 
 # --- Dashboard API ---
@@ -1154,11 +1217,21 @@ async def start_download(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    _, start_id, end_id = parsed
+    chat_id, start_id, end_id = parsed
     if end_id - start_id + 1 > MAX_MESSAGES_PER_JOB:
         raise HTTPException(
             status_code=422,
             detail=f"El rango máximo es de {MAX_MESSAGES_PER_JOB} mensajes",
+        )
+
+    # Verificar espacio en disco antes de empezar
+    total_size = await downloader_instance.get_range_total_size(chat_id, start_id, end_id)
+    disk = get_disk_info()
+    if disk and total_size > disk["projected_free"]:
+        needed = format_bytes(total_size - disk["projected_free"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"El espacio no es suficiente necesitas {needed}, libera espacio o cambia la ubicación de descarga"
         )
 
     job_id = uuid.uuid4().hex
@@ -1183,6 +1256,18 @@ async def download_listener_item(data: Dict[str, Any] = Body(...)) -> Dict[str, 
     if not listener_item:
         raise HTTPException(status_code=404, detail="Multimedia no encontrado")
     message, chat_id = listener_item
+
+    # Verificar espacio en disco
+    info = downloader_instance._extract_media_info(message)
+    if info:
+        disk = get_disk_info()
+        if disk and info.file_size > disk["projected_free"]:
+            needed = format_bytes(info.file_size - disk["projected_free"])
+            raise HTTPException(
+                status_code=400,
+                detail=f"El espacio no es suficiente necesitas {needed}, libera espacio del disco o cancela archivos de la cola para alcanzar el espacio"
+            )
+
     state = downloads_state.get(item_id, {})
     if state.get("status") in {"queued", "downloading", "completed"}:
         return {"status": "ok", "message": "La multimedia ya está gestionándose"}
@@ -1481,6 +1566,7 @@ class TelegramDownloader:
             chat_name=str(chat_name),
             file_name=sanitize_file_name(info.file_name) or f"file_{message.id}",
             total_str=format_bytes(info.file_size),
+            total_bytes=info.file_size,
             kind=info.kind,
             source="listener",
             status="available",
@@ -1508,6 +1594,21 @@ class TelegramDownloader:
     @staticmethod
     def _item_id(job_id: str, message_id: int) -> str:
         return f"{job_id}:{message_id}"
+
+    async def get_range_total_size(self, chat_id: Any, start_id: int, end_id: int) -> int:
+        total = 0
+        for batch_start in range(start_id, end_id + 1, MAX_GET_MESSAGES_BATCH):
+            batch_end = min(batch_start + MAX_GET_MESSAGES_BATCH - 1, end_id)
+            batch_ids = list(range(batch_start, batch_end + 1))
+            messages = await self.client.get_messages(chat_id, batch_ids)
+            if not isinstance(messages, list):
+                messages = [messages]
+            for msg in messages:
+                if msg and not msg.empty:
+                    info = self._extract_media_info(msg)
+                    if info:
+                        total += info.file_size
+        return total
 
     async def download_from_url(
         self,
@@ -1548,7 +1649,10 @@ class TelegramDownloader:
                         update_state(item_id, status="skipped")
                         continue
 
-                    update_state(item_id, status="queued")
+                    info = self._extract_media_info(message)
+                    size = info.file_size if info else 0
+
+                    update_state(item_id, status="queued", total_bytes=size)
                     task = asyncio.create_task(
                         self.download_file_from_message(message, chat_id, item_id)
                     )
@@ -1627,6 +1731,7 @@ class TelegramDownloader:
             file_name=info.file_name,
             kind=info.kind,
             total_str=format_bytes(info.file_size),
+            total_bytes=info.file_size,
         )
 
         pause_event = self.pause_events.get(item_id)
@@ -1932,36 +2037,6 @@ class TelegramDownloader:
 CHUNK_SIZE = 1024 * 1024
 MAX_GET_MESSAGES_BATCH = 200
 PRINT_LOCK = threading.Lock()
-INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-WINDOWS_RESERVED_NAMES = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    "COM1",
-    "COM2",
-    "COM3",
-    "COM4",
-    "LPT1",
-    "LPT2",
-    "LPT3",
-}
-
-
-def sanitize_file_name(name: Any) -> str:
-    clean = INVALID_FILENAME_CHARS.sub("_", str(name)).strip().rstrip(". ")
-    if clean.upper().split(".", 1)[0] in WINDOWS_RESERVED_NAMES:
-        clean = f"_{clean}"
-    return clean[:240].rstrip(". ")
-
-
-def format_bytes(size: float) -> str:
-    value = float(size or 0)
-    for unit in ("B", "KB", "MB", "GB"):
-        if value < 1024:
-            return f"{value:.1f} {unit}"
-        value /= 1024
-    return f"{value:.1f} TB"
 
 
 def check_webview2_runtime() -> bool:

@@ -18,6 +18,7 @@ const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
 const version = ref('')
+const disk = ref(null)
 
 const themeMap = {
   // --- Fila Superior: Sólidos ---
@@ -432,6 +433,9 @@ const connectWebSocket = () => {
           }
           wasDownloading.value = isDownloading
         }
+        if (data.disk) {
+          disk.value = data.disk
+        }
         if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
       }
     } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
@@ -580,7 +584,17 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       </section>
 
       <div class="content-grid-single">
-        <section class="panel activity-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div><span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span></div>
+        <section class="panel activity-panel">
+          <div class="panel-heading">
+            <div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div>
+            <div class="header-actions">
+              <div v-if="disk" class="disk-monitor">
+                <div class="disk-bar"><div class="fill" :style="{ width: disk.percent + '%', backgroundColor: disk.status === 'red' ? '#ff4d4d' : '#4dff4d' }"></div></div>
+                <small>Total/Libre: ({{ disk.total_str }} / {{ disk.projected_free_str }})</small>
+              </div>
+              <span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span>
+            </div>
+          </div>
           <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
           <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row"><div class="file-symbol"><FileDown :size="16" /></div><div class="file-info"><strong :title="item.file_name">{{ item.file_name }}</strong><span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span><div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div></div><div class="row-side"><b>{{ progress(item).toFixed(0) }}%</b><span>{{ statusText(item.status) }}</span><button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button><button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button><button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button></div></div>
         </section>

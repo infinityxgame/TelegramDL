@@ -92,6 +92,11 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .content-grid { display: grid; grid-template-columns: 1.45fr .85fr; gap: 18px }
 .panel { padding: 22px; box-shadow: 0 12px 30px rgba(0,0,0,0.2) }
 .panel-heading { display: flex; justify-content: space-between; align-items: start; margin-bottom: 19px }
+.header-actions { display: flex; align-items: center; gap: 15px; }
+.disk-monitor { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.disk-bar { width: 140px; height: 12px; background: var(--user-border); border-radius: 6px; overflow: hidden; border: 1px solid var(--user-border-light); box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
+.disk-bar .fill { height: 100%; transition: width 0.3s ease; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+.disk-monitor small { font-size: 11px; color: var(--user-text-dim); font-weight: 600; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.2px; }
 .panel-heading h2 { font: 600 17px 'Space Grotesk'; margin: 6px 0 0; color: #edf5fc }
 .panel-heading .eyebrow { display: flex; align-items: center; gap: 5px }
 .count-pill, .save-state { font-size: 10px; color: var(--user-accent); background: var(--user-icon-bg); border-radius: 20px; padding: 6px 9px }
