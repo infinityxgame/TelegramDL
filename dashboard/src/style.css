@@ -147,6 +147,8 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .badge { font-size: 10px; padding: 4px 8px; border-radius: 20px; background: rgba(57, 219, 154, 0.1); color: #39db9a; border: 1px solid rgba(57, 219, 154, 0.2) }
 .delete-button { display: grid; place-items: center; border: 0; background: transparent; color: #d9828b; width: 32px; height: 32px; border-radius: 8px; cursor: pointer }
 .delete-button:hover { background: #48252c; color: #ffb0b0 }
+.open-button { display: grid; place-items: center; border: 0; background: transparent; color: var(--user-primary); width: 32px; height: 32px; border-radius: 8px; cursor: pointer }
+.open-button:hover { background: var(--user-icon-bg); color: var(--user-accent) }
 .retry-button { display: grid; place-items: center; border: 0; background: transparent; color: var(--user-accent); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; transition: transform .2s ease, background .2s ease }
 .retry-button:hover { background: var(--user-icon-bg); color: #fff; transform: rotate(-45deg) }
 

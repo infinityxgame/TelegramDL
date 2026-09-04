@@ -12,6 +12,7 @@ import argparse
 import webbrowser
 import ctypes
 import shutil
+import subprocess
 from storage import Storage
 
 # --- Redirección temprana de flujos para evitar bloqueos en modo --noconsole ---
@@ -830,6 +831,46 @@ async def delete_download(item_id: str, delete_file: bool = True) -> Dict[str, A
         downloader_instance.listener_messages.pop(item_id, None)
     schedule_websocket_broadcast()
     return {"status": "ok", "id": item_id, "deleted_file": deleted_file}
+
+
+@app.post("/api/downloads/open")
+async def open_download(payload: Dict[str, Any]) -> Dict[str, Any]:
+    item_id = str(payload.get("id", "")).strip()
+    if not item_id:
+        raise HTTPException(status_code=422, detail="ID requerido")
+
+    state = downloads_state.get(item_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="La descarga no existe")
+
+    file_path = state.get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=404, detail="El archivo no tiene ruta guardada")
+
+    target = Path(file_path).expanduser().resolve()
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="El archivo no existe en el disco")
+
+    # Validación de seguridad: asegurarse de que el archivo esté dentro de la carpeta de descargas
+    download_root = Path(downloader_instance.download_folder if downloader_instance else runtime_config["download_folder"])
+    if not download_root.is_absolute():
+        download_root = (BASE_DIR / download_root).resolve()
+    else:
+        download_root = download_root.resolve()
+
+    if target != download_root and download_root not in target.parents:
+        raise HTTPException(status_code=403, detail="La ruta del archivo no es válida")
+
+    try:
+        if os.name == 'nt':
+            os.startfile(str(target))
+        elif sys.platform == 'darwin':
+            subprocess.run(['open', str(target)])
+        else:
+            subprocess.run(['xdg-open', str(target)])
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo abrir el archivo: {e}")
 
 
 @app.get("/api/settings")
