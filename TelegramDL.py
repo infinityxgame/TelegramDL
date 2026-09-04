@@ -1309,22 +1309,22 @@ async def start_download(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             detail=f"El rango máximo es de {MAX_MESSAGES_PER_JOB} mensajes",
         )
 
+    # Validación de espacio antes de iniciar (esto asegura feedback inmediato al usuario)
+    total_size = await downloader_instance.get_range_total_size(chat_id, start_id, end_id)
+    disk = cached_disk_info or await get_disk_info()
+    if disk and total_size > disk["projected_free"]:
+        needed = format_bytes(total_size - disk["projected_free"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"El espacio no es suficiente para descargar este rango. Faltan {needed}. Por favor, libera espacio o elige un rango menor."
+        )
+
     # Crear Job ID y tarea de descarga de forma asíncrona inmediata
     job_id = uuid.uuid4().hex
 
-    # Esta tarea se encarga de validar el espacio Y de iniciar las descargas sin bloquear la respuesta de la API
+    # Esta tarea se encarga de iniciar las descargas
     async def process_download_request():
         try:
-            # Validación de espacio asíncrona (esto puede tardar segundos)
-            total_size = await downloader_instance.get_range_total_size(chat_id, start_id, end_id)
-            disk = cached_disk_info or await get_disk_info()
-            if disk and total_size > disk["projected_free"]:
-                needed = format_bytes(total_size - disk["projected_free"])
-                # Notificar error vía socket o actualizar estado del primer item para mostrar error
-                # Por ahora, simplemente no iniciamos y registramos el fallo
-                print(f"Error: Espacio insuficiente para job {job_id}")
-                return
-
             await downloader_instance.download_from_url(url, job_id=job_id, parsed=parsed)
         except Exception as e:
             print(f"Error procesando petición de descarga: {e}")
@@ -1352,21 +1352,22 @@ async def download_listener_item(data: Dict[str, Any] = Body(...)) -> Dict[str, 
 
     message, chat_id = listener_item
 
+    # Validación de espacio inmediata antes de poner en cola
+    info = downloader_instance._extract_media_info(message)
+    if info:
+        disk = cached_disk_info or await get_disk_info()
+        if disk and info.file_size > disk["projected_free"]:
+            needed = format_bytes(info.file_size - disk["projected_free"])
+            raise HTTPException(
+                status_code=400,
+                detail=f"El espacio no es suficiente para descargar este archivo. Faltan {needed}. Por favor, libera espacio en el disco."
+            )
+
     # Estado intermedio inmediato para feedback visual
     update_state(item_id, status="queued")
 
     async def process_listener_request():
         try:
-            info = downloader_instance._extract_media_info(message)
-            if info:
-                disk = cached_disk_info or await get_disk_info()
-                if disk and info.file_size > disk["projected_free"]:
-                    needed = format_bytes(info.file_size - disk["projected_free"])
-                    print(f"Error: Espacio insuficiente para {item_id}")
-                    # Volvemos a 'available' si no hay espacio
-                    update_state(item_id, status="available")
-                    return
-
             await downloader_instance.download_file_from_message(message, chat_id, item_id)
         except Exception as e:
             print(f"Error en descarga de escucha: {e}")

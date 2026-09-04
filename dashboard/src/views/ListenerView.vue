@@ -148,7 +148,13 @@ const downloadAll = async () => {
         try {
           await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) })
           successCount++
-        } catch (err) { console.error(`Error descargando ${item.id}:`, err) }
+        } catch (err) {
+          console.error(`Error descargando ${item.id}:`, err)
+          if (err.message.toLowerCase().includes('espacio no es suficiente')) {
+            props.notify(err.message, true)
+            break
+          }
+        }
       }
       props.notify(`${successCount} descargas añadidas a la cola`)
       await load()
