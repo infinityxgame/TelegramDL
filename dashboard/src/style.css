@@ -99,7 +99,7 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .disk-monitor small { font-size: 11px; color: var(--user-text-dim); font-weight: 600; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.2px; }
 .panel-heading h2 { font: 600 17px 'Space Grotesk'; margin: 6px 0 0; color: #edf5fc }
 .panel-heading .eyebrow { display: flex; align-items: center; gap: 5px }
-.count-pill, .save-state { font-size: 10px; color: var(--user-accent); background: var(--user-icon-bg); border-radius: 20px; padding: 6px 9px }
+.count-pill, .save-state { font-size: 11px; font-weight: 600; color: var(--user-accent); background: var(--user-icon-bg); border-radius: 20px; padding: 6px 10px; }
 .save-state { color: #39db9a; background: rgba(57, 219, 154, 0.1) }
 
 .download-row { display: flex; gap: 13px; padding: 14px 0; border-top: 1px solid var(--user-border) }
