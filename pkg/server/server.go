@@ -99,10 +99,17 @@ func (s *Server) WebHandler() http.Handler {
 }
 
 func (s *Server) Start(port int) error {
-	addr := fmt.Sprintf("%s:%d", config.GetServerHost(), port)
+	host := config.GetServerHost()
+	var addr string
+	if host == "0.0.0.0" || host == "" {
+		addr = fmt.Sprintf(":%d", port)
+	} else {
+		addr = fmt.Sprintf("%s:%d", host, port)
+	}
+
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		// Fallback a 127.0.0.1 si 0.0.0.0 falla o viceversa
+		// Fallback a 127.0.0.1
 		addr = fmt.Sprintf("127.0.0.1:%d", port)
 		listener, err = net.Listen("tcp", addr)
 		if err != nil {

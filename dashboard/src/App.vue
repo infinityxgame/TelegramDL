@@ -203,8 +203,8 @@ const fetchAuthStatus = async () => {
     authStatus.value = data
     if (data.authenticated) {
       localStorage.setItem('tgdl_auth', 'true')
-      localStorage.setItem('tgdl_user', JSON.stringify(data.user))
-      if (data.user.color_id !== undefined) applyTheme(data.user.color_id)
+      localStorage.setItem('tgdl_user', JSON.stringify(data.user || null))
+      if (data.user && data.user.color_id !== undefined) applyTheme(data.user.color_id)
     } else {
       localStorage.removeItem('tgdl_auth')
       localStorage.removeItem('tgdl_user')
