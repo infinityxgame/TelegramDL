@@ -16,6 +16,7 @@ import (
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 
 	"tgdown/pkg/config"
@@ -356,11 +357,15 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		return nil
 	})
 
+	gaps := updates.New(updates.Config{
+		Handler: cm.dispatcher,
+	})
+
 	opts := telegram.Options{
 		SessionStorage: &session.FileStorage{
 			Path: cm.sessionPath,
 		},
-		UpdateHandler: cm.dispatcher,
+		UpdateHandler: gaps,
 		Device: telegram.DeviceConfig{
 			DeviceModel:   "TGDown Desktop",
 			SystemVersion: "Windows 11",
@@ -388,6 +393,14 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 					_ = cm.FetchDialogs(context.Background())
 				}()
 			})
+
+			self, err := client.Self(runCtx)
+			if err == nil && self != nil {
+				return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{
+					IsBot: false,
+				})
+			}
+
 			<-runCtx.Done()
 			return runCtx.Err()
 		})
