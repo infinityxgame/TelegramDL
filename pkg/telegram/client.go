@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -330,7 +331,11 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		if !ok {
+			return nil
+		}
+		log.Printf("[TG UPDATES] Mensaje privado/grupo recibido (ID: %d, Out: %v, Peer: %+v, From: %+v)", msg.ID, msg.Out, msg.PeerID, msg.FromID)
+		if msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -345,7 +350,11 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		if !ok {
+			return nil
+		}
+		log.Printf("[TG UPDATES] Mensaje de canal recibido (ID: %d, Out: %v, Peer: %+v, From: %+v)", msg.ID, msg.Out, msg.PeerID, msg.FromID)
+		if msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -360,7 +369,11 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		if !ok {
+			return nil
+		}
+		log.Printf("[TG UPDATES] Mensaje editado en privado/grupo (ID: %d, Out: %v, Peer: %+v)", msg.ID, msg.Out, msg.PeerID)
+		if msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -375,7 +388,11 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
 		cm.cacheEntities(entities)
 		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		if !ok {
+			return nil
+		}
+		log.Printf("[TG UPDATES] Mensaje editado en canal (ID: %d, Out: %v, Peer: %+v)", msg.ID, msg.Out, msg.PeerID)
+		if msg.Out {
 			return nil
 		}
 		cm.mu.RLock()
@@ -415,6 +432,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.runWg.Add(1)
 	go func() {
 		defer cm.runWg.Done()
+		log.Printf("[TG CLIENT] Iniciando conexión con Telegram MTProto (API_ID: %d)...", cm.apiID)
 		err := client.Run(ctx, func(runCtx context.Context) error {
 			readyOnce.Do(func() {
 				close(cm.readyChan)
@@ -424,18 +442,21 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 				}()
 			})
 
+			log.Printf("[TG CLIENT] Conexión MTProto establecida exitosamente.")
 			self, err := client.Self(runCtx)
 			if err == nil && self != nil {
+				log.Printf("[TG CLIENT] Sesión activa como: %s %s (@%s, ID: %d). Iniciando gaps manager...", self.FirstName, self.LastName, self.Username, self.ID)
 				return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{
 					IsBot: false,
 				})
 			}
 
+			log.Printf("[TG CLIENT] Cliente conectado sin sesión autenticada.")
 			<-runCtx.Done()
 			return runCtx.Err()
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
-			// Intento de conexión falló
+			log.Printf("[TG CLIENT ERROR] Falló la ejecución del cliente: %v", err)
 		}
 	}()
 
