@@ -143,21 +143,13 @@ const downloadAll = async () => {
     message: `¿Estás seguro de que quieres añadir ${availableItems.length} archivos a la cola de descarga?`,
     confirmText: 'Sí, descargar todo',
     action: async () => {
-      let successCount = 0
-      for (const item of availableItems) {
-        try {
-          await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) })
-          successCount++
-        } catch (err) {
-          console.error(`Error descargando ${item.id}:`, err)
-          if (err.message.toLowerCase().includes('espacio no es suficiente')) {
-            props.notify(err.message, true)
-            break
-          }
-        }
+      try {
+        const data = await api('/api/listener/download-all', { method: 'POST' })
+        props.notify(`${data.count || 0} descargas añadidas a la cola`)
+        await load()
+      } catch (err) {
+        props.notify(err.message, true)
       }
-      props.notify(`${successCount} descargas añadidas a la cola`)
-      await load()
     }
   })
 }

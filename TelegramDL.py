@@ -1198,6 +1198,9 @@ async def cancel_download(payload: Dict[str, Any]) -> Dict[str, Any]:
         with suppress(asyncio.CancelledError, Exception):
             await task
 
+    # Breve pausa para que Windows libere los manejadores de archivo tras cancelar los hilos de escritura
+    await asyncio.sleep(0.5)
+
     state = downloads_state.get(item_id, state)
     file_path = state.get("file_path")
     if file_path and downloader_instance:
@@ -1377,6 +1380,54 @@ async def download_listener_item(data: Dict[str, Any] = Body(...)) -> Dict[str, 
     task.add_done_callback(lambda f, i=item_id: active_tasks.pop(i, None))
 
     return {"status": "ok"}
+
+
+@app.post("/api/listener/download-all")
+async def download_all_listener_items() -> Dict[str, Any]:
+    if not downloader_instance:
+        raise HTTPException(status_code=503, detail="El cliente no está listo")
+
+    items_to_download = []
+    total_size = 0
+
+    # Recopilar todos los mensajes disponibles y calcular tamaño total
+    for item_id, (message, chat_id) in downloader_instance.listener_messages.items():
+        state = downloads_state.get(item_id)
+        if not state or state.get("status") == "available":
+            info = downloader_instance._extract_media_info(message)
+            if info:
+                total_size += info.file_size
+                items_to_download.append((item_id, message, chat_id))
+
+    if not items_to_download:
+        return {"status": "ok", "count": 0}
+
+    # Validar espacio para el total
+    disk = cached_disk_info or await get_disk_info()
+    if disk and total_size > disk["projected_free"]:
+        needed = format_bytes(total_size - disk["projected_free"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"El espacio no es suficiente para descargar todos los archivos. Faltan {needed}. Por favor, libera espacio en el disco."
+        )
+
+    # Iniciar las descargas
+    count = 0
+    for item_id, message, chat_id in items_to_download:
+        update_state(item_id, status="queued")
+
+        async def process_task(m=message, c=chat_id, i=item_id):
+            try:
+                await downloader_instance.download_file_from_message(m, c, i)
+            except Exception as e:
+                print(f"Error en descarga masiva: {e}")
+
+        task = asyncio.create_task(process_task())
+        active_tasks[item_id] = task
+        task.add_done_callback(lambda f, i_id=item_id: active_tasks.pop(i_id, None))
+        count += 1
+
+    return {"status": "ok", "count": count}
 
 
 @app.get("/")
@@ -2166,13 +2217,22 @@ class TelegramDownloader:
 
     async def _cleanup_files(self, path: str) -> None:
         def _remove_sync():
+            import gc
+            # Forzamos recolección para cerrar posibles manejadores huérfanos
+            gc.collect()
+
             for candidate in (path, f"{path}.temp", f"{path}.temp.state.json"):
-                try:
-                    os.remove(candidate)
-                except FileNotFoundError:
-                    pass
-                except OSError as error:
-                    print(f"⚠️ No se pudo limpiar {candidate}: {error}")
+                # Reintentar varias veces (útil en Windows si el archivo sigue "en uso" por el antivirus o el sistema)
+                for attempt in range(8):
+                    try:
+                        if os.path.exists(candidate):
+                            os.remove(candidate)
+                        break
+                    except (PermissionError, OSError):
+                        time.sleep(0.3)
+                    except Exception as e:
+                        print(f"Error inesperado limpiando {candidate}: {e}")
+                        break
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _remove_sync)

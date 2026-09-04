@@ -220,12 +220,12 @@ jobs:
                     u'040904B0',
                     [
                       StringStruct(u'CompanyName', u'InfinityxGame'),
-                      StringStruct(u'FileDescription', u'Descarga y gestiona archivos multimedia de Telegram'),
+                      StringStruct(u'FileDescription', u'TelegramDL'),
                       StringStruct(u'FileVersion', u'$VERSION'),
                       StringStruct(u'InternalName', u'TelegramDL'),
                       StringStruct(u'LegalCopyright', u'Copyright © 2026 InfinityxGame'),
                       StringStruct(u'OriginalFilename', u'TelegramDL.exe'),
-                      StringStruct(u'ProductName', u'TGDown'),
+                      StringStruct(u'ProductName', u'TelegramDL'),
                       StringStruct(u'ProductVersion', u'$VERSION')
                     ]
                   )
