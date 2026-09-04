@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"sort"
@@ -408,6 +409,7 @@ func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes
 
 func (e *Engine) startDownloadJob(itemID string) {
 	// Adquirir slot de concurrencia
+	log.Printf("[DOWNLOAD] Solicitando slot de concurrencia para item %s...", itemID)
 	e.activeSem <- struct{}{}
 	defer func() { <-e.activeSem }()
 
@@ -425,6 +427,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	item.Status = "downloading"
 	item.Speed = "0 B/s"
 	e.itemSpeeds[itemID] = 0
+	log.Printf("[DOWNLOAD] Iniciando descarga activa para item %s (ChatID: %d, MsgID: %d)", itemID, item.ChatID, item.MessageID)
 	e.notifyState(*item)
 	e.mu.Unlock()
 
@@ -439,6 +442,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}()
 
 	err := e.executeDownload(ctx, itemID)
+	log.Printf("[DOWNLOAD] Tarea %s finalizó con resultado: err=%v", itemID, err)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -479,21 +483,27 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	e.mu.RUnlock()
 
 	if rawClient == nil {
+		log.Printf("[DOWNLOAD ERROR] Cliente de Telegram no listo para item %s", itemID)
 		return errors.New("cliente de Telegram no listo")
 	}
 
 	_ = os.MkdirAll(downloadFolder, 0755)
 
+	log.Printf("[DOWNLOAD] Obteniendo mensaje %d del chat %d en Telegram...", item.MessageID, item.ChatID)
 	// Resolver mensaje y extraer Multimedia
 	msg, err := e.fetchMessage(ctx, item.ChatID, int(item.MessageID))
 	if err != nil {
+		log.Printf("[DOWNLOAD ERROR] Error al obtener mensaje %d: %v", item.MessageID, err)
 		return fmt.Errorf("error al obtener mensaje: %w", err)
 	}
 
 	mediaInfo := ExtractMediaInfo(msg)
 	if mediaInfo == nil {
+		log.Printf("[DOWNLOAD ERROR] El mensaje %d no contiene multimedia descargable", item.MessageID)
 		return errors.New("el mensaje no contiene multimedia descargable")
 	}
+
+	log.Printf("[DOWNLOAD] Multimedia extraída: %s (%s, %d bytes)", mediaInfo.FileName, mediaInfo.Kind, mediaInfo.FileSize)
 
 	finalPath, finalName, alreadyExists := e.reservations.ReservePath(
 		downloadFolder, mediaInfo.FileName, item.MessageID, mediaInfo.FileSize,
@@ -583,9 +593,11 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 		if isChannel {
 			accessHash, found := e.clientMgr.GetChannelAccessHash(channelID)
 			if !found {
+				log.Printf("[DOWNLOAD FETCH] Canal %d sin accessHash en caché. Consultando dialogs...", channelID)
 				_ = e.clientMgr.FetchDialogs(ctx)
-				accessHash, _ = e.clientMgr.GetChannelAccessHash(channelID)
+				accessHash, found = e.clientMgr.GetChannelAccessHash(channelID)
 			}
+			log.Printf("[DOWNLOAD FETCH] Consultando ChannelsGetMessages (Canal: %d, AccessHash: %d, MsgID: %d, Found: %v)...", channelID, accessHash, msgID, found)
 
 			req := &tg.ChannelsGetMessagesRequest{
 				Channel: &tg.InputChannel{
@@ -599,6 +611,7 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 
 			res, err := raw.ChannelsGetMessages(ctx, req)
 			if err != nil {
+				log.Printf("[DOWNLOAD FETCH ERROR] ChannelsGetMessages falló para canal %d mensaje %d: %v", channelID, msgID, err)
 				return nil, fmt.Errorf("ChannelsGetMessages error: %w", err)
 			}
 
@@ -611,11 +624,13 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 				messages = m.Messages
 			}
 		} else {
+			log.Printf("[DOWNLOAD FETCH] Consultando chat básico %d para mensaje %d...", chatID, msgID)
 			// Chat grupal básico
 			res, err := raw.MessagesGetMessages(ctx, []tg.InputMessageClass{
 				&tg.InputMessageID{ID: msgID},
 			})
 			if err != nil {
+				log.Printf("[DOWNLOAD FETCH ERROR] MessagesGetMessages falló para chat %d mensaje %d: %v", chatID, msgID, err)
 				return nil, fmt.Errorf("MessagesGetMessages error: %w", err)
 			}
 
@@ -629,11 +644,13 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 			}
 		}
 	} else {
+		log.Printf("[DOWNLOAD FETCH] Consultando chat privado/usuario %d para mensaje %d...", chatID, msgID)
 		// Usuario / Chat privado (chatID > 0)
 		res, err := raw.MessagesGetMessages(ctx, []tg.InputMessageClass{
 			&tg.InputMessageID{ID: msgID},
 		})
 		if err != nil {
+			log.Printf("[DOWNLOAD FETCH ERROR] MessagesGetMessages falló para usuario %d mensaje %d: %v", chatID, msgID, err)
 			return nil, fmt.Errorf("MessagesGetMessages error: %w", err)
 		}
 

@@ -197,39 +197,86 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 		return errors.New("cliente no conectado")
 	}
 
-	res, err := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
-		OffsetPeer: &tg.InputPeerEmpty{},
-		Limit:      100,
-	})
-	if err != nil {
-		return err
-	}
+	log.Printf("[TG DIALOGS] Obteniendo lista de chats y canales de Telegram...")
 
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+	var offsetPeer tg.InputPeerClass = &tg.InputPeerEmpty{}
+	var offsetID int
+	var offsetDate int
 
-	var chats []tg.ChatClass
-	var users []tg.UserClass
+	for page := 0; page < 3; page++ {
+		res, err := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+			OffsetPeer: offsetPeer,
+			OffsetID:   offsetID,
+			OffsetDate: offsetDate,
+			Limit:      100,
+		})
+		if err != nil {
+			log.Printf("[TG DIALOGS ERROR] MessagesGetDialogs (página %d) falló: %v", page, err)
+			break
+		}
 
-	switch d := res.(type) {
-	case *tg.MessagesDialogs:
-		chats = d.Chats
-		users = d.Users
-	case *tg.MessagesDialogsSlice:
-		chats = d.Chats
-		users = d.Users
-	}
+		var chats []tg.ChatClass
+		var users []tg.UserClass
+		var messages []tg.MessageClass
 
-	for _, c := range chats {
-		if ch, ok := c.(*tg.Channel); ok {
-			cm.channelAccessHashes[ch.ID] = ch.AccessHash
+		switch d := res.(type) {
+		case *tg.MessagesDialogs:
+			chats = d.Chats
+			users = d.Users
+			messages = d.Messages
+		case *tg.MessagesDialogsSlice:
+			chats = d.Chats
+			users = d.Users
+			messages = d.Messages
+		}
+
+		cm.mu.Lock()
+		for _, c := range chats {
+			if ch, ok := c.(*tg.Channel); ok {
+				cm.channelAccessHashes[ch.ID] = ch.AccessHash
+			}
+		}
+		for _, u := range users {
+			if usr, ok := u.(*tg.User); ok {
+				cm.userAccessHashes[usr.ID] = usr.AccessHash
+			}
+		}
+		cm.mu.Unlock()
+
+		if len(messages) == 0 {
+			break
+		}
+
+		lastMsg := messages[len(messages)-1]
+		if lm, ok := lastMsg.(*tg.Message); ok {
+			offsetID = lm.ID
+			offsetDate = lm.Date
+			switch p := lm.PeerID.(type) {
+			case *tg.PeerChannel:
+				cm.mu.RLock()
+				ah := cm.channelAccessHashes[p.ChannelID]
+				cm.mu.RUnlock()
+				offsetPeer = &tg.InputPeerChannel{ChannelID: p.ChannelID, AccessHash: ah}
+			case *tg.PeerUser:
+				cm.mu.RLock()
+				ah := cm.userAccessHashes[p.UserID]
+				cm.mu.RUnlock()
+				offsetPeer = &tg.InputPeerUser{UserID: p.UserID, AccessHash: ah}
+			case *tg.PeerChat:
+				offsetPeer = &tg.InputPeerChat{ChatID: p.ChatID}
+			default:
+				offsetPeer = &tg.InputPeerEmpty{}
+			}
+		} else {
+			break
 		}
 	}
-	for _, u := range users {
-		if usr, ok := u.(*tg.User); ok {
-			cm.userAccessHashes[usr.ID] = usr.AccessHash
-		}
-	}
+
+	cm.mu.RLock()
+	totalCh := len(cm.channelAccessHashes)
+	totalUsr := len(cm.userAccessHashes)
+	cm.mu.RUnlock()
+	log.Printf("[TG DIALOGS] Diálogos procesados. Total canales cacheados: %d, usuarios: %d", totalCh, totalUsr)
 	return nil
 }
 
