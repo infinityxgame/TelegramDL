@@ -529,6 +529,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   </div>
 
   <template v-else>
+    <!-- Pantalla de actualización obligatoria -->
     <div v-if="updateInfo && isUpdateForced" class="update-required-overlay">
       <div class="update-card">
         <Zap :size="48" class="update-icon" />
@@ -569,9 +570,11 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       </div>
     </div>
 
-    <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
+    <!-- Módulo de Configuración Inicial (Separado del App Shell) -->
+    <AuthWizard v-else-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
 
-    <div class="app-shell">
+    <!-- Aplicación Principal (App Shell) -->
+    <div v-else class="app-shell">
       <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
         <div class="sidebar-main">
           <div class="brand">
@@ -618,9 +621,6 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
           </div>
           <div class="topbar-meta">Velocidad total: {{ totalSpeed }}</div>
         </header>
-
-        <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
-        <div v-if="error" class="toast danger">{{ error }}</div>
 
         <div class="view-container">
           <!-- Vista de Descargas -->
@@ -746,19 +746,23 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
           </template>
         </div>
 
-        <ConfirmModal
-          :show="modal.show"
-          :title="modal.title"
-          :message="modal.message"
-          :confirmText="modal.confirmText"
-          :cancelText="modal.cancelText"
-          :type="modal.type"
-          @confirm="handleConfirm"
-          @cancel="modal.show = false"
-        />
         <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>
       </main>
     </div>
+
+    <!-- Confirmación y Toasts (Globales) -->
+    <ConfirmModal
+      :show="modal.show"
+      :title="modal.title"
+      :message="modal.message"
+      :confirmText="modal.confirmText"
+      :cancelText="modal.cancelText"
+      :type="modal.type"
+      @confirm="handleConfirm"
+      @cancel="modal.show = false"
+    />
+    <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
+    <div v-if="error" class="toast danger">{{ error }}</div>
   </template>
 </template>
 

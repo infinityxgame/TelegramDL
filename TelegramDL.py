@@ -90,7 +90,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
     BUNDLE_DIR = BASE_DIR
 
-APP_VERSION = "2.1.7"
+APP_VERSION = "2.1.8"
 GITHUB_REPO = "infinityxgame/tgdown"
 DATA_DIR = Path.home() / ".tgdown"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
