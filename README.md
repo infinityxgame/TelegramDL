@@ -1,140 +1,54 @@
 # TelegramDL 🤖
 
-**TGDown** es una aplicación de escritorio y panel web moderno para gestionar descargas multimedia de Telegram y automatizar la escucha de canales y grupos.
+**TGDown** es una aplicación de escritorio nativa de alto rendimiento y panel web moderno para gestionar descargas multimedia de Telegram y automatizar la escucha de canales y grupos.
 
-La aplicación combina un backend desarrollado en Python con FastAPI y un frontend desarrollado con Vue 3. Puede ejecutarse desde el código fuente o distribuirse como aplicación portable para **Windows, Linux y macOS**.
+La aplicación combina un backend nativo de alta velocidad desarrollado en **Go** (utilizando el cliente MTProto oficial `gotd/td` y persistencia SQLite embebida sin CGO) con una interfaz de usuario moderna desarrollada en **Vue 3 + Vite**, empaquetada e integrada para el escritorio mediante **Wails v2**.
 
 ---
 
 ## 🌟 Características principales
 
-* **Interfaz nativa (modo Desktop):** utiliza `pywebview` para abrir el panel dentro de una ventana propia, ofreciendo una experiencia de aplicación de escritorio.
+* **Interfaz nativa (Desktop con Wails v2):** utiliza el motor webview nativo del sistema operativo (WebView2 en Windows) para una experiencia de escritorio ultraligera, con arranque instantáneo y mínimo consumo de memoria RAM.
 
-* **Panel web:** interfaz moderna desarrollada con Vue 3 para administrar descargas, configuración, sesiones y escucha automática.
+* **Motor MTProto en Go:** descargas concurrentes por fragmentos de alta velocidad, soporte para CDN y control de límite de ancho de banda.
 
-* **Asistente de configuración:** si no existen credenciales configuradas, el propio panel guía al usuario durante la configuración de `API ID`, `API HASH`, número de teléfono, código de confirmación de Telegram y contraseña 2FA, sin necesidad de introducir estos datos manualmente desde la consola.
+* **Panel web moderno:** interfaz desarrollada con Vue 3 para administrar descargas, configuración, sesiones y escucha automática.
 
-* **Aplicación portable:** puede compilarse mediante PyInstaller para ejecutarse sin instalar Python ni Node.js en el equipo del usuario final.
+* **Asistente de configuración integrado:** el panel guía al usuario durante la configuración de `API ID`, `API HASH`, número de teléfono, código de confirmación de Telegram y contraseña 2FA.
 
-* **Multiplataforma:** existen builds automatizados para:
+* **Persistencia local segura:** base de datos SQLite integrada (`modernc.org/sqlite`) con soporte de transacciones WAL para historial de descargas y reanudación de fragmentos.
 
-  * Windows x64
-  * Linux x86_64 mediante AppImage
-  * macOS Intel (`x86_64`)
-  * macOS Apple Silicon (`arm64`)
-
-* **Identificación de dispositivo:** la aplicación se registra en Telegram como `TGDown Desktop`, permitiendo administrar la sesión desde **Ajustes > Dispositivos** en Telegram.
-
-* **Gestor de descargas:** permite descargar archivos individuales o lotes mediante enlaces de mensajes, mostrando velocidad, progreso en tiempo real y estado de las descargas mediante WebSocket.
-
-* **Escucha automática:** permite vigilar chats y canales públicos o privados para detectar archivos y listarlos o descargarlos automáticamente.
-
-* **Persistencia mediante SQLite:** configuración, cola, historial y progreso de descargas se almacenan localmente.
+* **Escucha automática:** vigila chats y canales públicos o privados para detectar archivos multimedia y listarlos o descargarlos automáticamente con filtros personalizables.
 
 ---
 
-# 🚀 Usar una versión compilada
+# 🛠️ Desarrollo y Compilación
 
-La forma recomendada para usuarios que no desean configurar un entorno de desarrollo es descargar una versión compilada desde **GitHub Releases**.
+## Requisitos previos
 
-Las versiones publicadas contienen los siguientes formatos:
+* **Go 1.22 o superior** (probado con Go 1.27)
+* **Wails v2 CLI** (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+* **Node.js 18 o superior** (con npm)
+* **Git**
 
-| Plataforma          | Archivo                                   |
-| ------------------- | ----------------------------------------- |
-| Windows             | `TelegramDL-Windows-vX.X.X.zip`           |
-| Linux x86_64        | `TelegramDL-Linux-x86_64-vX.X.X.AppImage` |
-| macOS Intel         | `TelegramDL-macOS-Intel-vX.X.X.dmg`       |
-| macOS Apple Silicon | `TelegramDL-macOS-ARM64-vX.X.X.dmg`       |
+## Ejecutar en modo desarrollo
 
-## Windows
-
-1. Descarga el archivo `.zip`.
-2. Descomprime la carpeta.
-3. Ejecuta:
-
-```text
-TelegramDL.exe
-```
-
-La aplicación iniciará el servidor local y abrirá la interfaz nativa mediante `pywebview`.
-
-Si utilizas el modo servidor, también puedes acceder manualmente desde:
-
-```text
-http://127.0.0.1:8000/dashboard/
-```
-
----
-
-## Linux
-
-Descarga:
-
-```text
-TelegramDL-Linux-x86_64-vX.X.X.AppImage
-```
-
-Dale permisos de ejecución:
+Para ejecutar la aplicación con hot-reload en Go y Vite simultáneamente:
 
 ```bash
-chmod +x TelegramDL-Linux-x86_64-vX.X.X.AppImage
+wails dev
 ```
 
-Y ejecútalo:
+## Compilar binario de producción
+
+Para compilar el ejecutable portable independiente:
 
 ```bash
-./TelegramDL-Linux-x86_64-vX.X.X.AppImage
+wails build
 ```
 
-El AppImage está diseñado para funcionar como una aplicación portable sin necesidad de instalar Python ni las dependencias del proyecto.
+El ejecutable resultante se encontrará en `build/bin/tgdown.exe` (en Windows) o `build/bin/tgdown` (en Linux/macOS).
 
-> **Nota:** el build Linux utiliza `pywebview` con GTK/PyGObject. La compatibilidad puede depender de las bibliotecas gráficas disponibles en la distribución Linux utilizada.
-
----
-
-## macOS
-
-Existen dos versiones:
-
-### Mac Intel
-
-```text
-TelegramDL-macOS-Intel-vX.X.X.dmg
-```
-
-### Mac Apple Silicon
-
-```text
-TelegramDL-macOS-ARM64-vX.X.X.dmg
-```
-
-Abre el `.dmg`, arrastra `TGDown` a la carpeta `Applications` y ejecuta la aplicación.
-
-### Firma Ad-Hoc
-
-Los builds oficiales generados por GitHub Actions utilizan **firma Ad-Hoc**.
-
-Esto permite que la aplicación tenga una firma válida a nivel técnico y evita distribuir una aplicación completamente sin firmar, pero **no equivale a una firma Developer ID de Apple ni a una aplicación notarizada**.
-
-Dependiendo de la configuración de seguridad de macOS, el sistema puede mostrar una advertencia al abrir la aplicación por primera vez.
-
----
-
-# 🛠️ Ejecutar desde el código fuente
-
-## Requisitos generales
-
-* Python 3.10 o superior
-* Node.js 18 o superior
-* npm
-* Git
-
-La versión utilizada por el workflow de GitHub Actions es:
-
-```text
-Python 3.12
-Node.js 24
-```
 
 ---
 

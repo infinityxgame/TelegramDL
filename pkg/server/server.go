@@ -172,6 +172,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/listener/chat/", s.handleListenerResolveChatPath)
 
 	// Filesystem & System
+	mux.HandleFunc("/api/filesystem", s.handleFSBrowse)
 	mux.HandleFunc("/api/fs/browse", s.handleFSBrowse)
 	mux.HandleFunc("/api/system/disk", s.handleSystemDisk)
 
@@ -702,7 +703,25 @@ func (s *Server) handleListenerResolveChatPath(w http.ResponseWriter, r *http.Re
 func (s *Server) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("path")
 	if target == "" {
-		target = s.config.DownloadFolder
+		roots := make([]string, 0)
+		if runtime.GOOS == "windows" {
+			for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+				d := fmt.Sprintf("%c:\\", drive)
+				if _, err := os.Stat(d); err == nil {
+					roots = append(roots, d)
+				}
+			}
+		} else {
+			roots = append(roots, "/")
+		}
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status":  "ok",
+			"roots":   roots,
+			"path":    nil,
+			"parent":  nil,
+			"entries": []any{},
+		})
+		return
 	}
 
 	cleanPath, err := filepath.Abs(target)
@@ -734,10 +753,17 @@ func (s *Server) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parent := filepath.Dir(cleanPath)
+	var parentPath *string
+	if parent != cleanPath {
+		parentPath = &parent
+	}
+
 	s.jsonResponse(w, http.StatusOK, map[string]any{
-		"current": cleanPath,
-		"parent":  parent,
-		"items":   items,
+		"status":  "ok",
+		"roots":   []string{},
+		"path":    cleanPath,
+		"parent":  parentPath,
+		"entries": items,
 	})
 }
 
