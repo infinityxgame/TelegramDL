@@ -848,13 +848,18 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		s.jsonResponse(w, http.StatusOK, map[string]any{
 			"update_available": true,
+			"latest":           rel.TagName,
 			"version":          rel.TagName,
+			"current":          config.AppVersion,
 			"changelog":        rel.Body,
 		})
 		return
 	}
 
-	s.jsonResponse(w, http.StatusOK, map[string]any{"update_available": false})
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"update_available": false,
+		"current":          config.AppVersion,
+	})
 }
 
 func (s *Server) handleUpdateProgress(w http.ResponseWriter, r *http.Request) {

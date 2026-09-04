@@ -31,10 +31,13 @@ func main() {
 		Bind: []any{
 			app,
 		},
+		Debug: options.Debug{
+			OpenInspectorOnStartup: true,
+		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
-			BackdropType:         windows.Mica,
+			BackdropType:         windows.None,
 		},
 	})
 

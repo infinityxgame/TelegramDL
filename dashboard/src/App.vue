@@ -454,7 +454,9 @@ watch(() => disk.value, (newDisk) => {
 
 const connectWebSocket = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`)
+  const isWails = window.location.hostname.includes('wails') || (window.location.hostname === 'localhost' && window.location.port === '8080')
+  const wsHost = isWails ? '127.0.0.1:8000' : window.location.host
+  socket = new WebSocket(`${protocol}//${wsHost}/api/ws`)
   socket.onopen = () => { websocketConnected.value = true }
   socket.onmessage = event => {
     try {
