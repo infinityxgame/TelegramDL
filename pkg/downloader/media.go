@@ -114,11 +114,11 @@ func ExtractMediaInfo(msg *tg.Message) *MediaInfo {
 		mime := strings.ToLower(doc.MimeType)
 		lowerExt := strings.ToLower(ext)
 		if kind == KindFile {
-			if strings.HasPrefix(mime, "image/") || lowerExt == ".jpg" || lowerExt == ".png" || lowerExt == ".webp" || lowerExt == ".gif" {
+			if strings.HasPrefix(mime, "image/") || lowerExt == ".jpg" || lowerExt == ".png" || lowerExt == ".webp" || lowerExt == ".gif" || lowerExt == ".heic" {
 				kind = KindPhoto
-			} else if strings.HasPrefix(mime, "video/") || lowerExt == ".mp4" || lowerExt == ".mkv" || lowerExt == ".webm" || lowerExt == ".avi" || lowerExt == ".mov" {
+			} else if strings.HasPrefix(mime, "video/") || lowerExt == ".mp4" || lowerExt == ".mkv" || lowerExt == ".webm" || lowerExt == ".avi" || lowerExt == ".mov" || lowerExt == ".flv" || lowerExt == ".wmv" || lowerExt == ".ts" || lowerExt == ".m4v" {
 				kind = KindVideo
-			} else if strings.HasPrefix(mime, "audio/") || lowerExt == ".mp3" || lowerExt == ".m4a" || lowerExt == ".flac" || lowerExt == ".wav" || lowerExt == ".ogg" {
+			} else if strings.HasPrefix(mime, "audio/") || lowerExt == ".mp3" || lowerExt == ".m4a" || lowerExt == ".flac" || lowerExt == ".wav" || lowerExt == ".ogg" || lowerExt == ".opus" || lowerExt == ".aac" || lowerExt == ".wma" {
 				kind = KindSong
 			}
 		}

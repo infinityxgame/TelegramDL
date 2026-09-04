@@ -357,6 +357,36 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		return nil
 	})
 
+	cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
+		cm.cacheEntities(entities)
+		msg, ok := update.Message.(*tg.Message)
+		if !ok || msg.Out {
+			return nil
+		}
+		cm.mu.RLock()
+		cb := cm.onGenericMessage
+		cm.mu.RUnlock()
+		if cb != nil {
+			return cb(ctx, entities, msg)
+		}
+		return nil
+	})
+
+	cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
+		cm.cacheEntities(entities)
+		msg, ok := update.Message.(*tg.Message)
+		if !ok || msg.Out {
+			return nil
+		}
+		cm.mu.RLock()
+		cb := cm.onGenericMessage
+		cm.mu.RUnlock()
+		if cb != nil {
+			return cb(ctx, entities, msg)
+		}
+		return nil
+	})
+
 	gaps := updates.New(updates.Config{
 		Handler: cm.dispatcher,
 	})

@@ -163,7 +163,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		return nil
 	}
 
-	// Obtener ID del chat
+	// Obtener ID del chat y del remitente
 	var peerID int64
 	switch p := msg.PeerID.(type) {
 	case *tg.PeerChannel:
@@ -174,8 +174,26 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		peerID = p.UserID
 	}
 
+	var fromID int64
+	if msg.FromID != nil {
+		switch f := msg.FromID.(type) {
+		case *tg.PeerUser:
+			fromID = f.UserID
+		case *tg.PeerChannel:
+			fromID, _ = strconv.ParseInt(fmt.Sprintf("-100%d", f.ChannelID), 10, 64)
+		case *tg.PeerChat:
+			fromID = -f.ChatID
+		}
+	}
+
 	le.mu.RLock()
 	chatCfg, watched := le.matchChatID(peerID)
+	if !watched && fromID != 0 {
+		chatCfg, watched = le.matchChatID(fromID)
+		if watched {
+			peerID = fromID
+		}
+	}
 	le.mu.RUnlock()
 
 	if !watched {
