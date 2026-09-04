@@ -1394,9 +1394,19 @@ async def download_all_listener_items() -> Dict[str, Any]:
     for item_id, (message, chat_id) in downloader_instance.listener_messages.items():
         state = downloads_state.get(item_id)
         if not state or state.get("status") == "available":
-            info = downloader_instance._extract_media_info(message)
-            if info:
-                total_size += info.file_size
+            # Intentamos obtener el tamaño ya almacenado en el estado para ir rápido
+            file_size = 0
+            if state and state.get("total_bytes"):
+                file_size = state.get("total_bytes")
+            else:
+                info = downloader_instance._extract_media_info(message)
+                if info:
+                    file_size = info.file_size
+                    # Guardamos el tamaño en el estado para que la próxima vez sea instantáneo
+                    update_state(item_id, total_bytes=file_size, total_str=format_bytes(file_size))
+
+            if file_size > 0:
+                total_size += file_size
                 items_to_download.append((item_id, message, chat_id))
 
     if not items_to_download:
@@ -1408,7 +1418,7 @@ async def download_all_listener_items() -> Dict[str, Any]:
         needed = format_bytes(total_size - disk["projected_free"])
         raise HTTPException(
             status_code=400,
-            detail=f"El espacio no es suficiente para descargar todos los archivos. Faltan {needed}. Por favor, libera espacio en el disco."
+            detail=f"¡Espacio insuficiente! Faltan {needed} para descargar los {len(items_to_download)} archivos. Por favor, libera espacio en el disco."
         )
 
     # Iniciar las descargas
