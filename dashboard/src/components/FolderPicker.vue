@@ -33,7 +33,21 @@ const browse = async path => {
   } catch (err) { error.value = err.message } finally { loading.value = false }
 }
 
-const show = async () => { open.value = true; await browse(null) }
+const show = async () => {
+  if (window.go?.main?.App?.SelectDirectory) {
+    try {
+      const selected = await window.go.main.App.SelectDirectory()
+      if (selected) {
+        emit('update:modelValue', selected)
+      }
+      return
+    } catch (err) {
+      console.warn('Wails SelectDirectory fallback:', err)
+    }
+  }
+  open.value = true
+  await browse(null)
+}
 const close = () => { open.value = false; error.value = '' }
 const select = () => { if (currentPath.value) emit('update:modelValue', currentPath.value); close() }
 </script>

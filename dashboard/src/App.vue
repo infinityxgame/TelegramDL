@@ -1,14 +1,25 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import DownloadsView from './views/DownloadsView.vue'
 import ListenerView from './views/ListenerView.vue'
-import FolderPicker from './components/FolderPicker.vue'
+import SettingsView from './views/SettingsView.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
 import AuthWizard from './components/AuthWizard.vue'
-import { Activity, ArrowDownToLine, ArrowUpRight, CheckCircle2, Clock3, Download, ExternalLink, FileCheck, FileDown, Gauge, LogOut, Menu, Radio, RotateCcw, Save, Settings2, Trash2, UserCheck, X, Zap } from 'lucide-vue-next'
+import {
+  ArrowDownToLine,
+  ArrowUpRight,
+  CheckCircle2,
+  LogOut,
+  Menu,
+  Radio,
+  Settings2,
+  UserCheck,
+  X,
+  Zap
+} from 'lucide-vue-next'
 
 const downloads = ref([])
 const listenerItems = ref([])
-const newUrl = ref('')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
@@ -60,12 +71,10 @@ const applyTheme = (colorId) => {
   root.style.setProperty('--user-gradient', theme.gradient)
 }
 
-// Aplicar tema inmediatamente si existe en localStorage para evitar el flash
 const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
 if (storedUser && storedUser.color_id !== undefined) {
   applyTheme(storedUser.color_id)
 } else {
-  // Aplicar tema por defecto (5 - azul) si no hay usuario
   applyTheme(5)
 }
 
@@ -81,7 +90,8 @@ const settings = reactive({
   parallel_chunks: true,
   chunk_workers: 4,
   speed_limit: { value: 0, unit: 'MB' },
-  color_id: 5
+  color_id: 5,
+  download_folder: ''
 })
 
 const resetColor = () => {
@@ -198,7 +208,7 @@ const fetchAuthStatus = async () => {
     } else {
       localStorage.removeItem('tgdl_auth')
       localStorage.removeItem('tgdl_user')
-      applyTheme(5) // Reset a azul
+      applyTheme(5)
     }
   } catch (err) {
     console.error('Error verificando estado de sesión:', err)
@@ -239,7 +249,7 @@ const fetchDownloads = async () => {
   try {
     downloads.value = await api('/api/downloads')
     error.value = ''
-  } catch (err) { /* No mostramos error en poll constante para evitar molestia */ }
+  } catch (err) { /* No mostramos error en poll constante */ }
 }
 
 const fetchSettings = async () => {
@@ -286,16 +296,16 @@ watch(settings, () => {
   saveTimer = setTimeout(saveSettings, 450)
 }, { deep: true })
 
-const startDownload = async () => {
-  if (!newUrl.value.trim()) return
+const startDownload = async (url) => {
+  const targetUrl = typeof url === 'string' ? url.trim() : ''
+  if (!targetUrl) return
   loading.value = true
   try {
     await api('/api/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: newUrl.value.trim() })
+      body: JSON.stringify({ url: targetUrl })
     })
-    newUrl.value = ''
     showMessage('Descarga añadida a la cola')
     await fetchDownloads()
   } catch (err) { showMessage(err.message, true) } finally { loading.value = false }
@@ -414,11 +424,6 @@ const checkForUpdates = async (force = false) => {
   }
 }
 
-const activeDownloads = computed(() => downloads.value.filter(item => ['downloading', 'paused'].includes(item.status)))
-const pendingDownloads = computed(() => downloads.value.filter(item => ['pending', 'queued'].includes(item.status)))
-const recentDownloads = computed(() => downloads.value.filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)).slice(0, 12))
-const completedCount = computed(() => downloads.value.filter(item => item.status === 'completed').length)
-const skippedCount = computed(() => downloads.value.filter(item => item.status === 'skipped').length)
 const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
 const totalSpeed = computed(() => {
   const totalBytes = downloads.value.reduce((acc, item) =>
@@ -426,14 +431,9 @@ const totalSpeed = computed(() => {
   return totalBytes > 0 ? formatSize(totalBytes) + '/s' : '0 B/s'
 })
 
-const statusText = status => ({ downloading: 'Descargando', paused: 'Pausada', queued: 'En cola', pending: 'Pendiente', completed: 'Completado', skipped: 'Omitido', failed: 'Fallido', cancelled: 'Cancelado' }[status] || status)
-const progress = item => Math.max(0, Math.min(100, Number(item.progress || 0)))
-
 const wasSpaceCritical = ref(false)
 watch(() => disk.value, (newDisk) => {
   if (!newDisk) return
-
-  // Si el espacio proyectado es negativo, significa que lo que hay en cola + lo externo supera el disco
   if (newDisk.projected_free < 0) {
     if (!wasSpaceCritical.value && !modal.show) {
       wasSpaceCritical.value = true
@@ -444,14 +444,10 @@ watch(() => disk.value, (newDisk) => {
         confirmText: 'Entendido',
         cancelText: '',
         type: 'danger',
-        action: () => {
-          // No reseteamos wasSpaceCritical aquí para que no sea molesto,
-          // se reseteará cuando el espacio vuelva a ser suficiente
-        }
+        action: () => {}
       })
     }
   } else {
-    // Si el espacio vuelve a ser positivo (porque borró algo o canceló descargas), reseteamos el flag
     wasSpaceCritical.value = false
   }
 }, { deep: true })
@@ -480,7 +476,7 @@ const connectWebSocket = () => {
         }
         if (data.settings && !settingsSavePending.value && !saving.value) syncSettings(data.settings)
       }
-    } catch { /* El polling seguirá funcionando si llega un mensaje inválido. */ }
+    } catch { /* Polling de respaldo */ }
   }
   socket.onclose = () => {
     websocketConnected.value = false
@@ -491,15 +487,11 @@ const connectWebSocket = () => {
 
 onMounted(async () => {
   disposed = false
-
-  // Ejecutamos comprobaciones críticas en paralelo para evitar latencia
   try {
     await Promise.all([
       fetchAuthStatus(),
       checkForUpdates(true)
     ])
-
-    // Si estamos autenticados, cargamos el resto de la info antes de quitar el loader
     if (authStatus.value.authenticated) {
       await Promise.all([fetchSettings(), fetchDownloads()])
     }
@@ -511,14 +503,20 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(() => { if (!websocketConnected.value) fetchDownloads() }, 1000)
-  // Chequeo cada 1 minuto para asegurar que la notificación salga pronto
   setInterval(() => checkForUpdates(false), 60 * 1000)
 })
-onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTimer); clearTimeout(reconnectTimer); socket?.close() })
+
+onUnmounted(() => {
+  disposed = true
+  clearInterval(timer)
+  clearTimeout(saveTimer)
+  clearTimeout(reconnectTimer)
+  socket?.close()
+})
 </script>
 
 <template>
-  <!-- Pantalla de arranque para evitar flashes -->
+  <!-- Pantalla de arranque -->
   <div v-if="bootstrapping" class="boot-screen">
     <div class="boot-container">
       <img :src="logoUrl" alt="TelegramDL" class="boot-logo" />
@@ -529,6 +527,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
   </div>
 
   <template v-else>
+    <!-- Diálogo de actualización obligatoria -->
     <div v-if="updateInfo && isUpdateForced" class="update-required-overlay">
       <div class="update-card">
         <Zap :size="48" class="update-icon" />
@@ -569,8 +568,10 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
       </div>
     </div>
 
+    <!-- Asistente de Autenticación -->
     <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
 
+    <!-- Estructura Principal de la Aplicación -->
     <div class="app-shell">
       <aside class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
         <div class="sidebar-main">
@@ -580,16 +581,37 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
               <span>Telegram<span class="brand-accent">DL</span></span>
               <span class="version-tag" v-if="version">v{{ version }}</span>
             </div>
-            <button class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-label="Abrir menú" @click="mobileMenuOpen = !mobileMenuOpen">
+            <button
+              class="mobile-menu-toggle"
+              type="button"
+              :aria-expanded="mobileMenuOpen"
+              aria-label="Abrir menú"
+              @click="mobileMenuOpen = !mobileMenuOpen"
+            >
               <X v-if="mobileMenuOpen" :size="20" />
               <Menu v-else :size="20" />
             </button>
           </div>
           <p class="sidebar-copy">Centro de descargas personal</p>
           <nav class="sidebar-nav">
-            <button :class="{ selected: activeView === 'downloads' }" @click="activeView = 'downloads'; mobileMenuOpen = false"><ArrowDownToLine :size="16" /> Descargas</button>
-            <button :class="{ selected: activeView === 'listener' }" @click="activeView = 'listener'; mobileMenuOpen = false"><Radio :size="16" /> Escucha</button>
-            <button :class="{ selected: activeView === 'settings' }" @click="activeView = 'settings'; mobileMenuOpen = false"><Settings2 :size="16" /> Ajustes</button>
+            <button
+              :class="{ selected: activeView === 'downloads' }"
+              @click="activeView = 'downloads'; mobileMenuOpen = false"
+            >
+              <ArrowDownToLine :size="16" /> Descargas
+            </button>
+            <button
+              :class="{ selected: activeView === 'listener' }"
+              @click="activeView = 'listener'; mobileMenuOpen = false"
+            >
+              <Radio :size="16" /> Escucha
+            </button>
+            <button
+              :class="{ selected: activeView === 'settings' }"
+              @click="activeView = 'settings'; mobileMenuOpen = false"
+            >
+              <Settings2 :size="16" /> Ajustes
+            </button>
           </nav>
 
           <div v-if="authStatus.user" class="sidebar-user-badge">
@@ -607,7 +629,11 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
             <span>{{ websocketConnected ? 'Servicio conectado' : 'Servicio desconectado' }}</span>
           </div>
         </div>
-        <div class="sidebar-bottom"><span class="mini-label">LÍMITE ACTUAL</span><strong>{{ settings.max_concurrent_downloads }} descargas</strong><span>{{ speedText }}</span></div>
+        <div class="sidebar-bottom">
+          <span class="mini-label">LÍMITE ACTUAL</span>
+          <strong>{{ settings.max_concurrent_downloads }} descargas</strong>
+          <span>{{ speedText }}</span>
+        </div>
       </aside>
 
       <main class="main-content">
@@ -622,128 +648,39 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
         <div v-if="message" class="toast success"><CheckCircle2 :size="15" /> {{ message }}</div>
         <div v-if="error" class="toast danger">{{ error }}</div>
 
+        <!-- Contenedor Modular de Vistas -->
         <div class="view-container">
-          <!-- Vista de Descargas -->
-          <template v-if="activeView === 'downloads'">
-            <section class="hero-card">
-              <div class="hero-copy"><span class="hero-kicker">NUEVA TAREA</span><h2>Descarga contenido de Telegram</h2><p>Pega un enlace de mensaje o un rango para comenzar.</p></div>
-              <div class="download-form"><input v-model="newUrl" @keyup.enter="startDownload" placeholder="https://t.me/c/..." aria-label="Enlace de Telegram"><button class="primary-button" :disabled="loading || !newUrl.trim()" @click="startDownload"><span>{{ loading ? 'Añadiendo…' : 'Iniciar descarga' }}</span><ArrowUpRight :size="18" /></button></div>
-            </section>
+          <DownloadsView
+            v-show="activeView === 'downloads'"
+            :downloads="downloads"
+            :disk="disk"
+            :settings="settings"
+            :loading="loading"
+            @start-download="startDownload"
+            @pause-download="id => setDownloadPause(id, true)"
+            @resume-download="id => setDownloadPause(id, false)"
+            @cancel-download="cancelDownload"
+            @retry-download="retryDownload"
+            @delete-download="deleteDownload"
+            @open-file="openFile"
+          />
 
-            <section class="stats-grid">
-              <div class="stat-card"><span class="stat-icon blue"><Activity :size="19" /></span><div><span class="stat-label">ACTIVAS</span><strong>{{ activeDownloads.length }}</strong><small>de {{ settings.max_concurrent_downloads }} permitidas</small></div></div>
-              <div class="stat-card"><span class="stat-icon amber"><Clock3 :size="19" /></span><div><span class="stat-label">EN COLA</span><strong>{{ pendingDownloads.length }}</strong><small>esperando turno</small></div></div>
-              <div class="stat-card"><span class="stat-icon green"><CheckCircle2 :size="19" /></span><div><span class="stat-label">COMPLETADAS</span><strong>{{ completedCount }}</strong><small>en esta sesión</small></div></div>
-              <div class="stat-card"><span class="stat-icon gray"><FileCheck :size="19" /></span><div><span class="stat-label">OMITIDAS</span><strong>{{ skippedCount }}</strong><small>ya existían</small></div></div>
-            </section>
+          <ListenerView
+            v-show="activeView === 'listener'"
+            :notify="showMessage"
+            :disk="disk"
+            :initialItems="listenerItems"
+          />
 
-            <div class="content-grid-single">
-              <section class="panel activity-panel">
-                <div class="panel-heading">
-                  <div><span class="eyebrow">MONITOR</span><h2>Actividad en tiempo real</h2></div>
-                  <div class="header-actions">
-                    <div v-if="disk" class="disk-monitor">
-                      <div class="disk-bar"><div class="fill" :style="{ width: disk.percent + '%', backgroundColor: disk.status === 'red' ? '#ff4d4d' : '#4dff4d' }"></div></div>
-                      <small>Total/Libre: ({{ disk.total_str }} / {{ disk.projected_free_str }})</small>
-                    </div>
-                    <span class="count-pill">{{ activeDownloads.length + pendingDownloads.length }} tareas</span>
-                  </div>
-                </div>
-                <div v-if="!activeDownloads.length && !pendingDownloads.length" class="empty-state"><Activity :size="28" /><p>No hay descargas activas</p><small>Las nuevas tareas aparecerán aquí.</small></div>
-                <div v-for="item in [...activeDownloads, ...pendingDownloads]" :key="item.id" class="download-row">
-                  <div class="file-symbol"><FileDown :size="16" /></div>
-                  <div class="file-info">
-                    <strong :title="item.file_name">{{ item.file_name }}</strong>
-                    <span>{{ item.current_str }} / {{ item.total_str }} · {{ item.speed }}</span>
-                    <div class="progress-track"><div class="progress-fill" :style="{ width: `${progress(item)}%` }"></div></div>
-                  </div>
-                  <div class="row-side">
-                    <b>{{ progress(item).toFixed(0) }}%</b>
-                    <span>{{ statusText(item.status) }}</span>
-                    <button v-if="['downloading', 'queued'].includes(item.status)" class="pause-action" @click="setDownloadPause(item.id, true)"><Gauge :size="12" /> Pausar</button>
-                    <button v-if="item.status === 'paused'" class="resume-action" @click="setDownloadPause(item.id, false)"><ArrowUpRight :size="12" /> Reanudar</button>
-                    <button @click="cancelDownload(item.id)"><X :size="12" /> Cancelar</button>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <section class="panel recent-panel">
-              <div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Últimas descargas</h2></div></div>
-              <div v-if="!recentDownloads.length" class="empty-small">Todavía no hay descargas terminadas.</div>
-              <div v-for="item in recentDownloads" :key="item.id" class="recent-row">
-                <span class="recent-icon" :class="item.status">{{ item.status === 'completed' ? '✓' : '•' }}</span>
-                <strong>{{ item.file_name }}</strong>
-                <span class="recent-size">{{ item.total_str }}</span>
-                <span class="badge" :class="item.status">{{ statusText(item.status) }}</span>
-                <button v-if="item.status === 'completed'" class="open-button" type="button" title="Abrir archivo" aria-label="Abrir archivo" @click="openFile(item)"><ExternalLink :size="14" /></button>
-                <button v-if="['failed', 'cancelled'].includes(item.status)" class="retry-button" type="button" title="Reintentar descarga" aria-label="Reintentar descarga" @click="retryDownload(item)"><RotateCcw :size="14" /></button>
-                <button v-if="item.status === 'completed'" class="delete-button" type="button" title="Borrar archivo" aria-label="Borrar archivo" @click="deleteDownload(item)"><Trash2 :size="14" /></button>
-              </div>
-            </section>
-          </template>
-
-          <!-- Vista de Escucha (Mantenida viva con v-show) -->
-          <ListenerView v-show="activeView === 'listener'" :notify="showMessage" :disk="disk" :initialItems="listenerItems" />
-
-          <!-- Vista de Ajustes -->
-          <template v-if="activeView === 'settings'">
-            <div class="content-grid-single">
-              <aside class="panel settings-panel-full">
-                <div class="panel-heading">
-                  <div><span class="eyebrow"><Settings2 :size="12" /> PREFERENCIAS</span><h2>Configuración General</h2></div>
-                  <span class="save-state">{{ saving ? 'Guardando…' : 'Auto-guardado' }}</span>
-                </div>
-                <div class="settings-sections-grid">
-                  <div class="settings-group">
-                    <label class="setting-label">Descargas simultáneas <output>{{ settings.max_concurrent_downloads }}</output></label>
-                    <input v-model.number="settings.max_concurrent_downloads" type="range" min="1" max="16" class="range-input">
-                    <div class="range-hints"><span>1</span><span>16</span></div>
-                    <div class="setting-line">
-                      <div><strong>Partes simultáneas</strong><small>Acelera cada archivo usando varios bloques.</small></div>
-                      <label class="switch"><input v-model="settings.parallel_chunks" type="checkbox"><span></span></label>
-                    </div>
-                    <label class="setting-label compact">Workers por archivo <output>{{ settings.chunk_workers }}</output></label>
-                    <input v-model.number="settings.chunk_workers" :disabled="!settings.parallel_chunks" type="range" min="1" max="8" class="range-input">
-                    <div class="range-hints"><span>1</span><span>8</span></div>
-                  </div>
-
-                  <div class="settings-group">
-                    <div class="speed-setting">
-                      <label class="setting-label compact">Límite global de velocidad</label>
-                      <div class="speed-row">
-                        <input v-model.number="settings.speed_limit.value" type="number" min="0" step="0.5">
-                        <select v-model="settings.speed_limit.unit"><option>KB</option><option>MB</option><option>GB</option></select>
-                        <span>/s</span>
-                      </div>
-                      <small>Usa 0 para quitar el límite.</small>
-                    </div>
-                    <FolderPicker v-model="settings.download_folder" />
-                  </div>
-
-                  <div class="settings-group color-group">
-                    <span class="setting-label">Color de Acento y Tema</span>
-                    <div class="color-selector-container">
-                      <div class="color-row">
-                        <button v-for="id in [0,1,2,3,4,5,6,7]" :key="id" class="color-dot" :class="{ active: settings.color_id === id }" :style="{ background: themeMap[id].gradient }" @click="settings.color_id = id"></button>
-                      </div>
-                      <div class="color-row">
-                        <button v-for="id in [8,9,10,11,12,13,14,15]" :key="id" class="color-dot gradient-dot" :class="{ active: settings.color_id === id }" :style="{ background: `linear-gradient(135deg, ${themeMap[id].primary} 49.8%, ${themeMap[id].secondary} 50.2%)` }" @click="settings.color_id = id"></button>
-                      </div>
-                    </div>
-                    <button class="reset-button-alt" @click="resetColor">
-                      <Zap :size="14" /> Restablecer color de la cuenta
-                    </button>
-                  </div>
-                </div>
-
-                <div class="settings-actions">
-                  <button class="clear-history-button" type="button" @click="clearDownloadHistory"><Trash2 :size="15" /> Limpiar historial</button>
-                  <button class="save-button" :disabled="saving" @click="saveSettings"><Save :size="15" /> {{ saving ? 'Guardando…' : 'Guardar ahora' }}</button>
-                </div>
-              </aside>
-            </div>
-          </template>
+          <SettingsView
+            v-show="activeView === 'settings'"
+            :settings="settings"
+            :saving="saving"
+            :themeMap="themeMap"
+            @save-settings="saveSettings"
+            @clear-history="clearDownloadHistory"
+            @reset-color="resetColor"
+          />
         </div>
 
         <ConfirmModal
@@ -756,6 +693,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
           @confirm="handleConfirm"
           @cancel="modal.show = false"
         />
+
         <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>
       </main>
     </div>
@@ -841,7 +779,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .update-progress-bar { height: 16px; background: var(--user-bg-base); border-radius: 20px; overflow: hidden; margin-bottom: 10px; position: relative; border: 1px solid var(--user-border); box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
 .update-progress-fill { height: 100%; background: linear-gradient(90deg, var(--user-bg-top), var(--user-primary), var(--user-accent)); transition: width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); position: relative; display: flex; align-items: center; justify-content: flex-end; }
 
-/* Efecto Nitro-Wind (Destellos hacia ATRÁS) */
+/* Efecto Nitro-Wind */
 .nitro-wind { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; }
 .nitro-wind span { position: absolute; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent); height: 2px; border-radius: 2px; animation: windBackwards 0.6s linear infinite; }
 .nitro-wind span:nth-child(1) { top: 25%; width: 40px; animation-duration: 0.4s; }
@@ -905,7 +843,7 @@ onUnmounted(() => { disposed = true; clearInterval(timer); clearTimeout(saveTime
 .sidebar-user-badge .logout-btn{background:transparent;border:0;color:#e88888;cursor:pointer;display:grid;place-items:center;padding:4px;border-radius:6px;flex:none}
 .sidebar-user-badge .logout-btn:hover{background:#3d171d;color:#ff9e9e}
 
-/* Estilos adicionales para Ajustes y Selector de Color */
+/* Estilos para Ajustes y Selector de Color */
 .content-grid-single { display: grid; grid-template-columns: 1fr; gap: 18px; animation: riseIn .55s ease both; }
 .settings-panel-full { padding: 30px; }
 .settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; }
