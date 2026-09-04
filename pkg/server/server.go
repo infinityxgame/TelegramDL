@@ -224,6 +224,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/listener/settings", s.handleListenerSettings)
 	mux.HandleFunc("/api/listener/items", s.handleListenerItems)
 	mux.HandleFunc("/api/listener/download", s.handleListenerDownload)
+	mux.HandleFunc("/api/listener/clear", s.handleListenerClear)
+	mux.HandleFunc("/api/listener/delete", s.handleListenerDeleteItem)
+	mux.HandleFunc("/api/listener/item/", s.handleListenerDeleteItemPath)
 	mux.HandleFunc("/api/listener/resolve-chat", s.handleListenerResolveChat)
 	mux.HandleFunc("/api/listener/chat/", s.handleListenerResolveChatPath)
 
@@ -1012,6 +1015,38 @@ func (s *Server) handleListenerDownload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListenerClear(w http.ResponseWriter, r *http.Request) {
+	s.listener.ClearItems()
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListenerDeleteItem(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	if id == "" {
+		id = r.URL.Query().Get("id")
+	}
+	if id != "" {
+		s.listener.RemoveItem(id)
+	}
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListenerDeleteItemPath(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/listener/item/")
+	if id != "" {
+		s.listener.RemoveItem(id)
+	}
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

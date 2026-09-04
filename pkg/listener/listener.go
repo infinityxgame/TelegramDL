@@ -322,36 +322,51 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 func (le *ListenerEngine) DownloadItem(itemID string) error {
 	le.mu.Lock()
 	item, ok := le.items[itemID]
-	if !ok {
+	if ok {
+		item.Status = "queued"
+		cp := *item
 		le.mu.Unlock()
-		return errors.New("multimedia no encontrado en escucha")
+		le.notifyState(cp)
+
+		dlItem := storage.DownloadItem{
+			ID:        item.ID,
+			JobID:     fmt.Sprintf("listener:%d", item.ChatID),
+			MessageID: item.MessageID,
+			ChatID:    item.ChatID,
+			FileName:  item.FileName,
+			Status:    "queued",
+			Kind:      item.Kind,
+			TotalStr:  item.TotalStr,
+			Source:    "listener",
+			CreatedAt: float64(time.Now().Unix()),
+			UpdatedAt: float64(time.Now().Unix()),
+		}
+
+		if le.storage != nil {
+			_ = le.storage.SaveDownload(dlItem)
+		}
+		if le.engine != nil {
+			le.engine.QueueItem(dlItem)
+		}
+		return nil
 	}
-	item.Status = "queued"
-	cp := *item
 	le.mu.Unlock()
-	le.notifyState(cp)
 
-	dlItem := storage.DownloadItem{
-		ID:        item.ID,
-		JobID:     fmt.Sprintf("listener:%d", item.ChatID),
-		MessageID: item.MessageID,
-		ChatID:    item.ChatID,
-		FileName:  item.FileName,
-		Status:    "queued",
-		Kind:      item.Kind,
-		TotalStr:  item.TotalStr,
-		Source:    "listener",
-		CreatedAt: float64(time.Now().Unix()),
-		UpdatedAt: float64(time.Now().Unix()),
-	}
-
+	// Si no está en items pero está en SQLite
 	if le.storage != nil {
-		_ = le.storage.SaveDownload(dlItem)
+		if saved, err := le.storage.LoadDownloads(""); err == nil {
+			if dl, exists := saved[itemID]; exists {
+				dl.Status = "queued"
+				_ = le.storage.SaveDownload(dl)
+				if le.engine != nil {
+					le.engine.QueueItem(dl)
+				}
+				return nil
+			}
+		}
 	}
-	if le.engine != nil {
-		le.engine.QueueItem(dlItem)
-	}
-	return nil
+
+	return errors.New("multimedia no encontrado en escucha")
 }
 
 func (le *ListenerEngine) RemoveItem(itemID string) {
@@ -361,9 +376,39 @@ func (le *ListenerEngine) RemoveItem(itemID string) {
 		delete(le.items, itemID)
 	}
 	le.mu.Unlock()
+
+	if le.storage != nil {
+		_ = le.storage.DeleteDownload(itemID)
+		_ = le.storage.DeleteChunks(itemID)
+	}
+	if le.engine != nil {
+		_ = le.engine.DeleteDownload(itemID, false)
+	}
+
 	if ok && item != nil {
 		le.notifyState(*item)
 	}
+}
+
+func (le *ListenerEngine) ClearItems() {
+	le.mu.Lock()
+	ids := make([]string, 0, len(le.items))
+	for id := range le.items {
+		ids = append(ids, id)
+	}
+	le.items = make(map[string]*ListenerItem)
+	le.mu.Unlock()
+
+	for _, id := range ids {
+		if le.storage != nil {
+			_ = le.storage.DeleteDownload(id)
+			_ = le.storage.DeleteChunks(id)
+		}
+		if le.engine != nil {
+			_ = le.engine.DeleteDownload(id, false)
+		}
+	}
+	le.notifyState(ListenerItem{})
 }
 
 type ResolvedChatInfo struct {

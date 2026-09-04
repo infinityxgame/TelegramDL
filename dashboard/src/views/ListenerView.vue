@@ -95,18 +95,34 @@ const toggleFilter = async (chat, key) => {
 const toggle = async () => { await save() }
 const download = async item => {
   try {
-    await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) })
+    item.status = 'queued'
+    await api('/api/listener/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id })
+    })
     props.notify('Descarga añadida a la cola')
     await load()
-  } catch (err) { props.notify(err.message, true) }
+  } catch (err) {
+    props.notify(err.message, true)
+    await load()
+  }
 }
 
 const removeItem = async item => {
   try {
-    await api(`/api/downloads/${encodeURIComponent(item.id)}?delete_file=false`, { method: 'DELETE' })
+    items.value = items.value.filter(i => i.id !== item.id)
+    await api('/api/listener/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id })
+    })
     props.notify('Multimedia descartada')
     await load()
-  } catch (err) { props.notify(err.message, true) }
+  } catch (err) {
+    props.notify(err.message, true)
+    await load()
+  }
 }
 
 const modal = reactive({
@@ -136,7 +152,10 @@ const handleConfirm = () => {
 
 const downloadAll = async () => {
   const availableItems = items.value.filter(item => item.status === 'available')
-  if (!availableItems.length) return
+  if (!availableItems.length) {
+    props.notify('No hay elementos pendientes por descargar')
+    return
+  }
 
   openConfirm({
     title: 'Descargar todo',
@@ -146,9 +165,16 @@ const downloadAll = async () => {
       let successCount = 0
       for (const item of availableItems) {
         try {
-          await api('/api/listener/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) })
+          item.status = 'queued'
+          await api('/api/listener/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: item.id })
+          })
           successCount++
-        } catch (err) { console.error(`Error descargando ${item.id}:`, err) }
+        } catch (err) {
+          console.error(`Error descargando ${item.id}:`, err)
+        }
       }
       props.notify(`${successCount} descargas añadidas a la cola`)
       await load()
@@ -157,7 +183,10 @@ const downloadAll = async () => {
 }
 
 const clearAll = async () => {
-  if (!items.value.length) return
+  if (!items.value.length) {
+    props.notify('La lista ya está vacía')
+    return
+  }
 
   openConfirm({
     title: 'Limpiar lista',
@@ -165,15 +194,15 @@ const clearAll = async () => {
     confirmText: 'Limpiar lista',
     type: 'danger',
     action: async () => {
-      let successCount = 0
-      for (const item of items.value) {
-        try {
-          await api(`/api/downloads/${encodeURIComponent(item.id)}?delete_file=false`, { method: 'DELETE' })
-          successCount++
-        } catch (err) { console.error(`Error eliminando ${item.id}:`, err) }
+      try {
+        items.value = []
+        await api('/api/listener/clear', { method: 'POST' })
+        props.notify('Lista de escucha limpiada')
+        await load()
+      } catch (err) {
+        props.notify(err.message, true)
+        await load()
       }
-      props.notify(`Lista de escucha limpiada (${successCount} elementos)`)
-      await load()
     }
   })
 }
