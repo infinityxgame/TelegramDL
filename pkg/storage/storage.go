@@ -444,14 +444,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		}
 	}
 
-	err = tx.Commit()
-	if err == nil {
-		if data, jerr := json.MarshalIndent(cfg, "", "  "); jerr == nil {
-			_ = os.WriteFile(filepath.Join(config.BaseDir, "config.json"), data, 0644)
-			_ = os.WriteFile(filepath.Join(config.DataDir, "config.json"), data, 0644)
-		}
-	}
-	return err
+	return tx.Commit()
 }
 
 func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, error) {

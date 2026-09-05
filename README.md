@@ -88,9 +88,9 @@ Wails ejecuta la compilación del panel y del backend según la configuración d
 El ejecutable acepta estos parámetros:
 
 ```powershell
-TGDown.exe --server
-TGDown.exe --update
-TGDown.exe --help
+TelegramDL.exe --server
+TelegramDL.exe --update
+TelegramDL.exe --help
 ```
 
 - `--server` inicia el servidor HTTP/WebSocket sin abrir la ventana de Wails y permanece activo hasta recibir `Ctrl+C`.
