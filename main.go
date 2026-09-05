@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"time"
 
@@ -53,10 +52,6 @@ func hasArgument(target string) bool {
 		}
 	}
 	return false
-}
-
-func setupConsole() {
-	// Implementación movida a sys_windows.go y sys_others.go
 }
 
 func printUsage() {
