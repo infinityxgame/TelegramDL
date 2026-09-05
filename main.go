@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,10 @@ import (
 var assets embed.FS
 
 func main() {
+	if len(os.Args) > 1 {
+		setupConsole()
+	}
+
 	if hasArgument("--help") || hasArgument("-h") {
 		printUsage()
 		return
@@ -39,11 +44,33 @@ func main() {
 
 func hasArgument(target string) bool {
 	for _, arg := range os.Args[1:] {
-		if arg == target {
+		if strings.EqualFold(arg, target) {
 			return true
+		}
+		if strings.HasPrefix(target, "--") {
+			if strings.EqualFold(arg, target[1:]) || strings.EqualFold(arg, "/"+target[2:]) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func setupConsole() {
+	if runtime.GOOS == "windows" {
+		kernel32 := syscall.NewLazyDLL("kernel32.dll")
+		attachConsole := kernel32.NewProc("AttachConsole")
+		const ATTACH_PARENT_PROCESS = ^uint32(0)
+		r, _, _ := attachConsole.Call(uintptr(ATTACH_PARENT_PROCESS))
+		if r != 0 {
+			if h, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); err == nil {
+				os.Stdout = os.NewFile(uintptr(h), "/dev/stdout")
+			}
+			if h, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE); err == nil {
+				os.Stderr = os.NewFile(uintptr(h), "/dev/stderr")
+			}
+		}
+	}
 }
 
 func printUsage() {

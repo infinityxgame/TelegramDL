@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -73,7 +75,9 @@ func NewApp(assets fs.FS) *App {
 
 	// Iniciar servidor HTTP/WS INMEDIATAMENTE en el puerto configurado (default 8000)
 	port := config.GetServerPort()
-	_ = srv.Start(port)
+	if err := srv.Start(port); err != nil {
+		fmt.Fprintf(os.Stderr, "Error al iniciar servidor en puerto %d: %v\n", port, err)
+	}
 
 	// Cargar credenciales desde la base de datos (con fallback a .env) e inicializar cliente
 	apiID, apiHash, _ := st.GetCredentials()
