@@ -150,9 +150,79 @@ func (le *ListenerEngine) UpdateConfig(cfg config.Config) {
 	log.Printf("[LISTENER CONFIG] Actualizada. Escucha activa: %v, Chats vigilados (%d): %+v", le.config.ListenerEnabled, len(le.chatMap), le.chatMap)
 }
 
-func (le *ListenerEngine) matchChatID(peerID int64) (config.ListenerChat, bool) {
-	cfg, ok := le.chatMap[peerID]
-	return cfg, ok
+func (le *ListenerEngine) matchChatID(peerID int64, rawChannelID ...int64) (config.ListenerChat, bool) {
+	if cfg, ok := le.chatMap[peerID]; ok {
+		return cfg, true
+	}
+
+	if len(rawChannelID) > 0 && rawChannelID[0] != 0 {
+		channelID := rawChannelID[0]
+		candidates := []int64{channelID, -channelID}
+		if canonical, err := strconv.ParseInt(fmt.Sprintf("-100%d", channelID), 10, 64); err == nil {
+			candidates = append(candidates, canonical)
+		}
+		for _, candidate := range candidates {
+			if cfg, ok := le.chatMap[candidate]; ok {
+				return cfg, true
+			}
+		}
+	}
+
+	return config.ListenerChat{}, false
+}
+
+func entityChatName(entities tg.Entities, peerID, rawChannelID int64) string {
+	if rawChannelID != 0 {
+		if ch, ok := entities.Channels[rawChannelID]; ok && strings.TrimSpace(ch.Title) != "" {
+			return strings.TrimSpace(ch.Title)
+		}
+	}
+
+	if chatID := -peerID; peerID < 0 && !strings.HasPrefix(strconv.FormatInt(peerID, 10), "-100") {
+		if chat, ok := entities.Chats[chatID]; ok && strings.TrimSpace(chat.Title) != "" {
+			return strings.TrimSpace(chat.Title)
+		}
+	}
+
+	if peerID > 0 {
+		if user, ok := entities.Users[peerID]; ok {
+			name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+			if name == "" {
+				name = strings.TrimSpace(user.Username)
+			}
+			return name
+		}
+	}
+
+	return ""
+}
+
+func (le *ListenerEngine) rememberChatName(peerID, rawChannelID int64, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+
+	le.mu.Lock()
+	updated := false
+	for i := range le.config.ListenerChats {
+		chat := &le.config.ListenerChats[i]
+		if chat.ID == peerID || (rawChannelID != 0 && chat.ID == rawChannelID) {
+			if chat.Name != name {
+				chat.Name = name
+				updated = true
+			}
+		}
+	}
+	if updated {
+		le.updateChatMap(le.config)
+	}
+	cfg := le.config
+	le.mu.Unlock()
+
+	if updated && le.storage != nil {
+		go func() { _ = le.storage.SaveConfig(cfg) }()
+	}
 }
 
 func (le *ListenerEngine) GetItems() []ListenerItem {
@@ -201,17 +271,16 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	}
 
 	le.mu.RLock()
-	chatCfg, watched := le.matchChatID(peerID)
-	// Algunos usuarios guardan el ID corto del canal (12345) en lugar del
-	// formato MTProto (-10012345). Solo aceptamos ese alias cuando el peer
-	// real es un canal; nunca lo aplicamos a usuarios o grupos.
-	if !watched && rawChannelID != 0 {
-		chatCfg, watched = le.matchChatID(rawChannelID)
-	}
+	chatCfg, watched := le.matchChatID(peerID, rawChannelID)
 	le.mu.RUnlock()
 
 	if !watched {
 		return nil
+	}
+
+	if actualName := entityChatName(entities, peerID, rawChannelID); actualName != "" {
+		chatCfg.Name = actualName
+		le.rememberChatName(peerID, rawChannelID, actualName)
 	}
 
 	mediaInfo := downloader.ExtractMediaInfo(msg)
@@ -437,6 +506,35 @@ func (le *ListenerEngine) ResolveChat(ctx context.Context, chatID int64) (Resolv
 				chats := res.GetChats()
 				if len(chats) > 0 {
 					if ch, ok := chats[0].(*tg.Channel); ok {
+						info.Name = ch.Title
+						info.Username = ch.Username
+						if ch.Megagroup {
+							info.Type = "supergroup"
+						} else {
+							info.Type = "channel"
+						}
+						return info, nil
+					}
+				}
+			}
+
+			// Si Telegram aún no entregó el access hash del canal, la consulta
+			// directa puede fallar aunque el canal sí esté en los diálogos del
+			// usuario. Los diálogos incluyen el título y permiten resolverlo de
+			// inmediato al añadirlo a la lista.
+			if resDialogs, errDialogs := raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+				OffsetPeer: &tg.InputPeerEmpty{},
+				Limit:      100,
+			}); errDialogs == nil {
+				var chats []tg.ChatClass
+				switch dialogs := resDialogs.(type) {
+				case *tg.MessagesDialogs:
+					chats = dialogs.Chats
+				case *tg.MessagesDialogsSlice:
+					chats = dialogs.Chats
+				}
+				for _, chat := range chats {
+					if ch, ok := chat.(*tg.Channel); ok && ch.ID == channelID {
 						info.Name = ch.Title
 						info.Username = ch.Username
 						if ch.Megagroup {
