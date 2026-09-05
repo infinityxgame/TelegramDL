@@ -99,7 +99,12 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 			le.mu.Lock()
 			item, exists := le.items[download.ID]
 			if exists {
-				item.Status = download.Status
+				// La bandeja muestra "Descargando" desde que el usuario confirma
+				// la descarga, incluso mientras el motor espera un slot de cola.
+				// No degradar ese estado a "queued" por el primer evento del motor.
+				if download.Status != "queued" || item.Status != "downloading" {
+					item.Status = download.Status
+				}
 				item.UpdatedAt = download.UpdatedAt
 				if download.FileName != "" {
 					item.FileName = download.FileName
@@ -151,34 +156,8 @@ func (le *ListenerEngine) UpdateConfig(cfg config.Config) {
 }
 
 func (le *ListenerEngine) matchChatID(peerID int64) (config.ListenerChat, bool) {
-	if cfg, ok := le.chatMap[peerID]; ok {
-		return cfg, true
-	}
-	s := fmt.Sprintf("%d", peerID)
-	if strings.HasPrefix(s, "-100") && len(s) > 4 {
-		if rawID, err := strconv.ParseInt(s[4:], 10, 64); err == nil {
-			if cfg, ok := le.chatMap[rawID]; ok {
-				return cfg, true
-			}
-			if cfg, ok := le.chatMap[-rawID]; ok {
-				return cfg, true
-			}
-		}
-	} else if peerID > 0 {
-		if fullID, err := strconv.ParseInt(fmt.Sprintf("-100%d", peerID), 10, 64); err == nil {
-			if cfg, ok := le.chatMap[fullID]; ok {
-				return cfg, true
-			}
-		}
-		if cfg, ok := le.chatMap[-peerID]; ok {
-			return cfg, true
-		}
-	} else if peerID < 0 {
-		if cfg, ok := le.chatMap[-peerID]; ok {
-			return cfg, true
-		}
-	}
-	return config.ListenerChat{}, false
+	cfg, ok := le.chatMap[peerID]
+	return cfg, ok
 }
 
 func (le *ListenerEngine) GetItems() []ListenerItem {
@@ -207,27 +186,19 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		return nil
 	}
 
-	// Obtener ID del chat y del remitente
+	// Obtener únicamente el ID del chat que contiene el mensaje.
+	// El remitente no debe usarse para decidir si el chat está vigilado:
+	// un usuario puede publicar en grupos o canales no configurados.
 	var peerID int64
+	var rawChannelID int64
 	switch p := msg.PeerID.(type) {
 	case *tg.PeerChannel:
 		peerID, _ = strconv.ParseInt(fmt.Sprintf("-100%d", p.ChannelID), 10, 64)
+		rawChannelID = p.ChannelID
 	case *tg.PeerChat:
 		peerID = -p.ChatID
 	case *tg.PeerUser:
 		peerID = p.UserID
-	}
-
-	var fromID int64
-	if msg.FromID != nil {
-		switch f := msg.FromID.(type) {
-		case *tg.PeerUser:
-			fromID = f.UserID
-		case *tg.PeerChannel:
-			fromID, _ = strconv.ParseInt(fmt.Sprintf("-100%d", f.ChannelID), 10, 64)
-		case *tg.PeerChat:
-			fromID = -f.ChatID
-		}
 	}
 
 	if !enabled || msg.Out {
@@ -236,11 +207,11 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 
 	le.mu.RLock()
 	chatCfg, watched := le.matchChatID(peerID)
-	if !watched && fromID != 0 {
-		chatCfg, watched = le.matchChatID(fromID)
-		if watched {
-			peerID = fromID
-		}
+	// Algunos usuarios guardan el ID corto del canal (12345) en lugar del
+	// formato MTProto (-10012345). Solo aceptamos ese alias cuando el peer
+	// real es un canal; nunca lo aplicamos a usuarios o grupos.
+	if !watched && rawChannelID != 0 {
+		chatCfg, watched = le.matchChatID(rawChannelID)
 	}
 	le.mu.RUnlock()
 
@@ -338,7 +309,8 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 	le.mu.Lock()
 	item, ok := le.items[itemID]
 	if ok {
-		item.Status = "queued"
+		// Mantener el elemento visible en la bandeja con estado de descarga.
+		item.Status = "downloading"
 		cp := *item
 		le.mu.Unlock()
 		le.notifyState(cp)
