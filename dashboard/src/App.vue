@@ -119,7 +119,7 @@ const updateInfo = ref(null)
 const isUpdating = ref(false)
 const isUpdateForced = ref(false)
 const updatePostponed = ref(false)
-const bootstrapping = ref(false)
+const bootstrapping = ref(true)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 const resolvedFileNames = new Map()
 
@@ -427,7 +427,9 @@ const checkForUpdates = async (force = false) => {
     version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
-      if (!isUpdateForced.value && !updatePostponed.value && !modal.show) {
+      if (force) {
+        isUpdateForced.value = true
+      } else if (!isUpdateForced.value && !updatePostponed.value && !modal.show) {
         openConfirm({
           title: 'Nueva versión disponible',
           message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
@@ -568,7 +570,7 @@ const connectWebSocket = async () => {
 onMounted(async () => {
   disposed = false
   try {
-    await fetchAuthStatus()
+    await Promise.all([fetchAuthStatus(), checkForUpdates(true)])
     if (authStatus.value.authenticated) {
       await Promise.all([fetchSettings(), fetchDownloads()]).catch(() => {})
     }
@@ -580,7 +582,6 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(fetchDownloads, 1000)
-  setTimeout(() => checkForUpdates(false), 2000)
   updateCheckTimer = setInterval(() => checkForUpdates(false), 5 * 60 * 1000)
 })
 
