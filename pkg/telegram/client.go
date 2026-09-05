@@ -509,17 +509,25 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			})
 
 			log.Printf("[TG CLIENT] Conexión MTProto establecida exitosamente.")
-			self, err := client.Self(runCtx)
-			if err == nil && self != nil {
-				log.Printf("[TG CLIENT] Sesión activa como: %s %s (@%s, ID: %d). Iniciando gaps manager...", self.FirstName, self.LastName, self.Username, self.ID)
-				return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{
-					IsBot: false,
-				})
-			}
 
-			log.Printf("[TG CLIENT] Cliente conectado sin sesión autenticada.")
-			<-runCtx.Done()
-			return runCtx.Err()
+			// Bucle de espera de autenticación para iniciar el manejador de actualizaciones (gaps)
+			for {
+				self, err := client.Self(runCtx)
+				if err == nil && self != nil {
+					log.Printf("[TG CLIENT] Sesión activa como: %s %s (@%s, ID: %d). Iniciando gaps manager...", self.FirstName, self.LastName, self.Username, self.ID)
+					return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{
+						IsBot: false,
+					})
+				}
+
+				log.Printf("[TG CLIENT] Cliente conectado pero sin sesión. Esperando autenticación para iniciar escucha...")
+				select {
+				case <-runCtx.Done():
+					return runCtx.Err()
+				case <-time.After(5 * time.Second):
+					// Reintentar check de Self()
+				}
+			}
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("[TG CLIENT ERROR] Falló la ejecución del cliente: %v", err)

@@ -56,9 +56,9 @@ const compareDownloads = (a, b) => {
   const priorityDifference = statusPriority(b.status) - statusPriority(a.status)
   if (priorityDifference !== 0) return priorityDifference
 
-  const messageDifference = Number(a.message_id || 0) - Number(b.message_id || 0)
+  const messageDifference = Number(b.message_id || 0) - Number(a.message_id || 0)
   if (messageDifference !== 0) return messageDifference
-  return String(a.id || '').localeCompare(String(b.id || ''))
+  return String(b.id || '').localeCompare(String(a.id || ''))
 }
 
 const orderedDownloads = computed(() => [...props.downloads].sort(compareDownloads))

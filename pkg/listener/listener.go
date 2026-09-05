@@ -235,9 +235,9 @@ func (le *ListenerEngine) GetItems() []ListenerItem {
 	}
 	sort.SliceStable(res, func(i, j int) bool {
 		if res[i].CreatedAt != res[j].CreatedAt {
-			return res[i].CreatedAt < res[j].CreatedAt
+			return res[i].CreatedAt > res[j].CreatedAt
 		}
-		return res[i].ID < res[j].ID
+		return res[i].ID > res[j].ID
 	})
 	return res
 }
@@ -266,7 +266,10 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		peerID = p.UserID
 	}
 
-	if !enabled || msg.Out {
+	if !enabled {
+		return nil
+	}
+	if msg.Out {
 		return nil
 	}
 
@@ -278,6 +281,8 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 		return nil
 	}
 
+	log.Printf("[LISTENER] Nuevo mensaje detectado en chat vigilado %d (ID: %d)", peerID, msg.ID)
+
 	if actualName := entityChatName(entities, peerID, rawChannelID); actualName != "" {
 		chatCfg.Name = actualName
 		le.rememberChatName(peerID, rawChannelID, actualName)
@@ -285,6 +290,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 
 	mediaInfo := downloader.ExtractMediaInfo(msg)
 	if mediaInfo == nil {
+		log.Printf("[LISTENER] Mensaje %d omitido: No contiene multimedia compatible", msg.ID)
 		return nil
 	}
 

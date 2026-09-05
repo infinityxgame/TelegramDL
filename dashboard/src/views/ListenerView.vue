@@ -6,17 +6,36 @@ import ConfirmModal from '../components/ConfirmModal.vue'
 const props = defineProps({
   notify: { type: Function, default: () => {} },
   disk: { type: Object, default: null },
-  initialItems: { type: Array, default: () => [] }
+  initialItems: { type: Array, default: () => [] },
+  settings: { type: Object, default: () => ({ listener_enabled: true, listener_chats: [] }) }
 })
 
-const enabled = ref(true)
-const chats = ref([])
+const enabled = ref(props.settings.listener_enabled)
+const chats = ref(props.settings.listener_chats || [])
 const newChatId = ref('')
 const items = ref(props.initialItems)
 const saving = ref(false)
 const error = ref('')
 let timer
 let disposed = false
+
+watch(() => props.settings.listener_enabled, (newVal) => {
+  if (!saving.value) enabled.value = newVal
+})
+
+watch(() => props.settings.listener_chats, (newVal) => {
+  if (!saving.value) {
+    chats.value = (newVal || []).map(chat => ({
+      ...chat,
+      auto_download: !!chat.auto_download,
+      f_photos: chat.f_photos ?? true,
+      f_videos: chat.f_videos ?? true,
+      f_audios: chat.f_audios ?? true,
+      f_docs: chat.f_docs ?? true,
+      f_stickers: chat.f_stickers ?? true
+    }))
+  }
+}, { deep: true })
 
 watch(() => props.initialItems, (newItems) => {
   items.value = newItems
@@ -30,6 +49,7 @@ const api = async (url, options = {}) => {
 }
 
 const load = async () => {
+  if (saving.value || disposed) return
   try {
     const [settings, detected] = await Promise.all([api('/api/listener/settings'), api('/api/listener')])
     enabled.value = settings.enabled
@@ -48,21 +68,25 @@ const load = async () => {
 }
 
 const save = async () => {
+  if (saving.value) return
   saving.value = true
   try {
     const data = await api('/api/listener/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: enabled.value, chats: chats.value })
+      body: JSON.stringify({ enabled: !!enabled.value, chats: chats.value })
     })
-    enabled.value = data.enabled
-    chats.value = (data.chats || []).map(chat => ({
-      ...chat,
-      f_photos: chat.f_photos ?? true,
-      f_videos: chat.f_videos ?? true,
-      f_audios: chat.f_audios ?? true,
-      f_docs: chat.f_docs ?? true,
-      f_stickers: chat.f_stickers ?? true
-    }))
+    if (data.enabled !== undefined) enabled.value = data.enabled
+    if (Array.isArray(data.chats)) {
+      chats.value = data.chats.map(chat => ({
+        ...chat,
+        auto_download: !!chat.auto_download,
+        f_photos: chat.f_photos ?? true,
+        f_videos: chat.f_videos ?? true,
+        f_audios: chat.f_audios ?? true,
+        f_docs: chat.f_docs ?? true,
+        f_stickers: chat.f_stickers ?? true
+      }))
+    }
     error.value = ''
     props.notify('Configuración de escucha guardada')
   } catch (err) { props.notify(err.message, true) } finally { saving.value = false }
@@ -82,14 +106,6 @@ const addChat = async () => {
 
 const removeChat = async id => {
   chats.value = chats.value.filter(chat => chat.id !== id)
-  await save()
-}
-const toggleAutoDownload = async chat => {
-  chat.auto_download = !chat.auto_download
-  await save()
-}
-const toggleFilter = async (chat, key) => {
-  chat[key] = !chat[key]
   await save()
 }
 const toggle = async () => { await save() }
@@ -263,18 +279,18 @@ onUnmounted(() => {
               <small>{{ chat.id }}</small>
             </div>
             <label class="auto-toggle switch" :class="{ disabled: saving }">
-              <input type="checkbox" :checked="chat.auto_download" :disabled="saving" @change="toggleAutoDownload(chat)">
+              <input type="checkbox" v-model="chat.auto_download" :disabled="saving" @change="save">
               <span></span>
               <b>Auto</b>
             </label>
             <button :disabled="saving" @click="removeChat(chat.id)" aria-label="Eliminar chat"><Trash2 :size="14" /></button>
           </div>
           <div class="chat-filters">
-            <label class="filter-tag f-photos" :class="{ active: chat.f_photos }"><input type="checkbox" :checked="chat.f_photos" :disabled="saving" @change="toggleFilter(chat, 'f_photos')"><span>Fotos</span></label>
-            <label class="filter-tag f-videos" :class="{ active: chat.f_videos }"><input type="checkbox" :checked="chat.f_videos" :disabled="saving" @change="toggleFilter(chat, 'f_videos')"><span>Videos</span></label>
-            <label class="filter-tag f-audios" :class="{ active: chat.f_audios }"><input type="checkbox" :checked="chat.f_audios" :disabled="saving" @change="toggleFilter(chat, 'f_audios')"><span>Audios</span></label>
-            <label class="filter-tag f-docs" :class="{ active: chat.f_docs }"><input type="checkbox" :checked="chat.f_docs" :disabled="saving" @change="toggleFilter(chat, 'f_docs')"><span>Docs</span></label>
-            <label class="filter-tag f-stickers" :class="{ active: chat.f_stickers }"><input type="checkbox" :checked="chat.f_stickers" :disabled="saving" @change="toggleFilter(chat, 'f_stickers')"><span>Stickers</span></label>
+            <label class="filter-tag f-photos" :class="{ active: chat.f_photos }"><input type="checkbox" v-model="chat.f_photos" :disabled="saving" @change="save"><span>Fotos</span></label>
+            <label class="filter-tag f-videos" :class="{ active: chat.f_videos }"><input type="checkbox" v-model="chat.f_videos" :disabled="saving" @change="save"><span>Videos</span></label>
+            <label class="filter-tag f-audios" :class="{ active: chat.f_audios }"><input type="checkbox" v-model="chat.f_audios" :disabled="saving" @change="save"><span>Audios</span></label>
+            <label class="filter-tag f-docs" :class="{ active: chat.f_docs }"><input type="checkbox" v-model="chat.f_docs" :disabled="saving" @change="save"><span>Docs</span></label>
+            <label class="filter-tag f-stickers" :class="{ active: chat.f_stickers }"><input type="checkbox" v-model="chat.f_stickers" :disabled="saving" @change="save"><span>Stickers</span></label>
           </div>
         </div>
         <small class="save-hint">Los nombres y reglas se guardan automáticamente.</small></section>

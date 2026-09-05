@@ -789,6 +789,7 @@ onUnmounted(() => {
             :notify="showMessage"
             :disk="disk"
             :initialItems="listenerItems"
+            :settings="settings"
           />
 
           <SettingsView
