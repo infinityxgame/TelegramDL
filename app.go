@@ -101,6 +101,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.downloader != nil {
+		_ = a.downloader.Shutdown(ctx)
+	}
 	if a.server != nil {
 		a.server.Stop()
 	}
@@ -139,4 +142,3 @@ func (a *App) GetServerInfo() ServerInfo {
 		Port: config.GetServerPort(),
 	}
 }
-

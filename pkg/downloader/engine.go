@@ -48,6 +48,9 @@ type Engine struct {
 	lastProgressTimes  map[string]time.Time
 	persistCh          chan storage.DownloadItem
 	forceDuplicate     map[string]bool
+	jobsWG             sync.WaitGroup
+	persistWG          sync.WaitGroup
+	stopping           bool
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -81,25 +84,27 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 	}
 
 	// Cargar descargas previas desde SQLite
-	if saved, err := st.LoadDownloads(""); err == nil {
-		for id, item := range saved {
-			// Si quedó en downloading cuando se cerró la app, pasa a queued o paused
-			if item.Status == "downloading" {
-				item.Status = "queued"
-			}
-			// Las descargas antiguas podían conservar "mensaje_ID" en la
-			// columna file_name aunque file_path ya tuviera el nombre real.
-			// Recuperarlo evita que el historial vuelva a mostrar el placeholder.
-			if item.FilePath != "" && (item.FileName == "" || strings.HasPrefix(strings.ToLower(item.FileName), "mensaje_")) {
-				if recoveredName := filepath.Base(item.FilePath); recoveredName != "." && recoveredName != string(filepath.Separator) {
-					item.FileName = recoveredName
-					_ = st.SaveDownload(item)
+	if st != nil {
+		if saved, err := st.LoadDownloads(""); err == nil {
+			for id, item := range saved {
+				// Si quedó en downloading cuando se cerró la app, pasa a queued o paused
+				if item.Status == "downloading" {
+					item.Status = "queued"
 				}
-			}
-			copyItem := item
-			eng.downloads[id] = &copyItem
-			if copyItem.Status == "queued" {
-				go eng.startDownloadJob(id)
+				// Las descargas antiguas podían conservar "mensaje_ID" en la
+				// columna file_name aunque file_path ya tuviera el nombre real.
+				// Recuperarlo evita que el historial vuelva a mostrar el placeholder.
+				if item.FilePath != "" && (item.FileName == "" || strings.HasPrefix(strings.ToLower(item.FileName), "mensaje_")) {
+					if recoveredName := filepath.Base(item.FilePath); recoveredName != "." && recoveredName != string(filepath.Separator) {
+						item.FileName = recoveredName
+						_ = st.SaveDownload(item)
+					}
+				}
+				copyItem := item
+				eng.downloads[id] = &copyItem
+				if copyItem.Status == "queued" {
+					eng.launchDownloadJob(id)
+				}
 			}
 		}
 	}
@@ -107,11 +112,65 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 	return eng
 }
 
+func (e *Engine) launchDownloadJob(itemID string) {
+	e.jobsWG.Add(1)
+	go func() {
+		defer e.jobsWG.Done()
+		e.startDownloadJob(itemID)
+	}()
+}
+
+// Shutdown conserva las tareas activas como queued y espera a que terminen
+// los trabajos y las escrituras pendientes antes de cerrar SQLite.
+func (e *Engine) Shutdown(ctx context.Context) error {
+	e.mu.Lock()
+	e.stopping = true
+	for id, cancel := range e.cancelFuncs {
+		if item, ok := e.downloads[id]; ok && item.Status == "downloading" {
+			item.Status = "queued"
+			item.Speed = "0 B/s"
+			item.UpdatedAt = float64(time.Now().Unix())
+		}
+		cancel()
+	}
+	e.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		e.jobsWG.Wait()
+		e.persistWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	e.mu.RLock()
+	items := make([]storage.DownloadItem, 0, len(e.downloads))
+	for _, item := range e.downloads {
+		if item.Status == "queued" || item.Status == "downloading" {
+			items = append(items, *item)
+		}
+	}
+	e.mu.RUnlock()
+	for _, item := range items {
+		if e.storage != nil {
+			if err := e.storage.SaveDownload(item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (e *Engine) persistenceLoop() {
 	for item := range e.persistCh {
 		if e.storage != nil {
 			_ = e.storage.SaveDownload(item)
 		}
+		e.persistWG.Done()
 	}
 }
 
@@ -119,9 +178,11 @@ func (e *Engine) enqueuePersist(item storage.DownloadItem) {
 	if e.storage == nil {
 		return
 	}
+	e.persistWG.Add(1)
 	select {
 	case e.persistCh <- item:
 	default:
+		e.persistWG.Done()
 		// El estado actual permanece en memoria y el siguiente tick lo
 		// volverá a persistir; nunca frenamos una escritura de Telegram.
 	}
@@ -384,7 +445,7 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	}
 	e.notifyState(cp)
 
-	go e.startDownloadJob(id)
+	e.launchDownloadJob(id)
 	return nil
 }
 
@@ -406,7 +467,7 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	}
 	e.notifyState(cp)
 
-	go e.startDownloadJob(item.ID)
+	e.launchDownloadJob(item.ID)
 	return item.ID
 }
 
@@ -447,9 +508,11 @@ type progressWriterAt struct {
 
 func (pw *progressWriterAt) WriteAt(p []byte, off int64) (int, error) {
 	n, err := pw.file.WriteAt(p, off)
-	if n > 0 {
+	if n == len(p) && err == nil {
 		pw.engine.onProgress(pw.itemID, int64(n), pw.total, off)
 		pw.engine.throttle(int64(n))
+	} else if err == nil && n != len(p) {
+		err = io.ErrShortWrite
 	}
 	return n, err
 }
@@ -524,7 +587,11 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 	cp := *item
 	e.mu.Unlock()
 	if chunkAdded && e.storage != nil {
-		go func() { _ = e.storage.AddChunk(itemID, int(chunkIndex)) }()
+		e.persistWG.Add(1)
+		go func() {
+			defer e.persistWG.Done()
+			_ = e.storage.AddChunk(itemID, int(chunkIndex))
+		}()
 	}
 
 	if shouldSave && e.storage != nil {
@@ -544,7 +611,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 	e.mu.Lock()
 	item, ok := e.downloads[itemID]
-	if !ok || item.Status == "cancelled" || item.Status == "paused" {
+	if !ok || item.Status == "cancelled" || item.Status == "paused" || e.stopping {
 		e.mu.Unlock()
 		return
 	}
@@ -578,7 +645,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 		e.mu.Unlock()
 	}()
 
-	err := e.executeDownload(ctx, itemID)
+	err := e.executeDownloadWithRetry(ctx, itemID)
 	log.Printf("[DOWNLOAD] Tarea %s finalizó con resultado: err=%v", itemID, err)
 	if err != nil && strings.Contains(err.Error(), "mensaje no encontrado en Telegram") {
 		log.Printf("[DOWNLOAD] Omitiendo item %s porque el mensaje %d no existe", itemID, item.MessageID)
@@ -594,7 +661,10 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	if errors.Is(err, context.Canceled) {
-		if e.pauseStates[itemID] {
+		if e.stopping {
+			curItem.Status = "queued"
+			delete(e.pauseStates, itemID)
+		} else if e.pauseStates[itemID] {
 			curItem.Status = "paused"
 		} else {
 			curItem.Status = "cancelled"
@@ -628,6 +698,49 @@ func (e *Engine) startDownloadJob(itemID string) {
 		_ = e.storage.SaveDownload(cp)
 	}
 	e.notifyState(cp)
+}
+
+func (e *Engine) executeDownloadWithRetry(ctx context.Context, itemID string) error {
+	const maxAttempts = 6
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err = e.executeDownload(ctx, itemID)
+		if err == nil || !isRetryableDownloadError(err) || attempt == maxAttempts {
+			return err
+		}
+
+		backoff := time.Duration(1<<(attempt-1)) * time.Second
+		log.Printf("[DOWNLOAD] Reintentando item %s en %s (%d/%d): %v", itemID, backoff, attempt, maxAttempts-1, err)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		}
+	}
+	return err
+}
+
+func isRetryableDownloadError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, errDownloadAlreadyExists) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, permanent := range []string{
+		"mensaje no encontrado",
+		"no contiene multimedia",
+		"espacio",
+		"archivo ya existe",
+		"error al abrir archivo",
+		"error al preparar archivo",
+		"error al finalizar archivo",
+	} {
+		if strings.Contains(message, permanent) {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
