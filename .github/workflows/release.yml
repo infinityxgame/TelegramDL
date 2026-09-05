@@ -114,11 +114,11 @@ jobs:
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform linux/amd64 -s -o TGDown -webview2 download
+        run: wails build -clean -platform linux/amd64 -s -o TelegramDL -webview2 download
 
       - name: Package Linux
         shell: bash
-        run: tar -czf "TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz" -C build/bin TGDown
+        run: tar -czf "TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz" -C build/bin TelegramDL
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -161,11 +161,11 @@ jobs:
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform darwin/universal -s -o TGDown -webview2 download
+        run: wails build -clean -platform darwin/universal -s -o TelegramDL -webview2 download
 
       - name: Package macOS
         shell: bash
-        run: ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "TGDown-macOS-Universal-${{ github.ref_name }}.zip"
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/TelegramDL.app "TGDown-macOS-Universal-${{ github.ref_name }}.zip"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
