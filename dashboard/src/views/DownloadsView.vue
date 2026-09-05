@@ -45,6 +45,24 @@ const emit = defineEmits([
 
 const inputUrl = ref('')
 
+const statusPriority = status => ({
+  downloading: 4,
+  paused: 3,
+  queued: 2,
+  pending: 2
+}[status] || 1)
+
+const compareDownloads = (a, b) => {
+  const priorityDifference = statusPriority(b.status) - statusPriority(a.status)
+  if (priorityDifference !== 0) return priorityDifference
+
+  const messageDifference = Number(a.message_id || 0) - Number(b.message_id || 0)
+  if (messageDifference !== 0) return messageDifference
+  return String(a.id || '').localeCompare(String(b.id || ''))
+}
+
+const orderedDownloads = computed(() => [...props.downloads].sort(compareDownloads))
+
 const handleStart = () => {
   const url = inputUrl.value.trim()
   if (!url) return
@@ -53,15 +71,15 @@ const handleStart = () => {
 }
 
 const activeDownloads = computed(() =>
-  props.downloads.filter(item => ['downloading', 'paused'].includes(item.status))
+  orderedDownloads.value.filter(item => ['downloading', 'paused'].includes(item.status))
 )
 
 const pendingDownloads = computed(() =>
-  props.downloads.filter(item => ['pending', 'queued'].includes(item.status))
+  orderedDownloads.value.filter(item => ['pending', 'queued'].includes(item.status))
 )
 
 const recentDownloads = computed(() =>
-  props.downloads
+  orderedDownloads.value
     .filter(item => ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status))
     .slice(0, 15)
 )

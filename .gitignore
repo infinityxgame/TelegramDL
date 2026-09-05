@@ -22,3 +22,5 @@ dashboard/node_modules/
 downloads.json
 pendientes.txt
 *.exe
+/build/bin
+/build/windows

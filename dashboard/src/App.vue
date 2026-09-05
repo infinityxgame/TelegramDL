@@ -110,6 +110,7 @@ let timer
 let socket
 let reconnectTimer
 let saveTimer
+let updateCheckTimer
 let disposed = false
 let syncingSettings = false
 const settingsSavePending = ref(false)
@@ -117,8 +118,21 @@ const websocketConnected = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
 const isUpdateForced = ref(false)
+const updatePostponed = ref(false)
 const bootstrapping = ref(false)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
+const resolvedFileNames = new Map()
+
+const isPlaceholderFileName = name => /^mensaje_\d+$/i.test(String(name || '').trim())
+const mergeDownloadNames = items => items.map(item => {
+  const currentName = String(item.file_name || '').trim()
+  if (currentName && !isPlaceholderFileName(currentName)) {
+    resolvedFileNames.set(item.id, currentName)
+  } else if (resolvedFileNames.has(item.id)) {
+    return { ...item, file_name: resolvedFileNames.get(item.id) }
+  }
+  return item
+})
 
 const formatSize = (bytes) => {
   if (!bytes) return '0 B'
@@ -171,7 +185,8 @@ const modal = reactive({
   confirmText: '',
   cancelText: 'Cancelar',
   type: 'primary',
-  action: null
+  action: null,
+  cancelAction: null
 })
 
 const openConfirm = (config) => {
@@ -181,11 +196,17 @@ const openConfirm = (config) => {
   modal.cancelText = config.cancelText !== undefined ? config.cancelText : 'Cancelar'
   modal.type = config.type || 'primary'
   modal.action = config.action
+  modal.cancelAction = config.cancelAction
   modal.show = true
 }
 
 const handleConfirm = () => {
   if (modal.action) modal.action()
+  modal.show = false
+}
+
+const handleCancel = () => {
+  if (modal.cancelAction) modal.cancelAction()
   modal.show = false
 }
 
@@ -248,7 +269,7 @@ const fetchDownloads = async () => {
   try {
     const data = await api('/api/downloads')
     if (Array.isArray(data)) {
-      downloads.value = [...data]
+      downloads.value = mergeDownloadNames(data)
       websocketConnected.value = true
     }
     error.value = ''
@@ -406,7 +427,7 @@ const checkForUpdates = async (force = false) => {
     version.value = data.current
     if (data.update_available) {
       updateInfo.value = data
-      if (!isUpdateForced.value && !modal.show) {
+      if (!isUpdateForced.value && !updatePostponed.value && !modal.show) {
         openConfirm({
           title: 'Nueva versión disponible',
           message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
@@ -416,6 +437,9 @@ const checkForUpdates = async (force = false) => {
           action: () => {
             isUpdateForced.value = true
             installUpdate()
+          },
+          cancelAction: () => {
+            updatePostponed.value = true
           }
         })
       }
@@ -433,8 +457,28 @@ const totalSpeed = computed(() => {
 })
 
 const wasSpaceCritical = ref(false)
-const activeDownloadIds = new Set()
-let downloadStatusesInitialized = false
+const trackedQueueIds = new Set()
+let queueNotificationArmed = false
+
+const isDownloadFinished = status => ['completed', 'skipped', 'failed', 'cancelled'].includes(status)
+const isDownloadSuccessful = status => ['completed', 'skipped'].includes(status)
+
+const maybeNotifyQueueFinished = currentDownloads => {
+  if (!queueNotificationArmed || trackedQueueIds.size === 0) return
+
+  const byID = new Map(currentDownloads.map(item => [item.id, item]))
+  const trackedItems = [...trackedQueueIds].map(id => byID.get(id)).filter(Boolean)
+  if (trackedItems.length !== trackedQueueIds.size || !trackedItems.every(item => isDownloadFinished(item.status))) return
+
+  const successful = trackedItems.every(item => isDownloadSuccessful(item.status))
+  trackedQueueIds.clear()
+  queueNotificationArmed = false
+
+  if (successful) {
+    new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log('Audio blocked', e))
+  }
+}
+
 watch(() => disk.value, (newDisk) => {
   if (!newDisk) return
   if (newDisk.projected_free < 0) {
@@ -458,25 +502,14 @@ watch(() => disk.value, (newDisk) => {
 const handleStateUpdate = (data) => {
   if (!data) return
   if (Array.isArray(data.downloads)) {
-    downloads.value = data.downloads
-    const newlyCompleted = downloadStatusesInitialized && data.downloads.some(d => {
-      if (['queued', 'downloading'].includes(d.status)) {
-        activeDownloadIds.add(d.id)
-        return false
+    downloads.value = mergeDownloadNames(data.downloads)
+    data.downloads.forEach(item => {
+      if (['queued', 'downloading'].includes(item.status)) {
+        trackedQueueIds.add(item.id)
+        queueNotificationArmed = true
       }
-      if (d.status === 'completed' && activeDownloadIds.has(d.id)) {
-        activeDownloadIds.delete(d.id)
-        return true
-      }
-      if (['failed', 'cancelled', 'paused', 'skipped'].includes(d.status)) {
-        activeDownloadIds.delete(d.id)
-      }
-      return false
     })
-    if (newlyCompleted) {
-      new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log("Audio blocked", e))
-    }
-    downloadStatusesInitialized = true
+    maybeNotifyQueueFinished(data.downloads)
   }
   if (Array.isArray(data.listener)) {
     listenerItems.value = data.listener
@@ -541,12 +574,13 @@ onMounted(async () => {
   connectWebSocket()
   timer = setInterval(fetchDownloads, 1000)
   setTimeout(() => checkForUpdates(false), 2000)
-  setInterval(() => checkForUpdates(false), 60 * 1000)
+  updateCheckTimer = setInterval(() => checkForUpdates(false), 5 * 60 * 1000)
 })
 
 onUnmounted(() => {
   disposed = true
   clearInterval(timer)
+  clearInterval(updateCheckTimer)
   clearTimeout(saveTimer)
   clearTimeout(reconnectTimer)
   socket?.close()
@@ -729,7 +763,7 @@ onUnmounted(() => {
           :cancelText="modal.cancelText"
           :type="modal.type"
           @confirm="handleConfirm"
-          @cancel="modal.show = false"
+          @cancel="handleCancel"
         />
 
         <footer>TelegramDL · Configuración persistida localmente en SQLite · {{ host }}</footer>

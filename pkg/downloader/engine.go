@@ -175,10 +175,10 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 		if sI != sJ {
 			return sI > sJ
 		}
-		if res[i].Progress != res[j].Progress {
-			return res[i].Progress > res[j].Progress
+		if res[i].MessageID != res[j].MessageID {
+			return res[i].MessageID < res[j].MessageID
 		}
-		return res[i].CreatedAt > res[j].CreatedAt
+		return res[i].ID < res[j].ID
 	})
 
 	return res
