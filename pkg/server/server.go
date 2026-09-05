@@ -42,6 +42,8 @@ type Server struct {
 	wsClients    map[*wsClient]bool
 	upgrader     websocket.Upgrader
 	httpServer   *http.Server
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 	latestRel    *updater.ReleaseInfo
 	cachedDisk   *downloader.DiskInfo
 	exitCallback func()
@@ -89,6 +91,7 @@ func NewServer(
 		},
 		exitCallback: exitCb,
 		mux:          http.NewServeMux(),
+		stopCh:       make(chan struct{}),
 	}
 
 	s.registerRoutes(s.mux)
@@ -156,6 +159,7 @@ func (s *Server) Start(port int) error {
 }
 
 func (s *Server) Stop() {
+	s.stopOnce.Do(func() { close(s.stopCh) })
 	if s.httpServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -307,6 +311,8 @@ func (s *Server) periodicBroadcastLoop() {
 
 	for {
 		select {
+		case <-s.stopCh:
+			return
 		case <-diskTicker.C:
 			s.mu.RLock()
 			folder := s.config.DownloadFolder

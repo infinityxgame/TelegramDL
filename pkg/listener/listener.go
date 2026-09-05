@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ type ListenerItem struct {
 	TotalStr  string  `json:"total_str"`
 	Status    string  `json:"status"` // "available"
 	UpdatedAt float64 `json:"updated_at"`
+	CreatedAt float64 `json:"created_at"`
 }
 
 type ListenerStateListener func(item ListenerItem)
@@ -76,6 +78,7 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 						TotalStr:  d.TotalStr,
 						Status:    d.Status,
 						UpdatedAt: d.UpdatedAt,
+						CreatedAt: d.CreatedAt,
 					}
 				}
 			}
@@ -85,6 +88,29 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 	// Conectar callback genérico en ClientManager
 	if cm != nil {
 		cm.SetMessageCallback(le.HandleMessage)
+	}
+	if eng != nil {
+		// Mantener la bandeja de multimedia sincronizada con el motor real de
+		// descargas después de pulsar "Descargar".
+		eng.OnStateChange(func(download storage.DownloadItem) {
+			if download.Source != "listener" {
+				return
+			}
+			le.mu.Lock()
+			item, exists := le.items[download.ID]
+			if exists {
+				item.Status = download.Status
+				item.UpdatedAt = download.UpdatedAt
+				if download.FileName != "" {
+					item.FileName = download.FileName
+				}
+				cp := *item
+				le.mu.Unlock()
+				le.notifyState(cp)
+				return
+			}
+			le.mu.Unlock()
+		})
 	}
 
 	return le
@@ -102,7 +128,10 @@ func (le *ListenerEngine) notifyState(item ListenerItem) {
 	le.mu.RUnlock()
 
 	for _, l := range listeners {
-		l(item)
+		go func(listener ListenerStateListener) {
+			defer func() { _ = recover() }()
+			listener(item)
+		}(l)
 	}
 }
 
@@ -160,6 +189,12 @@ func (le *ListenerEngine) GetItems() []ListenerItem {
 	for _, item := range le.items {
 		res = append(res, *item)
 	}
+	sort.SliceStable(res, func(i, j int) bool {
+		if res[i].CreatedAt != res[j].CreatedAt {
+			return res[i].CreatedAt < res[j].CreatedAt
+		}
+		return res[i].ID < res[j].ID
+	})
 	return res
 }
 
@@ -287,6 +322,7 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 			TotalStr:  config.FormatBytes(float64(mediaInfo.FileSize)),
 			Status:    "available",
 			UpdatedAt: now,
+			CreatedAt: now,
 		}
 
 		le.mu.Lock()

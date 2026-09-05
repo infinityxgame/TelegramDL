@@ -45,21 +45,22 @@ type AuthStatus struct {
 }
 
 type ClientManager struct {
-	apiID               int
-	apiHash             string
-	client              *telegram.Client
-	rawClient           *tg.Client
-	sessionPath         string
-	cancelRun           context.CancelFunc
-	runWg               sync.WaitGroup
-	mu                  sync.RWMutex
-	readyChan           chan struct{}
-	phoneCodeHash       string
-	pendingPhone        string
-	dispatcher          tg.UpdateDispatcher
-	channelAccessHashes map[int64]int64
-	userAccessHashes    map[int64]int64
-	onGenericMessage    func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
+	apiID                int
+	apiHash              string
+	client               *telegram.Client
+	rawClient            *tg.Client
+	sessionPath          string
+	cancelRun            context.CancelFunc
+	runWg                sync.WaitGroup
+	mu                   sync.RWMutex
+	readyChan            chan struct{}
+	phoneCodeHash        string
+	pendingPhone         string
+	dispatcher           tg.UpdateDispatcher
+	dispatcherRegistered bool
+	channelAccessHashes  map[int64]int64
+	userAccessHashes     map[int64]int64
+	onGenericMessage     func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
 }
 
 func NewClientManager() *ClientManager {
@@ -377,10 +378,12 @@ func (cm *ClientManager) Client() *telegram.Client {
 }
 
 func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
+	// Detener la sesión anterior antes de tomar el mutex. La goroutine de
+	// Telegram puede necesitarlo mientras termina.
+	cm.stopRunning()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-
-	cm.stopRunning()
 
 	apiIDStr = strings.TrimSpace(apiIDStr)
 	apiHash = strings.TrimSpace(apiHash)
@@ -400,67 +403,72 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.apiID = id
 	cm.apiHash = apiHash
 	cm.readyChan = make(chan struct{})
+	readyChan := cm.readyChan
 
-	// Configurar dispatcher de actualizaciones para mensajes normales (chats privados/grupos) y canales
-	cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
-		cm.cacheEntities(entities)
-		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+	// Registrar los handlers una sola vez. InitClient puede ejecutarse varias
+	// veces durante la autenticación o al cambiar credenciales.
+	if !cm.dispatcherRegistered {
+		cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
+			cm.cacheEntities(entities)
+			msg, ok := update.Message.(*tg.Message)
+			if !ok || msg.Out {
+				return nil
+			}
+			cm.mu.RLock()
+			cb := cm.onGenericMessage
+			cm.mu.RUnlock()
+			if cb != nil {
+				return cb(ctx, entities, msg)
+			}
 			return nil
-		}
-		cm.mu.RLock()
-		cb := cm.onGenericMessage
-		cm.mu.RUnlock()
-		if cb != nil {
-			return cb(ctx, entities, msg)
-		}
-		return nil
-	})
+		})
 
-	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
-		cm.cacheEntities(entities)
-		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+			cm.cacheEntities(entities)
+			msg, ok := update.Message.(*tg.Message)
+			if !ok || msg.Out {
+				return nil
+			}
+			cm.mu.RLock()
+			cb := cm.onGenericMessage
+			cm.mu.RUnlock()
+			if cb != nil {
+				return cb(ctx, entities, msg)
+			}
 			return nil
-		}
-		cm.mu.RLock()
-		cb := cm.onGenericMessage
-		cm.mu.RUnlock()
-		if cb != nil {
-			return cb(ctx, entities, msg)
-		}
-		return nil
-	})
+		})
 
-	cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
-		cm.cacheEntities(entities)
-		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
+			cm.cacheEntities(entities)
+			msg, ok := update.Message.(*tg.Message)
+			if !ok || msg.Out {
+				return nil
+			}
+			cm.mu.RLock()
+			cb := cm.onGenericMessage
+			cm.mu.RUnlock()
+			if cb != nil {
+				return cb(ctx, entities, msg)
+			}
 			return nil
-		}
-		cm.mu.RLock()
-		cb := cm.onGenericMessage
-		cm.mu.RUnlock()
-		if cb != nil {
-			return cb(ctx, entities, msg)
-		}
-		return nil
-	})
+		})
 
-	cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
-		cm.cacheEntities(entities)
-		msg, ok := update.Message.(*tg.Message)
-		if !ok || msg.Out {
+		cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
+			cm.cacheEntities(entities)
+			msg, ok := update.Message.(*tg.Message)
+			if !ok || msg.Out {
+				return nil
+			}
+			cm.mu.RLock()
+			cb := cm.onGenericMessage
+			cm.mu.RUnlock()
+			if cb != nil {
+				return cb(ctx, entities, msg)
+			}
 			return nil
-		}
-		cm.mu.RLock()
-		cb := cm.onGenericMessage
-		cm.mu.RUnlock()
-		if cb != nil {
-			return cb(ctx, entities, msg)
-		}
-		return nil
-	})
+		})
+		cm.dispatcherRegistered = true
+	}
 
 	gaps := updates.New(updates.Config{
 		Handler: cm.dispatcher,
@@ -490,10 +498,10 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	cm.runWg.Add(1)
 	go func() {
 		defer cm.runWg.Done()
-		log.Printf("[TG CLIENT] Iniciando conexión con Telegram MTProto (API_ID: %d)...", cm.apiID)
+		log.Printf("[TG CLIENT] Iniciando conexión con Telegram MTProto (API_ID: %d)...", id)
 		err := client.Run(ctx, func(runCtx context.Context) error {
 			readyOnce.Do(func() {
-				close(cm.readyChan)
+				close(readyChan)
 				go func() {
 					time.Sleep(300 * time.Millisecond)
 					_ = cm.FetchDialogs(context.Background())
@@ -522,13 +530,21 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 }
 
 func (cm *ClientManager) stopRunning() {
-	if cm.cancelRun != nil {
-		cm.cancelRun()
-		cm.cancelRun = nil
+	cm.mu.Lock()
+	cancel := cm.cancelRun
+	cm.cancelRun = nil
+	cm.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 	cm.runWg.Wait()
+
+	cm.mu.Lock()
 	cm.client = nil
 	cm.rawClient = nil
+	cm.readyChan = nil
+	cm.mu.Unlock()
 }
 
 func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
@@ -719,10 +735,8 @@ func (cm *ClientManager) Logout(ctx context.Context) error {
 		_, _ = client.API().AuthLogOut(ctx)
 	}
 
-	cm.mu.Lock()
 	cm.stopRunning()
 	_ = os.Remove(cm.sessionPath)
-	cm.mu.Unlock()
 
 	return nil
 }

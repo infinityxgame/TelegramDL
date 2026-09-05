@@ -108,7 +108,7 @@ func DefaultConfig() Config {
 	return Config{
 		MaxConcurrentDownloads: 3,
 		ParallelChunks:         true,
-		ChunkWorkers:           4,
+		ChunkWorkers:           8,
 		DownloadFolder:         filepath.Join(BaseDir, "descargas"),
 		ColorID:                nil,
 		SpeedLimit: SpeedLimit{

@@ -88,7 +88,7 @@ const authStatus = ref({
 const settings = reactive({
   max_concurrent_downloads: 2,
   parallel_chunks: true,
-  chunk_workers: 4,
+  chunk_workers: 8,
   speed_limit: { value: 0, unit: 'MB' },
   color_id: 5,
   download_folder: ''
@@ -114,7 +114,6 @@ let disposed = false
 let syncingSettings = false
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
-const wasDownloading = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
 const isUpdateForced = ref(false)
@@ -434,6 +433,8 @@ const totalSpeed = computed(() => {
 })
 
 const wasSpaceCritical = ref(false)
+const activeDownloadIds = new Set()
+let downloadStatusesInitialized = false
 watch(() => disk.value, (newDisk) => {
   if (!newDisk) return
   if (newDisk.projected_free < 0) {
@@ -458,11 +459,24 @@ const handleStateUpdate = (data) => {
   if (!data) return
   if (Array.isArray(data.downloads)) {
     downloads.value = data.downloads
-    const isDownloading = data.downloads.some(d => ['downloading', 'queued'].includes(d.status))
-    if (wasDownloading.value && !isDownloading && data.downloads.length > 0) {
+    const newlyCompleted = downloadStatusesInitialized && data.downloads.some(d => {
+      if (['queued', 'downloading'].includes(d.status)) {
+        activeDownloadIds.add(d.id)
+        return false
+      }
+      if (d.status === 'completed' && activeDownloadIds.has(d.id)) {
+        activeDownloadIds.delete(d.id)
+        return true
+      }
+      if (['failed', 'cancelled', 'paused', 'skipped'].includes(d.status)) {
+        activeDownloadIds.delete(d.id)
+      }
+      return false
+    })
+    if (newlyCompleted) {
       new Audio(`${import.meta.env.BASE_URL}notification.wav`).play().catch(e => console.log("Audio blocked", e))
     }
-    wasDownloading.value = isDownloading
+    downloadStatusesInitialized = true
   }
   if (Array.isArray(data.listener)) {
     listenerItems.value = data.listener

@@ -40,6 +40,10 @@ type Engine struct {
 	lastBroadcastTimes map[string]time.Time
 	lastSaveTimes      map[string]time.Time
 	itemSpeeds         map[string]float64
+	seenChunks         map[string]map[int64]struct{}
+	lastProgressBytes  map[string]int64
+	lastProgressTimes  map[string]time.Time
+	persistCh          chan storage.DownloadItem
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -62,6 +66,13 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		lastBroadcastTimes: make(map[string]time.Time),
 		lastSaveTimes:      make(map[string]time.Time),
 		itemSpeeds:         make(map[string]float64),
+		seenChunks:         make(map[string]map[int64]struct{}),
+		lastProgressBytes:  make(map[string]int64),
+		lastProgressTimes:  make(map[string]time.Time),
+		persistCh:          make(chan storage.DownloadItem, 256),
+	}
+	if st != nil {
+		go eng.persistenceLoop()
 	}
 
 	// Cargar descargas previas desde SQLite
@@ -82,6 +93,26 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 	return eng
 }
 
+func (e *Engine) persistenceLoop() {
+	for item := range e.persistCh {
+		if e.storage != nil {
+			_ = e.storage.SaveDownload(item)
+		}
+	}
+}
+
+func (e *Engine) enqueuePersist(item storage.DownloadItem) {
+	if e.storage == nil {
+		return
+	}
+	select {
+	case e.persistCh <- item:
+	default:
+		// El estado actual permanece en memoria y el siguiente tick lo
+		// volverá a persistir; nunca frenamos una escritura de Telegram.
+	}
+}
+
 func (e *Engine) OnStateChange(listener DownloadStateListener) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -94,7 +125,11 @@ func (e *Engine) notifyState(item storage.DownloadItem) {
 	e.mu.RUnlock()
 
 	for _, l := range listeners {
-		l(item)
+		// La persistencia y la UI no deben detener el camino de descarga.
+		go func(listener DownloadStateListener) {
+			defer func() { _ = recover() }()
+			listener(item)
+		}(l)
 	}
 }
 
@@ -191,8 +226,10 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	item, ok := e.downloads[id]
 	if !ok {
 		e.mu.Unlock()
-		_ = e.storage.DeleteDownload(id)
-		_ = e.storage.DeleteChunks(id)
+		if e.storage != nil {
+			_ = e.storage.DeleteDownload(id)
+			_ = e.storage.DeleteChunks(id)
+		}
 		return nil
 	}
 
@@ -205,8 +242,10 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	delete(e.downloads, id)
 	e.mu.Unlock()
 
-	_ = e.storage.DeleteDownload(id)
-	_ = e.storage.DeleteChunks(id)
+	if e.storage != nil {
+		_ = e.storage.DeleteDownload(id)
+		_ = e.storage.DeleteChunks(id)
+	}
 
 	if deleteFile && filePath != "" {
 		_ = os.Remove(filePath)
@@ -218,10 +257,9 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 
 func (e *Engine) CancelDownload(id string) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	item, ok := e.downloads[id]
 	if !ok {
+		e.mu.Unlock()
 		return errors.New("descarga no encontrada")
 	}
 
@@ -233,8 +271,12 @@ func (e *Engine) CancelDownload(id string) error {
 	item.Status = "cancelled"
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
-	_ = e.storage.SaveDownload(*item)
-	e.notifyState(*item)
+	cp := *item
+	e.mu.Unlock()
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(cp)
+	}
+	e.notifyState(cp)
 	return nil
 }
 
@@ -260,9 +302,12 @@ func (e *Engine) PauseDownload(id string) error {
 	item.Status = "paused"
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
-	_ = e.storage.SaveDownload(*item)
-	e.notifyState(*item)
+	cp := *item
 	e.mu.Unlock()
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(cp)
+	}
+	e.notifyState(cp)
 
 	return nil
 }
@@ -283,10 +328,17 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	delete(e.pauseStates, id)
 	item.Status = "queued"
 	item.Speed = "0 B/s"
+	item.CurrentBytes = 0
+	item.CurrentStr = "0 B"
+	item.Progress = 0
 	item.UpdatedAt = float64(time.Now().Unix())
-	_ = e.storage.SaveDownload(*item)
-	e.notifyState(*item)
+	cp := *item
 	e.mu.Unlock()
+	if e.storage != nil {
+		_ = e.storage.DeleteChunks(id)
+		_ = e.storage.SaveDownload(cp)
+	}
+	e.notifyState(cp)
 
 	go e.startDownloadJob(id)
 	return nil
@@ -302,9 +354,12 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	item.UpdatedAt = item.CreatedAt
 
 	e.downloads[item.ID] = &item
-	_ = e.storage.SaveDownload(item)
-	e.notifyState(item)
+	cp := item
 	e.mu.Unlock()
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(item)
+	}
+	e.notifyState(cp)
 
 	go e.startDownloadJob(item.ID)
 	return item.ID
@@ -348,15 +403,14 @@ type progressWriterAt struct {
 func (pw *progressWriterAt) WriteAt(p []byte, off int64) (int, error) {
 	n, err := pw.file.WriteAt(p, off)
 	if n > 0 {
-		chunkIndex := int(off / (512 * 1024))
-		_ = pw.engine.storage.AddChunk(pw.itemID, chunkIndex)
-		pw.engine.onProgress(pw.itemID, int64(n), pw.total)
+		pw.engine.onProgress(pw.itemID, int64(n), pw.total, off)
 		pw.engine.throttle(int64(n))
 	}
 	return n, err
 }
 
-func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes int64) {
+func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64, offset int64) {
+	chunkAdded := false
 	e.mu.Lock()
 	item, ok := e.downloads[itemID]
 	if !ok || item.Status != "downloading" {
@@ -365,25 +419,50 @@ func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes
 	}
 
 	now := time.Now()
-	item.CurrentBytes += bytesJustDownloaded
+	const partSize int64 = 512 * 1024
+	chunkIndex := offset / partSize
+	chunks := e.seenChunks[itemID]
+	if chunks == nil {
+		chunks = make(map[int64]struct{})
+		e.seenChunks[itemID] = chunks
+	}
+	newBytes := bytesWritten
+	if _, seen := chunks[chunkIndex]; seen {
+		newBytes = 0
+	} else {
+		chunks[chunkIndex] = struct{}{}
+		chunkAdded = true
+	}
+	item.CurrentBytes += newBytes
 	if totalBytes > 0 {
 		item.TotalBytes = totalBytes
-		item.Progress = math.Min(100.0, float64(item.CurrentBytes)/float64(totalBytes)*100.0)
+		// El 100% se reserva para cuando Parallel() termina sin errores y el
+		// archivo temporal ya fue finalizado correctamente.
+		item.Progress = math.Min(99.9, float64(item.CurrentBytes)/float64(totalBytes)*100.0)
 		item.TotalStr = config.FormatBytes(float64(totalBytes))
 	}
 	item.CurrentStr = config.FormatBytes(float64(item.CurrentBytes))
 	item.UpdatedAt = float64(now.Unix())
 
-	startTime, hasStart := e.startTimes[itemID]
-	if !hasStart {
-		startTime = now
-		e.startTimes[itemID] = startTime
+	lastTime := e.lastProgressTimes[itemID]
+	lastBytes := e.lastProgressBytes[itemID]
+	if !lastTime.IsZero() && newBytes > 0 {
+		elapsed := now.Sub(lastTime).Seconds()
+		bytesDelta := item.CurrentBytes - lastBytes
+		if elapsed > 0 && bytesDelta >= 0 {
+			instantSpeed := float64(bytesDelta) / elapsed
+			// Suavizado exponencial basado en tiempo: las ráfagas de varios
+			// workers no generan picos artificiales de velocidad.
+			const smoothingWindow = 2.0
+			alpha := 1 - math.Exp(-elapsed/smoothingWindow)
+			speedVal := e.itemSpeeds[itemID] + alpha*(instantSpeed-e.itemSpeeds[itemID])
+			item.Speed = config.FormatBytes(speedVal) + "/s"
+			e.itemSpeeds[itemID] = speedVal
+		}
 	}
-	elapsed := now.Sub(startTime).Seconds()
-	if elapsed > 0.05 {
-		speedVal := float64(item.CurrentBytes) / elapsed
-		item.Speed = config.FormatBytes(speedVal) + "/s"
-		e.itemSpeeds[itemID] = speedVal
+	if newBytes > 0 {
+		e.lastProgressTimes[itemID] = now
+		e.lastProgressBytes[itemID] = item.CurrentBytes
 	}
 
 	lastBroadcast, hasBroadcast := e.lastBroadcastTimes[itemID]
@@ -400,9 +479,12 @@ func (e *Engine) onProgress(itemID string, bytesJustDownloaded int64, totalBytes
 
 	cp := *item
 	e.mu.Unlock()
+	if chunkAdded && e.storage != nil {
+		go func() { _ = e.storage.AddChunk(itemID, int(chunkIndex)) }()
+	}
 
 	if shouldSave && e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		e.enqueuePersist(cp)
 	}
 
 	if shouldBroadcast {
@@ -427,12 +509,16 @@ func (e *Engine) startDownloadJob(itemID string) {
 	e.cancelFuncs[itemID] = cancel
 	e.startTimes[itemID] = time.Now()
 	e.lastBroadcastTimes[itemID] = time.Now()
+	e.seenChunks[itemID] = make(map[int64]struct{})
+	delete(e.lastProgressBytes, itemID)
+	delete(e.lastProgressTimes, itemID)
 	item.Status = "downloading"
 	item.Speed = "0 B/s"
 	e.itemSpeeds[itemID] = 0
 	log.Printf("[DOWNLOAD] Iniciando descarga activa para item %s (ChatID: %d, MsgID: %d)", itemID, item.ChatID, item.MessageID)
-	e.notifyState(*item)
+	cp := *item
 	e.mu.Unlock()
+	e.notifyState(cp)
 
 	defer func() {
 		e.mu.Lock()
@@ -441,16 +527,19 @@ func (e *Engine) startDownloadJob(itemID string) {
 		delete(e.lastBroadcastTimes, itemID)
 		delete(e.lastSaveTimes, itemID)
 		delete(e.itemSpeeds, itemID)
+		delete(e.seenChunks, itemID)
+		delete(e.lastProgressBytes, itemID)
+		delete(e.lastProgressTimes, itemID)
 		e.mu.Unlock()
 	}()
 
 	err := e.executeDownload(ctx, itemID)
 	log.Printf("[DOWNLOAD] Tarea %s finalizó con resultado: err=%v", itemID, err)
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	curItem, ok := e.downloads[itemID]
 	if !ok {
+		e.mu.Unlock()
 		return
 	}
 
@@ -470,10 +559,12 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	curItem.UpdatedAt = float64(time.Now().Unix())
+	cp = *curItem
+	e.mu.Unlock()
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(*curItem)
+		_ = e.storage.SaveDownload(cp)
 	}
-	e.notifyState(*curItem)
+	e.notifyState(cp)
 }
 
 func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
@@ -483,6 +574,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	parallelChunks := e.config.ParallelChunks
 	chunkWorkers := e.config.ChunkWorkers
 	e.mu.RUnlock()
+	if item == nil {
+		return errors.New("descarga no encontrada")
+	}
 
 	if err := e.clientMgr.WaitReady(ctx); err != nil {
 		log.Printf("[DOWNLOAD ERROR] Cliente de Telegram no listo para item %s: %v", itemID, err)
@@ -552,7 +646,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	defer tempFile.Close()
 
 	if mediaInfo.FileSize > 0 {
-		_ = tempFile.Truncate(mediaInfo.FileSize)
+		if err := tempFile.Truncate(mediaInfo.FileSize); err != nil {
+			return fmt.Errorf("error al preparar archivo temporal: %w", err)
+		}
 	}
 
 	threads := 1
@@ -575,14 +671,24 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		return err
 	}
 
-	_ = tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return fmt.Errorf("error al cerrar archivo temporal: %w", err)
+	}
 	if err := os.Rename(tempPath, finalPath); err != nil {
-		// Fallback por si hay bloqueo
-		_ = copyFile(tempPath, finalPath)
-		_ = os.Remove(tempPath)
+		// Fallback por si el sistema mantiene abierto el temporal.
+		if copyErr := copyFile(tempPath, finalPath); copyErr != nil {
+			return fmt.Errorf("error al finalizar archivo: rename: %v; copia: %w", err, copyErr)
+		}
+		if removeErr := os.Remove(tempPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("archivo descargado pero no se pudo limpiar el temporal: %w", removeErr)
+		}
 	}
 
-	_ = e.storage.DeleteChunks(itemID)
+	if e.storage != nil {
+		if err := e.storage.DeleteChunks(itemID); err != nil {
+			return fmt.Errorf("error al limpiar fragmentos: %w", err)
+		}
+	}
 	return nil
 }
 
