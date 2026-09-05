@@ -537,6 +537,10 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	return nil
 }
 
+func (cm *ClientManager) Stop() {
+	cm.stopRunning()
+}
+
 func (cm *ClientManager) stopRunning() {
 	cm.mu.Lock()
 	cancel := cm.cancelRun

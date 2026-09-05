@@ -105,6 +105,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.clientMgr != nil {
+		a.clientMgr.Stop()
+	}
 	if a.downloader != nil {
 		_ = a.downloader.Shutdown(ctx)
 	}

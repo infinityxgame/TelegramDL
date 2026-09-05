@@ -116,7 +116,7 @@ func runDesktopMode() {
 }
 
 func runServerMode() int {
-	app := NewApp(nil)
+	app := NewApp(assets)
 	if app.server == nil {
 		fmt.Fprintln(os.Stderr, "Error: no se pudo inicializar el servidor")
 		return 1
@@ -125,11 +125,38 @@ func runServerMode() int {
 	fmt.Printf("Servidor iniciado en http://%s:%d\n", config.GetServerHost(), config.GetServerPort())
 	fmt.Println("Modo servidor activo. Presiona Ctrl+C para detenerlo.")
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-	<-signals
-	signal.Stop(signals)
-	app.shutdown(context.Background())
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	// En Windows, forzamos la captura de Ctrl+C mediante la API nativa
+	if runtime.GOOS == "windows" {
+		kernel32 := syscall.NewLazyDLL("kernel32.dll")
+		setHandler := kernel32.NewProc("SetConsoleCtrlHandler")
+		cb := syscall.NewCallback(func(ctrlType uint32) uintptr {
+			// ctrlType 0 es CTRL_C_EVENT
+			sigCh <- os.Interrupt
+			return 1
+		})
+		_, _, _ = setHandler.Call(cb, 1)
+	}
+
+	// Esperar la señal
+	sig := <-sigCh
+	fmt.Printf("\n[SISTEMA] Cerrando TelegramDL (Señal: %v)...\n", sig)
+
+	// Watchdog de seguridad para evitar que se quede en segundo plano
+	go func() {
+		time.Sleep(5 * time.Second)
+		fmt.Println("[ALERTA] Apagado forzado por tiempo excedido.")
+		os.Exit(1)
+	}()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	app.shutdown(shutdownCtx)
+
+	fmt.Println("[SISTEMA] TelegramDL finalizado.")
+	_ = os.Stdout.Sync()
 	return 0
 }
 
