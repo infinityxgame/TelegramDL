@@ -19,7 +19,7 @@ jobs:
           - name: Windows
             os: windows-latest
             platform: windows/amd64
-            archive: TGDown-Windows-${{ github.ref_name }}.exe
+            archive: TGDown-Windows-${{ github.ref_name }}.zip
           - name: Linux x86_64
             os: ubuntu-22.04
             platform: linux/amd64
@@ -72,17 +72,22 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
+            mkdir -p dist_win
+            BIN_PATH=""
             if [ -f "build/bin/TGDown.exe" ]; then
-              cp "build/bin/TGDown.exe" "${{ matrix.archive }}"
+              BIN_PATH="build/bin/TGDown.exe"
             elif [ -f "build/bin/TGDown" ]; then
-              cp "build/bin/TGDown" "${{ matrix.archive }}"
+              BIN_PATH="build/bin/TGDown"
             elif [ -f "build/bin/tgdown.exe" ]; then
-              cp "build/bin/tgdown.exe" "${{ matrix.archive }}"
+              BIN_PATH="build/bin/tgdown.exe"
             else
               echo "Error: Binary not found in build/bin"
               ls -la build/bin
               exit 1
             fi
+            cp "$BIN_PATH" dist_win/TelegramDL.exe
+            cp "$BIN_PATH" dist_win/tgdown.exe
+            powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path 'dist_win/*' -DestinationPath '${{ matrix.archive }}' -Force"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             tar -czf "${{ matrix.archive }}" -C build/bin TGDown
           else
