@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -57,23 +56,7 @@ func hasArgument(target string) bool {
 }
 
 func setupConsole() {
-	if runtime.GOOS == "windows" {
-		kernel32 := syscall.NewLazyDLL("kernel32.dll")
-		attachConsole := kernel32.NewProc("AttachConsole")
-		const ATTACH_PARENT_PROCESS = ^uint32(0)
-		r, _, _ := attachConsole.Call(uintptr(ATTACH_PARENT_PROCESS))
-		if r != 0 {
-			if h, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); err == nil {
-				os.Stdout = os.NewFile(uintptr(h), "/dev/stdout")
-			}
-			if h, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE); err == nil {
-				os.Stderr = os.NewFile(uintptr(h), "/dev/stderr")
-			}
-			if h, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE); err == nil {
-				os.Stdin = os.NewFile(uintptr(h), "/dev/stdin")
-			}
-		}
-	}
+	// Implementación movida a sys_windows.go y sys_others.go
 }
 
 func printUsage() {
@@ -129,38 +112,12 @@ func runServerMode() int {
 	fmt.Println("Modo servidor activo. Presiona Ctrl+C para detenerlo.")
 
 	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt)
 
-	// En Windows, forzamos la captura de Ctrl+C mediante la API nativa
-	if runtime.GOOS == "windows" {
-		kernel32 := syscall.NewLazyDLL("kernel32.dll")
-		setHandler := kernel32.NewProc("SetConsoleCtrlHandler")
-		cb := syscall.NewCallback(func(ctrlType uint32) uintptr {
-			sigCh <- os.Interrupt
-			return 1
-		})
-		_, _, _ = setHandler.Call(cb, 1)
+	// Manejo de consola multiplataforma
+	registerConsoleCtrlHandler(sigCh)
 
-		// Detectar pérdida de consola o señales de interrupción a través de Stdin
-		go func() {
-			buf := make([]byte, 1)
-			for {
-				n, err := os.Stdin.Read(buf)
-				if err != nil {
-					// Si Stdin falla, es que la consola se ha cerrado
-					sigCh <- os.Interrupt
-					return
-				}
-				// Si detectamos específicamente Ctrl+C (ASCII 3) en el buffer de entrada
-				if n > 0 && buf[0] == 3 {
-					sigCh <- os.Interrupt
-					return
-				}
-			}
-		}()
-	}
-
-	// Esperar la señal (Ctrl+C en CMD o ENTER/Cierre en PowerShell)
+	// Esperar la señal
 	sig := <-sigCh
 	fmt.Printf("\n[SISTEMA] Cerrando TelegramDL (Señal: %v)...\n", sig)
 
