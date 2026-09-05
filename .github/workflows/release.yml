@@ -72,7 +72,17 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            powershell -NoProfile -NonInteractive -Command "Copy-Item -LiteralPath 'build/bin/TGDown.exe' -Destination '${{ matrix.archive }}' -Force"
+            if [ -f "build/bin/TGDown.exe" ]; then
+              cp "build/bin/TGDown.exe" "${{ matrix.archive }}"
+            elif [ -f "build/bin/TGDown" ]; then
+              cp "build/bin/TGDown" "${{ matrix.archive }}"
+            elif [ -f "build/bin/tgdown.exe" ]; then
+              cp "build/bin/tgdown.exe" "${{ matrix.archive }}"
+            else
+              echo "Error: Binary not found in build/bin"
+              ls -la build/bin
+              exit 1
+            fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             tar -czf "${{ matrix.archive }}" -C build/bin TGDown
           else
