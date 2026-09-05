@@ -83,6 +83,20 @@ Wails ejecuta la compilación del panel y del backend según la configuración d
 
 `dashboard/dist/` es generado por Vite y debe existir para que `main.go` pueda incrustar el panel durante la compilación; `build/`, `dist/` y `dashboard/node_modules/` son artefactos locales prescindibles.
 
+### Modos de ejecución desde terminal
+
+El ejecutable acepta estos parámetros:
+
+```powershell
+TGDown.exe --server
+TGDown.exe --update
+TGDown.exe --help
+```
+
+- `--server` inicia el servidor HTTP/WebSocket sin abrir la ventana de Wails y permanece activo hasta recibir `Ctrl+C`.
+- `--update` busca e instala la última versión compatible con el sistema operativo.
+- `--help` muestra los parámetros disponibles.
+
 ## Pruebas y validación
 
 ```powershell
