@@ -73,13 +73,15 @@ Compilar el panel por separado:
 npm --prefix dashboard run build
 ```
 
-Compilar la aplicación de escritorio:
+Compilar la aplicación completa de escritorio con Wails:
 
 ```powershell
 wails build
 ```
 
-El ejecutable se genera dentro de `build/bin/`. `dashboard/dist/` es generado por Vite y debe existir para que `main.go` pueda incrustar el panel durante la compilación; `build/`, `dist/` y `dashboard/node_modules/` son artefactos locales prescindibles.
+Wails ejecuta la compilación del panel y del backend según la configuración de `wails.json`. El ejecutable se genera dentro de `build/bin/`. Este proyecto no utiliza PyInstaller.
+
+`dashboard/dist/` es generado por Vite y debe existir para que `main.go` pueda incrustar el panel durante la compilación; `build/`, `dist/` y `dashboard/node_modules/` son artefactos locales prescindibles.
 
 ## Pruebas y validación
 
@@ -89,7 +91,7 @@ go vet ./...
 npm --prefix dashboard run build
 ```
 
-Las pruebas cubren el parser de enlaces, almacenamiento, listener, servidor y descarga/reanudación por fragmentos.
+La validación del proyecto se realiza mediante la compilación de Go, `go vet` y la compilación del panel.
 
 ## Arquitectura
 
