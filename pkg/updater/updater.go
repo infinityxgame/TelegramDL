@@ -248,7 +248,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 			return
 		}
 		if strings.HasSuffix(strings.ToLower(archivePath), ".exe") {
-			executablePath := filepath.Join(u.tempDir, "tgdown.exe")
+			executablePath := filepath.Join(u.tempDir, "TelegramDL.exe")
 			if err := os.Rename(archivePath, executablePath); err != nil {
 				u.setProgress("error: "+err.Error(), 0, 0)
 				return
@@ -329,7 +329,7 @@ rm "$0"
 func (u *AppUpdater) createFinishScript(srcPath string) {
 	execPath, err := os.Executable()
 	if err != nil {
-		execPath = filepath.Join(u.baseDir, "tgdown.exe")
+		execPath = filepath.Join(u.baseDir, "TelegramDL.exe")
 	}
 	exeName := filepath.Base(execPath)
 

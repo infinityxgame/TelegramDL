@@ -86,7 +86,6 @@ jobs:
               exit 1
             fi
             cp "$BIN_PATH" dist_win/TelegramDL.exe
-            cp "$BIN_PATH" dist_win/tgdown.exe
             powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path 'dist_win/*' -DestinationPath '${{ matrix.archive }}' -Force"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             tar -czf "${{ matrix.archive }}" -C build/bin TGDown
