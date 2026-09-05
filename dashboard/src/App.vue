@@ -467,8 +467,15 @@ const maybeNotifyQueueFinished = currentDownloads => {
   if (!queueNotificationArmed || trackedQueueIds.size === 0) return
 
   const byID = new Map(currentDownloads.map(item => [item.id, item]))
+  for (const id of trackedQueueIds) {
+    if (!byID.has(id)) trackedQueueIds.delete(id)
+  }
   const trackedItems = [...trackedQueueIds].map(id => byID.get(id)).filter(Boolean)
-  if (trackedItems.length !== trackedQueueIds.size || !trackedItems.every(item => isDownloadFinished(item.status))) return
+  if (trackedItems.length === 0) {
+    queueNotificationArmed = false
+    return
+  }
+  if (!trackedItems.every(item => isDownloadFinished(item.status))) return
 
   const successful = trackedItems.every(item => isDownloadSuccessful(item.status))
   trackedQueueIds.clear()

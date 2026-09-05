@@ -270,6 +270,17 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	return nil
 }
 
+func (e *Engine) discardDownload(id string) {
+	e.mu.Lock()
+	delete(e.downloads, id)
+	e.mu.Unlock()
+
+	if e.storage != nil {
+		_ = e.storage.DeleteDownload(id)
+		_ = e.storage.DeleteChunks(id)
+	}
+}
+
 func (e *Engine) CancelDownload(id string) error {
 	e.mu.Lock()
 	item, ok := e.downloads[id]
@@ -547,6 +558,11 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 	err := e.executeDownload(ctx, itemID)
 	log.Printf("[DOWNLOAD] Tarea %s finalizó con resultado: err=%v", itemID, err)
+	if err != nil && strings.Contains(err.Error(), "mensaje no encontrado en Telegram") {
+		log.Printf("[DOWNLOAD] Omitiendo item %s porque el mensaje %d no existe", itemID, item.MessageID)
+		e.discardDownload(itemID)
+		return
+	}
 	e.mu.Lock()
 
 	curItem, ok := e.downloads[itemID]
