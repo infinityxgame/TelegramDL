@@ -277,8 +277,7 @@ onUnmounted(() => {
             <label class="filter-tag f-stickers" :class="{ active: chat.f_stickers }"><input type="checkbox" :checked="chat.f_stickers" :disabled="saving" @change="toggleFilter(chat, 'f_stickers')"><span>Stickers</span></label>
           </div>
         </div>
-        <button class="save-button listener-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Guardar chats' }}</button>
-        <small class=".save-hint">Los nombres y reglas se guardan en el servidor.</small></section>
+        <small class="save-hint">Los nombres y reglas se guardan automáticamente.</small></section>
       <section class="panel listener-feed">
         <div class="panel-heading">
           <div>
