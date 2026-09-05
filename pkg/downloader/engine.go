@@ -113,6 +113,21 @@ func (e *Engine) enqueuePersist(item storage.DownloadItem) {
 	}
 }
 
+func (e *Engine) persistSeenChunks(itemID string) {
+	if e.storage == nil {
+		return
+	}
+	e.mu.RLock()
+	chunks := make([]int64, 0, len(e.seenChunks[itemID]))
+	for index := range e.seenChunks[itemID] {
+		chunks = append(chunks, index)
+	}
+	e.mu.RUnlock()
+	for _, index := range chunks {
+		_ = e.storage.AddChunk(itemID, int(index))
+	}
+}
+
 func (e *Engine) OnStateChange(listener DownloadStateListener) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -273,6 +288,7 @@ func (e *Engine) CancelDownload(id string) error {
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
 	e.mu.Unlock()
+	e.persistSeenChunks(id)
 	if e.storage != nil {
 		_ = e.storage.SaveDownload(cp)
 	}
@@ -304,6 +320,7 @@ func (e *Engine) PauseDownload(id string) error {
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
 	e.mu.Unlock()
+	e.persistSeenChunks(id)
 	if e.storage != nil {
 		_ = e.storage.SaveDownload(cp)
 	}
@@ -328,14 +345,10 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	delete(e.pauseStates, id)
 	item.Status = "queued"
 	item.Speed = "0 B/s"
-	item.CurrentBytes = 0
-	item.CurrentStr = "0 B"
-	item.Progress = 0
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
 	e.mu.Unlock()
 	if e.storage != nil {
-		_ = e.storage.DeleteChunks(id)
 		_ = e.storage.SaveDownload(cp)
 	}
 	e.notifyState(cp)
@@ -419,8 +432,7 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 	}
 
 	now := time.Now()
-	const partSize int64 = 512 * 1024
-	chunkIndex := offset / partSize
+	chunkIndex := offset / downloadPartSize
 	chunks := e.seenChunks[itemID]
 	if chunks == nil {
 		chunks = make(map[int64]struct{})
@@ -645,19 +657,67 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	}
 	defer tempFile.Close()
 
+	resumeChunks := make(map[int64]struct{})
+	if e.storage != nil {
+		if savedChunks, chunksErr := e.storage.Chunks(itemID); chunksErr == nil {
+			for index := range savedChunks {
+				resumeChunks[int64(index)] = struct{}{}
+			}
+		}
+	}
+	if item.TotalBytes > 0 && mediaInfo.FileSize > 0 && item.TotalBytes != mediaInfo.FileSize {
+		// El mensaje puede haber sido editado o sustituido desde la última
+		// ejecución; los offsets anteriores ya no son confiables.
+		resumeChunks = make(map[int64]struct{})
+		if e.storage != nil {
+			_ = e.storage.DeleteChunks(itemID)
+		}
+	}
+	if info, statErr := tempFile.Stat(); statErr != nil || mediaInfo.FileSize <= 0 || info.Size() != mediaInfo.FileSize {
+		// Un temporal incompleto no puede reutilizarse de forma segura: sus
+		// offsets persistidos podrían pertenecer a otra descarga.
+		resumeChunks = make(map[int64]struct{})
+		if e.storage != nil {
+			_ = e.storage.DeleteChunks(itemID)
+		}
+	}
+
 	if mediaInfo.FileSize > 0 {
 		if err := tempFile.Truncate(mediaInfo.FileSize); err != nil {
 			return fmt.Errorf("error al preparar archivo temporal: %w", err)
 		}
 	}
 
+	// Reconstruir el progreso desde los offsets confirmados, nunca desde el
+	// número de escrituras recibidas.
+	var resumedBytes int64
+	for index := range resumeChunks {
+		offset := index * downloadPartSize
+		if offset < mediaInfo.FileSize {
+			resumedBytes += minInt64(downloadPartSize, mediaInfo.FileSize-offset)
+		}
+	}
+	e.mu.Lock()
+	if current, exists := e.downloads[itemID]; exists {
+		current.CurrentBytes = resumedBytes
+		current.CurrentStr = config.FormatBytes(float64(resumedBytes))
+		if mediaInfo.FileSize > 0 {
+			current.Progress = float64(resumedBytes) / float64(mediaInfo.FileSize) * 100
+		}
+	}
+	seen := make(map[int64]struct{}, len(resumeChunks))
+	for index := range resumeChunks {
+		seen[index] = struct{}{}
+	}
+	e.seenChunks[itemID] = seen
+	e.lastProgressBytes[itemID] = resumedBytes
+	e.lastProgressTimes[itemID] = time.Now()
+	e.mu.Unlock()
+
 	threads := 1
 	if parallelChunks && chunkWorkers > 1 {
 		threads = chunkWorkers
 	}
-
-	dl := tdDownloader.NewDownloader().WithPartSize(512 * 1024)
-	builder := dl.Download(rawClient, mediaInfo.Location).WithThreads(threads)
 
 	writer := &progressWriterAt{
 		file:   tempFile,
@@ -666,7 +726,13 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		total:  mediaInfo.FileSize,
 	}
 
-	_, err = builder.Parallel(ctx, writer)
+	if len(resumeChunks) > 0 {
+		err = downloadMissingParts(ctx, rawClient, mediaInfo.Location, writer, mediaInfo.FileSize, threads, resumeChunks)
+	} else {
+		dl := tdDownloader.NewDownloader().WithPartSize(int(downloadPartSize))
+		builder := dl.Download(rawClient, mediaInfo.Location).WithThreads(threads)
+		_, err = builder.Parallel(ctx, writer)
+	}
 	if err != nil {
 		return err
 	}
@@ -819,6 +885,13 @@ func strconvParse(s string) (int64, error) {
 	var n int64
 	_, err := fmt.Sscanf(s, "%d", &n)
 	return n, err
+}
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func copyFile(src, dst string) error {
