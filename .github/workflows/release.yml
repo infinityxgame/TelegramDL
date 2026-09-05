@@ -19,7 +19,7 @@ jobs:
           - name: Windows
             os: windows-latest
             platform: windows/amd64
-            archive: TGDown-Windows-${{ github.ref_name }}.zip
+            archive: TGDown-Windows-${{ github.ref_name }}.exe
           - name: Linux x86_64
             os: ubuntu-22.04
             platform: linux/amd64
@@ -68,20 +68,16 @@ jobs:
         shell: bash
         run: wails build -clean -platform "${{ matrix.platform }}" -s -o TGDown -webview2 download
 
-      - name: Package Windows
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: Compress-Archive -Path build/bin/* -DestinationPath "${{ matrix.archive }}"
-
-      - name: Package Linux
-        if: runner.os == 'Linux'
+      - name: Package ${{ matrix.name }}
         shell: bash
-        run: tar -czf "${{ matrix.archive }}" -C build/bin TGDown
-
-      - name: Package macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "${{ matrix.archive }}"
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            powershell -NoProfile -NonInteractive -Command "Copy-Item -LiteralPath 'build/bin/TGDown.exe' -Destination '${{ matrix.archive }}' -Force"
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            tar -czf "${{ matrix.archive }}" -C build/bin TGDown
+          else
+            ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "${{ matrix.archive }}"
+          fi
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

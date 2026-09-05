@@ -247,6 +247,16 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 			u.finishAppImageUpdate(archivePath)
 			return
 		}
+		if strings.HasSuffix(strings.ToLower(archivePath), ".exe") {
+			executablePath := filepath.Join(u.tempDir, "tgdown.exe")
+			if err := os.Rename(archivePath, executablePath); err != nil {
+				u.setProgress("error: "+err.Error(), 0, 0)
+				return
+			}
+			u.setProgress("finishing", asset.Size, asset.Size)
+			u.createFinishScript(u.tempDir)
+			return
+		}
 
 		u.setProgress("extracting", downloaded, asset.Size)
 		extractPath := filepath.Join(u.tempDir, "extracted")
