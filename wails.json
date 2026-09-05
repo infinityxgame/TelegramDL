@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "tgdown",
+  "name": "TelegramDL",
   "outputfilename": "TelegramDL",
   "frontend:dir": "dashboard",
   "frontend:install": "npm install",
