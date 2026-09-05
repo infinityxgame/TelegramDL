@@ -122,6 +122,7 @@ const updatePostponed = ref(false)
 const bootstrapping = ref(true)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 const resolvedFileNames = new Map()
+const duplicatePrompted = new Set()
 
 const isPlaceholderFileName = name => /^mensaje_\d+$/i.test(String(name || '').trim())
 const mergeDownloadNames = items => items.map(item => {
@@ -269,7 +270,9 @@ const fetchDownloads = async () => {
   try {
     const data = await api('/api/downloads')
     if (Array.isArray(data)) {
-      downloads.value = mergeDownloadNames(data)
+      const normalizedDownloads = mergeDownloadNames(data)
+      downloads.value = normalizedDownloads
+      normalizedDownloads.filter(item => item.status === 'duplicate').forEach(promptDuplicateDownload)
       websocketConnected.value = true
     }
     error.value = ''
@@ -465,6 +468,40 @@ let queueNotificationArmed = false
 const isDownloadFinished = status => ['completed', 'skipped', 'failed', 'cancelled'].includes(status)
 const isDownloadSuccessful = status => ['completed', 'skipped'].includes(status)
 
+const promptDuplicateDownload = item => {
+  if (duplicatePrompted.has(item.id) || modal.show) return
+
+  duplicatePrompted.add(item.id)
+  openConfirm({
+    title: 'Archivo ya descargado',
+    message: `El archivo "${item.file_name}" ya existe en la carpeta de descargas. ¿Quieres descargarlo nuevamente?`,
+    confirmText: 'Descargar de nuevo',
+    cancelText: 'Cancelar',
+    type: 'primary',
+    action: async () => {
+      try {
+        await api('/api/retry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id })
+        })
+        await fetchDownloads()
+      } catch (err) {
+        duplicatePrompted.delete(item.id)
+        showMessage(err.message, true)
+      }
+    },
+    cancelAction: async () => {
+      try {
+        await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+        await fetchDownloads()
+      } catch (err) {
+        showMessage(err.message, true)
+      }
+    }
+  })
+}
+
 const maybeNotifyQueueFinished = currentDownloads => {
   if (!queueNotificationArmed || trackedQueueIds.size === 0) return
 
@@ -511,7 +548,9 @@ watch(() => disk.value, (newDisk) => {
 const handleStateUpdate = (data) => {
   if (!data) return
   if (Array.isArray(data.downloads)) {
-    downloads.value = mergeDownloadNames(data.downloads)
+    const normalizedDownloads = mergeDownloadNames(data.downloads)
+    downloads.value = normalizedDownloads
+    normalizedDownloads.filter(item => item.status === 'duplicate').forEach(promptDuplicateDownload)
     data.downloads.forEach(item => {
       if (['queued', 'downloading'].includes(item.status)) {
         trackedQueueIds.add(item.id)

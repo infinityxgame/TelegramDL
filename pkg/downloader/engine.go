@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -23,6 +24,8 @@ import (
 )
 
 type DownloadStateListener func(item storage.DownloadItem)
+
+var errDownloadAlreadyExists = errors.New("el archivo ya existe")
 
 type Engine struct {
 	clientMgr    *telegram.ClientManager
@@ -44,6 +47,7 @@ type Engine struct {
 	lastProgressBytes  map[string]int64
 	lastProgressTimes  map[string]time.Time
 	persistCh          chan storage.DownloadItem
+	forceDuplicate     map[string]bool
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -70,6 +74,7 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		lastProgressBytes:  make(map[string]int64),
 		lastProgressTimes:  make(map[string]time.Time),
 		persistCh:          make(chan storage.DownloadItem, 256),
+		forceDuplicate:     make(map[string]bool),
 	}
 	if st != nil {
 		go eng.persistenceLoop()
@@ -81,6 +86,15 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 			// Si quedó en downloading cuando se cerró la app, pasa a queued o paused
 			if item.Status == "downloading" {
 				item.Status = "queued"
+			}
+			// Las descargas antiguas podían conservar "mensaje_ID" en la
+			// columna file_name aunque file_path ya tuviera el nombre real.
+			// Recuperarlo evita que el historial vuelva a mostrar el placeholder.
+			if item.FilePath != "" && (item.FileName == "" || strings.HasPrefix(strings.ToLower(item.FileName), "mensaje_")) {
+				if recoveredName := filepath.Base(item.FilePath); recoveredName != "." && recoveredName != string(filepath.Separator) {
+					item.FileName = recoveredName
+					_ = st.SaveDownload(item)
+				}
 			}
 			copyItem := item
 			eng.downloads[id] = &copyItem
@@ -273,6 +287,7 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 func (e *Engine) discardDownload(id string) {
 	e.mu.Lock()
 	delete(e.downloads, id)
+	delete(e.forceDuplicate, id)
 	e.mu.Unlock()
 
 	if e.storage != nil {
@@ -348,12 +363,17 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 		return errors.New("descarga no encontrada")
 	}
 
-	if item.Status != "paused" && item.Status != "failed" && item.Status != "cancelled" {
+	if item.Status != "paused" && item.Status != "failed" && item.Status != "cancelled" && item.Status != "duplicate" {
 		e.mu.Unlock()
-		return errors.New("la descarga no está pausada ni cancelada")
+		return errors.New("la descarga no está pausada, cancelada ni pendiente de confirmación")
 	}
 
 	delete(e.pauseStates, id)
+	if item.Status == "duplicate" {
+		e.forceDuplicate[id] = true
+	} else {
+		delete(e.forceDuplicate, id)
+	}
 	item.Status = "queued"
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
@@ -374,6 +394,7 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 		item.ID = uuid.New().String()
 	}
 	item.Status = "queued"
+	delete(e.forceDuplicate, item.ID)
 	item.CreatedAt = float64(time.Now().Unix())
 	item.UpdatedAt = item.CreatedAt
 
@@ -553,6 +574,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 		delete(e.seenChunks, itemID)
 		delete(e.lastProgressBytes, itemID)
 		delete(e.lastProgressTimes, itemID)
+		delete(e.forceDuplicate, itemID)
 		e.mu.Unlock()
 	}()
 
@@ -578,6 +600,19 @@ func (e *Engine) startDownloadJob(itemID string) {
 			curItem.Status = "cancelled"
 		}
 	} else if err != nil {
+		if errors.Is(err, errDownloadAlreadyExists) {
+			curItem.Status = "duplicate"
+			curItem.Progress = 100.0
+			curItem.Speed = "0 B/s"
+			curItem.UpdatedAt = float64(time.Now().Unix())
+			cp = *curItem
+			e.mu.Unlock()
+			if e.storage != nil {
+				_ = e.storage.SaveDownload(cp)
+			}
+			e.notifyState(cp)
+			return
+		}
 		curItem.Status = "failed"
 		curItem.Speed = "0 B/s"
 	} else {
@@ -601,6 +636,7 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	downloadFolder := e.config.DownloadFolder
 	parallelChunks := e.config.ParallelChunks
 	chunkWorkers := e.config.ChunkWorkers
+	allowDuplicate := e.forceDuplicate[itemID]
 	e.mu.RUnlock()
 	if item == nil {
 		return errors.New("descarga no encontrada")
@@ -636,7 +672,7 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	log.Printf("[DOWNLOAD] Multimedia extraída: %s (%s, %d bytes)", mediaInfo.FileName, mediaInfo.Kind, mediaInfo.FileSize)
 
 	finalPath, finalName, alreadyExists := e.reservations.ReservePath(
-		downloadFolder, mediaInfo.FileName, item.MessageID, mediaInfo.FileSize,
+		downloadFolder, mediaInfo.FileName, item.MessageID, mediaInfo.FileSize, allowDuplicate,
 	)
 	defer e.reservations.ReleasePath(finalPath)
 
@@ -644,10 +680,11 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		e.mu.Lock()
 		item.FilePath = finalPath
 		item.FileName = finalName
-		item.Status = "skipped"
+		item.Status = "duplicate"
 		item.Progress = 100.0
+		item.Speed = "0 B/s"
 		e.mu.Unlock()
-		return nil
+		return errDownloadAlreadyExists
 	}
 
 	e.mu.Lock()

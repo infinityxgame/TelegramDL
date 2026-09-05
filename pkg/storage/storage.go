@@ -243,31 +243,31 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 		targetLegacy := findExistingFile(legacyPath, filepath.Join(config.DataDir, "config.json"), filepath.Join(config.BaseDir, "config.json"))
 		if targetLegacy != "" {
 			if data, err := os.ReadFile(targetLegacy); err == nil {
-			var raw map[string]any
-			if json.Unmarshal(data, &raw) == nil {
-				for _, k := range []string{"max_concurrent_downloads", "parallel_chunks", "chunk_workers", "download_folder", "listener_enabled", "color_id"} {
-					if val, ok := raw[k]; ok && val != nil {
-						_ = s.setConfigKey(k, fmt.Sprintf("%v", val))
-					}
-				}
-				if sp, ok := raw["speed_limit"].(map[string]any); ok {
-					_ = s.setConfigKey("speed_value", fmt.Sprintf("%v", sp["value"]))
-					_ = s.setConfigKey("speed_unit", fmt.Sprintf("%v", sp["unit"]))
-				}
-				// Releer
-				if r2, err := s.db.Query("SELECT key, value FROM app_config"); err == nil {
-					for r2.Next() {
-						var k, v string
-						if err := r2.Scan(&k, &v); err == nil {
-							kv[k] = v
+				var raw map[string]any
+				if json.Unmarshal(data, &raw) == nil {
+					for _, k := range []string{"max_concurrent_downloads", "parallel_chunks", "chunk_workers", "download_folder", "listener_enabled", "color_id"} {
+						if val, ok := raw[k]; ok && val != nil {
+							_ = s.setConfigKey(k, fmt.Sprintf("%v", val))
 						}
 					}
-					r2.Close()
+					if sp, ok := raw["speed_limit"].(map[string]any); ok {
+						_ = s.setConfigKey("speed_value", fmt.Sprintf("%v", sp["value"]))
+						_ = s.setConfigKey("speed_unit", fmt.Sprintf("%v", sp["unit"]))
+					}
+					// Releer
+					if r2, err := s.db.Query("SELECT key, value FROM app_config"); err == nil {
+						for r2.Next() {
+							var k, v string
+							if err := r2.Scan(&k, &v); err == nil {
+								kv[k] = v
+							}
+						}
+						r2.Close()
+					}
 				}
 			}
 		}
 	}
-}
 
 	if val, ok := kv["max_concurrent_downloads"]; ok {
 		if n, err := strconv.Atoi(val); err == nil {
@@ -383,12 +383,12 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 
 	pairs := map[string]string{
 		"max_concurrent_downloads": strconv.Itoa(cfg.MaxConcurrentDownloads),
-		"parallel_chunks":         strconv.FormatBool(cfg.ParallelChunks),
-		"chunk_workers":           strconv.Itoa(cfg.ChunkWorkers),
-		"download_folder":         cfg.DownloadFolder,
-		"listener_enabled":        strconv.FormatBool(cfg.ListenerEnabled),
-		"speed_value":             fmt.Sprintf("%f", cfg.SpeedLimit.Value),
-		"speed_unit":              cfg.SpeedLimit.Unit,
+		"parallel_chunks":          strconv.FormatBool(cfg.ParallelChunks),
+		"chunk_workers":            strconv.Itoa(cfg.ChunkWorkers),
+		"download_folder":          cfg.DownloadFolder,
+		"listener_enabled":         strconv.FormatBool(cfg.ListenerEnabled),
+		"speed_value":              fmt.Sprintf("%f", cfg.SpeedLimit.Value),
+		"speed_unit":               cfg.SpeedLimit.Unit,
 	}
 
 	if cfg.ColorID != nil {
@@ -467,38 +467,38 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 		targetLegacy := findExistingFile(legacyPath, filepath.Join(config.DataDir, "downloads.json"), filepath.Join(config.BaseDir, "downloads.json"))
 		if targetLegacy != "" {
 			if data, err := os.ReadFile(targetLegacy); err == nil {
-			var raw map[string]map[string]any
-			if json.Unmarshal(data, &raw) == nil {
-				now := float64(time.Now().Unix())
-				for id, item := range raw {
-					fileName, _ := item["file_name"].(string)
-					status, _ := item["status"].(string)
-					if status == "" {
-						status = "failed"
-					}
-					totalStr, _ := item["total_str"].(string)
-					currentStr, _ := item["current_str"].(string)
-					speed, _ := item["speed"].(string)
-					kind, _ := item["kind"].(string)
-					filePath, _ := item["file_path"].(string)
-					source, _ := item["source"].(string)
-					jobID, _ := item["job_id"].(string)
+				var raw map[string]map[string]any
+				if json.Unmarshal(data, &raw) == nil {
+					now := float64(time.Now().Unix())
+					for id, item := range raw {
+						fileName, _ := item["file_name"].(string)
+						status, _ := item["status"].(string)
+						if status == "" {
+							status = "failed"
+						}
+						totalStr, _ := item["total_str"].(string)
+						currentStr, _ := item["current_str"].(string)
+						speed, _ := item["speed"].(string)
+						kind, _ := item["kind"].(string)
+						filePath, _ := item["file_path"].(string)
+						source, _ := item["source"].(string)
+						jobID, _ := item["job_id"].(string)
 
-					_, _ = s.db.Exec(`
+						_, _ = s.db.Exec(`
 						INSERT INTO downloads(
 							id, job_id, message_id, chat_id, file_name,
 							status, progress, total_str, current_str, speed,
 							kind, file_path, source, updated_at, created_at
 						) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					`, id, jobID, config.ParseInt64(item["message_id"]),
-						config.ParseInt64(item["chat_id"]), fileName,
-						status, 0.0, totalStr, currentStr, speed,
-						kind, filePath, source, now, now)
+							config.ParseInt64(item["chat_id"]), fileName,
+							status, 0.0, totalStr, currentStr, speed,
+							kind, filePath, source, now, now)
+					}
 				}
 			}
 		}
 	}
-}
 
 	rows, err := s.db.Query("SELECT id, job_id, message_id, chat_id, file_name, status, progress, total_str, current_str, speed, kind, file_path, source, updated_at, created_at, total_bytes, current_bytes FROM downloads ORDER BY updated_at DESC")
 	if err != nil {
@@ -568,6 +568,7 @@ func (s *Storage) SaveDownload(item DownloadItem) error {
 			kind, file_path, source, updated_at, created_at, total_bytes, current_bytes
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
+			file_name=excluded.file_name,
 			status=excluded.status,
 			progress=excluded.progress,
 			total_str=excluded.total_str,

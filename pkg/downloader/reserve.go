@@ -19,7 +19,7 @@ func NewPathReservations() *PathReservations {
 	}
 }
 
-func (pr *PathReservations) ReservePath(folder, name string, msgID int64, expectedSize int64) (finalPath, finalName string, alreadyExists bool) {
+func (pr *PathReservations) ReservePath(folder, name string, msgID int64, expectedSize int64, allowExisting bool) (finalPath, finalName string, alreadyExists bool) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -41,7 +41,7 @@ func (pr *PathReservations) ReservePath(folder, name string, msgID int64, expect
 
 		if err == nil && !pathIsReserved {
 			// El archivo ya existe físicamente en disco
-			if expectedSize > 0 && fi.Size() == expectedSize {
+			if !allowExisting && expectedSize > 0 && fi.Size() == expectedSize {
 				return candidatePath, candidateName, true
 			}
 			// Si tiene tamaño distinto o está reservado, probamos siguiente sufijo

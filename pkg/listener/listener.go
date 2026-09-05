@@ -99,12 +99,7 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 			le.mu.Lock()
 			item, exists := le.items[download.ID]
 			if exists {
-				// La bandeja muestra "Descargando" desde que el usuario confirma
-				// la descarga, incluso mientras el motor espera un slot de cola.
-				// No degradar ese estado a "queued" por el primer evento del motor.
-				if download.Status != "queued" || item.Status != "downloading" {
-					item.Status = download.Status
-				}
+				item.Status = download.Status
 				item.UpdatedAt = download.UpdatedAt
 				if download.FileName != "" {
 					item.FileName = download.FileName
@@ -309,11 +304,11 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 	le.mu.Lock()
 	item, ok := le.items[itemID]
 	if ok {
-		// Mantener el elemento visible en la bandeja con estado de descarga.
-		item.Status = "downloading"
-		cp := *item
+		// Al añadirlo a descargas, deja de ser un elemento pendiente de la
+		// bandeja. El progreso continúa visible en el monitor de descargas.
+		delete(le.items, itemID)
+
 		le.mu.Unlock()
-		le.notifyState(cp)
 
 		dlItem := storage.DownloadItem{
 			ID:        item.ID,
