@@ -69,6 +69,9 @@ func setupConsole() {
 			if h, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE); err == nil {
 				os.Stderr = os.NewFile(uintptr(h), "/dev/stderr")
 			}
+			if h, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE); err == nil {
+				os.Stdin = os.NewFile(uintptr(h), "/dev/stdin")
+			}
 		}
 	}
 }
@@ -133,21 +136,39 @@ func runServerMode() int {
 		kernel32 := syscall.NewLazyDLL("kernel32.dll")
 		setHandler := kernel32.NewProc("SetConsoleCtrlHandler")
 		cb := syscall.NewCallback(func(ctrlType uint32) uintptr {
-			// ctrlType 0 es CTRL_C_EVENT
 			sigCh <- os.Interrupt
 			return 1
 		})
 		_, _, _ = setHandler.Call(cb, 1)
+
+		// En PowerShell el proceso queda en segundo plano.
+		// Escuchamos Stdin para permitir cerrar con ENTER o detectar pérdida de consola.
+		go func() {
+			buf := make([]byte, 1)
+			for {
+				_, err := os.Stdin.Read(buf)
+				if err != nil {
+					// Si Stdin da error (consola cerrada), cerramos
+					sigCh <- os.Interrupt
+					return
+				}
+				// Si el usuario pulsa ENTER en la consola compartida
+				if buf[0] == '\n' || buf[0] == '\r' {
+					sigCh <- os.Interrupt
+					return
+				}
+			}
+		}()
 	}
 
-	// Esperar la señal
+	// Esperar la señal (Ctrl+C en CMD o ENTER/Cierre en PowerShell)
 	sig := <-sigCh
 	fmt.Printf("\n[SISTEMA] Cerrando TelegramDL (Señal: %v)...\n", sig)
 
-	// Watchdog de seguridad para evitar que se quede en segundo plano
+	// Watchdog de seguridad: no más de 5 segundos para cerrar
 	go func() {
 		time.Sleep(5 * time.Second)
-		fmt.Println("[ALERTA] Apagado forzado por tiempo excedido.")
+		fmt.Println("[ALERTA] Forzando cierre inmediato.")
 		os.Exit(1)
 	}()
 
@@ -155,8 +176,9 @@ func runServerMode() int {
 	defer cancel()
 	app.shutdown(shutdownCtx)
 
-	fmt.Println("[SISTEMA] TelegramDL finalizado.")
+	fmt.Println("[SISTEMA] TelegramDL detenido. Ya puedes cerrar la consola o seguir usándola.")
 	_ = os.Stdout.Sync()
+	os.Exit(0)
 	return 0
 }
 
