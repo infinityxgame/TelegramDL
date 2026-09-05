@@ -308,16 +308,19 @@ func (u *AppUpdater) finishAppImageUpdate(newAppImagePath string) {
 	}
 
 	scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
-	appImageFilename := filepath.Base(runningAppImage)
+	pid := os.Getpid()
 
 	scriptContent := fmt.Sprintf(`#!/bin/bash
-sleep 2
-pkill -9 -f "%s" 2>/dev/null
+sleep 1
+while kill -0 %d 2>/dev/null; do
+    sleep 0.5
+done
 mv "%s" "%s"
 chmod +x "%s"
-"%s" &
-rm "$0"
-`, appImageFilename, newAppImagePath, runningAppImage, runningAppImage, runningAppImage)
+nohup "%s" >/dev/null 2>&1 &
+rm -f "$0"
+exit 0
+`, pid, newAppImagePath, runningAppImage, runningAppImage, runningAppImage)
 
 	_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 	cmd := exec.Command("/bin/bash", scriptPath)
@@ -331,7 +334,7 @@ func (u *AppUpdater) createFinishScript(srcPath string) {
 	if err != nil {
 		execPath = filepath.Join(u.baseDir, "TelegramDL.exe")
 	}
-	exeName := filepath.Base(execPath)
+	pid := os.Getpid()
 
 	if runtime.GOOS == "windows" {
 		scriptPath := filepath.Join(u.baseDir, "finish_update.bat")
@@ -339,18 +342,29 @@ func (u *AppUpdater) createFinishScript(srcPath string) {
 		batContent := fmt.Sprintf(`@echo off
 setlocal enabledelayedexpansion
 title Actualizando TelegramDL...
-:wait_process
-taskkill /f /im "%s" >nul 2>&1
+
+:wait_pid
+taskkill /f /pid %d >nul 2>&1
+taskkill /f /im "TelegramDL.exe" >nul 2>&1
+taskkill /f /im "tgdown.exe" >nul 2>&1
 timeout /t 1 /nobreak >nul
-tasklist /FI "IMAGENAME eq %s" 2>NUL | find /I /N "%s">NUL
-if "%%ERRORLEVEL%%"=="0" goto wait_process
+tasklist /FI "IMAGENAME eq TelegramDL.exe" 2>NUL | find /I /N "TelegramDL.exe">NUL
+if "%%ERRORLEVEL%%"=="0" goto wait_pid
+tasklist /FI "IMAGENAME eq tgdown.exe" 2>NUL | find /I /N "tgdown.exe">NUL
+if "%%ERRORLEVEL%%"=="0" goto wait_pid
 
 robocopy "%s" "%s" /e /move /is /it /xf .env config.json downloads.json tgdown.sqlite3 tg_session.json downloader_session.session downloader_session.session-journal /xd descargas cache update_temp .git .github /r:5 /w:2 /nfl /ndl /njh /njs > nul
 if exist "%s" rd /s /q "%s" >nul 2>&1
-start "" "%s"
+
+if exist "%s\TelegramDL.exe" (
+    start "" "%s\TelegramDL.exe"
+) else (
+    start "" "%s"
+)
 endlocal
-(goto) 2>nul & del "%%~f0"
-`, exeName, exeName, exeName, srcPath, u.baseDir, u.tempDir, u.tempDir, execPath)
+start /b "" cmd /c "timeout /t 1 /nobreak >nul & del \"%%~f0\""
+exit
+`, pid, srcPath, u.baseDir, u.tempDir, u.tempDir, u.baseDir, u.baseDir, execPath)
 
 		_ = os.WriteFile(scriptPath, []byte(batContent), 0644)
 		cmd := exec.Command("cmd.exe", "/C", "start", "", scriptPath)
@@ -365,16 +379,17 @@ endlocal
 		}
 
 		scriptContent := fmt.Sprintf(`#!/bin/bash
-sleep 2
-pkill -9 -f "%s" 2>/dev/null
-pkill -9 -f "TelegramDL" 2>/dev/null
-pkill -9 -f "tgdown" 2>/dev/null
+sleep 1
+while kill -0 %d 2>/dev/null; do
+    sleep 0.5
+done
 rm -rf "%s"
 cp -R "%s" "%s"
 rm -rf "%s"
 open "%s"
-rm "$0"
-`, exeName, targetAppPath, srcPath, filepath.Dir(targetAppPath), u.tempDir, targetAppPath)
+rm -f "$0"
+exit 0
+`, pid, targetAppPath, srcPath, filepath.Dir(targetAppPath), u.tempDir, targetAppPath)
 
 		_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		cmd := exec.Command("/bin/bash", scriptPath)
@@ -385,14 +400,17 @@ rm "$0"
 		// Linux estándar
 		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
 		scriptContent := fmt.Sprintf(`#!/bin/bash
-sleep 2
-pkill -9 -f "%s" 2>/dev/null
+sleep 1
+while kill -0 %d 2>/dev/null; do
+    sleep 0.5
+done
 cp -R "%s"/* "%s"/ 2>/dev/null || cp "%s" "%s"/
 chmod +x "%s"
 rm -rf "%s"
-"%s" &
-rm "$0"
-`, exeName, srcPath, u.baseDir, srcPath, u.baseDir, execPath, u.tempDir, execPath)
+nohup "%s" >/dev/null 2>&1 &
+rm -f "$0"
+exit 0
+`, pid, srcPath, u.baseDir, srcPath, u.baseDir, execPath, u.tempDir, execPath)
 
 		_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		cmd := exec.Command("/bin/bash", scriptPath)

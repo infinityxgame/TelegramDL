@@ -9,26 +9,75 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows
-            os: windows-latest
-            platform: windows/amd64
-            archive: TGDown-Windows-${{ github.ref_name }}.zip
-          - name: Linux x86_64
-            os: ubuntu-22.04
-            platform: linux/amd64
-            archive: TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz
-          - name: macOS Universal
-            os: macos-14
-            platform: darwin/universal
-            archive: TGDown-macOS-Universal-${{ github.ref_name }}.zip
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Wails CLI
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Build application with Wails
+        shell: bash
+        run: wails build -clean -platform windows/amd64 -s -o TelegramDL -webview2 download
+
+      - name: Package Windows
+        shell: bash
+        run: |
+          mkdir -p dist_win
+          BIN_PATH=""
+          if [ -f "build/bin/TelegramDL.exe" ]; then
+            BIN_PATH="build/bin/TelegramDL.exe"
+          elif [ -f "build/bin/TelegramDL" ]; then
+            BIN_PATH="build/bin/TelegramDL"
+          elif [ -f "build/bin/TGDown.exe" ]; then
+            BIN_PATH="build/bin/TGDown.exe"
+          elif [ -f "build/bin/TGDown" ]; then
+            BIN_PATH="build/bin/TGDown"
+          elif [ -f "build/bin/tgdown.exe" ]; then
+            BIN_PATH="build/bin/tgdown.exe"
+          else
+            echo "Error: Binary not found in build/bin"
+            ls -la build/bin
+            exit 1
+          fi
+          cp "$BIN_PATH" dist_win/TelegramDL.exe
+          powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path 'dist_win/*' -DestinationPath 'TGDown-Windows-${{ github.ref_name }}.zip' -Force"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows
+          path: TGDown-Windows-${{ github.ref_name }}.zip
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux x86_64
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,7 +96,6 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Install Linux Wails dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libgtk-3-dev libwebkit2gtk-4.0-dev
@@ -66,43 +114,69 @@ jobs:
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform "${{ matrix.platform }}" -s -o TGDown -webview2 download
+        run: wails build -clean -platform linux/amd64 -s -o TGDown -webview2 download
 
-      - name: Package ${{ matrix.name }}
+      - name: Package Linux
         shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            mkdir -p dist_win
-            BIN_PATH=""
-            if [ -f "build/bin/TGDown.exe" ]; then
-              BIN_PATH="build/bin/TGDown.exe"
-            elif [ -f "build/bin/TGDown" ]; then
-              BIN_PATH="build/bin/TGDown"
-            elif [ -f "build/bin/tgdown.exe" ]; then
-              BIN_PATH="build/bin/tgdown.exe"
-            else
-              echo "Error: Binary not found in build/bin"
-              ls -la build/bin
-              exit 1
-            fi
-            cp "$BIN_PATH" dist_win/TelegramDL.exe
-            powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path 'dist_win/*' -DestinationPath '${{ matrix.archive }}' -Force"
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            tar -czf "${{ matrix.archive }}" -C build/bin TGDown
-          else
-            ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "${{ matrix.archive }}"
-          fi
+        run: tar -czf "TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz" -C build/bin TGDown
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: ${{ matrix.archive }}
+          name: Linux x86_64
+          path: TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS Universal
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Wails CLI
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Build application with Wails
+        shell: bash
+        run: wails build -clean -platform darwin/universal -s -o TGDown -webview2 download
+
+      - name: Package macOS
+        shell: bash
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "TGDown-macOS-Universal-${{ github.ref_name }}.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS Universal
+          path: TGDown-macOS-Universal-${{ github.ref_name }}.zip
           if-no-files-found: error
 
   release:
     name: Publish Release
-    needs: build
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
