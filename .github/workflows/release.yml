@@ -10,645 +10,89 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-
     strategy:
+      fail-fast: false
       matrix:
         include:
-
-          # =========================
-          # WINDOWS
-          # =========================
-          - platform: Windows
+          - name: Windows
             os: windows-latest
-            artifact_name: TelegramDL-Windows
-            asset_extension: .zip
-
-          # =========================
-          # LINUX
-          # =========================
-          - platform: Linux
+            platform: windows/amd64
+            archive: TGDown-Windows-${{ github.ref_name }}.zip
+          - name: Linux x86_64
             os: ubuntu-22.04
-            artifact_name: TelegramDL-Linux-x86_64
-            asset_extension: .AppImage
-
-          # =========================
-          # macOS UNIVERSAL
-          # =========================
-          - platform: macOS-Universal
+            platform: linux/amd64
+            archive: TGDown-Linux-x86_64-${{ github.ref_name }}.tar.gz
+          - name: macOS Universal
             os: macos-14
-            artifact_name: TelegramDL-macOS
-            asset_extension: .zip
-            macos_arch: universal2
+            platform: darwin/universal
+            archive: TGDown-macOS-Universal-${{ github.ref_name }}.zip
 
     steps:
-
-      # ==================================================
-      # CHECKOUT
-      # ==================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ==================================================
-      # VERSION INFORMATION
-      # ==================================================
-
-      - name: Set version information
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "PRODUCT_NAME=TGDown" >> "$GITHUB_ENV"
-          echo "PRODUCT_DESCRIPTION=Descarga y gestiona archivos multimedia de Telegram" >> "$GITHUB_ENV"
-          echo "COMPANY_NAME=InfinityxGame" >> "$GITHUB_ENV"
-
-
-      # ==================================================
-      # NODE.JS
-      # ==================================================
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
 
-
-      # ==================================================
-      # BUILD VUE DASHBOARD
-      # ==================================================
-
-      - name: Build Vue Dashboard
-        shell: bash
-        run: |
-          cd dashboard
-          npm install
-          npm run build
-          cd ..
-
-
-      # ==================================================
-      # PYTHON
-      # ==================================================
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-
-      # ==================================================
-      # LINUX SYSTEM DEPENDENCIES
-      # ==================================================
-
-      - name: Install Linux GTK dependencies
+      - name: Install Linux Wails dependencies
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-dev libwebkit2gtk-4.0-dev
 
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            python3-dev \
-            libcairo2-dev \
-            libgirepository1.0-dev \
-            gir1.2-gtk-3.0 \
-            libgtk-3-dev \
-            libglib2.0-dev \
-            libffi-dev \
-            libdbus-1-dev \
-            patchelf
-
-
-      # ==================================================
-      # PYTHON DEPENDENCIES
-      # ==================================================
-
-      - name: Install Python dependencies
+      - name: Install Wails CLI
         shell: bash
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 
-          # 1. Instalación de dependencias críticas en Linux antes del resto
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            pip install pycairo
-            pip install -r requirements-linux.txt
-          fi
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
 
-          # 2. Instalación normal de todas las dependencias
-          pip install -r requirements.txt
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
 
-          # 2. Arreglo específico para macOS Universal2
-          if [ "${RUNNER_OS}" = "macOS" ]; then
-            echo "Configurando entorno para compilación Universal2..."
-            export ARCHFLAGS="-arch x86_64 -arch arm64"
-            
-            # Truco para macOS: Descargamos los wheels universal2 y luego los instalamos
-            # Esto evita el error de pip con el parámetro --platform
-            mkdir temp_wheels
-            pip download --only-binary=:all: \
-              --platform macosx_10_9_universal2 \
-              --platform macosx_11_0_universal2 \
-              --platform macosx_12_0_universal2 \
-              --dest temp_wheels \
-              markupsafe websockets pydantic-core sniffio anyio
-
-            pip install --force-reinstall temp_wheels/*.whl
-
-            # tgcrypto-pyrofork suele requerir compilación desde fuente para ser universal
-            pip install --force-reinstall --no-binary tgcrypto-pyrofork tgcrypto-pyrofork
-
-            # Instalamos pyobjc necesario para pywebview
-            # Como vimos en los logs, pyobjc ya suele bajar universal2, pero aseguramos
-            pip install --upgrade pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit || true
-          fi
-
-          pip install pyinstaller
-
-
-      # ==================================================
-      # VERIFY PyGObject
-      # ==================================================
-
-      - name: Verify PyGObject
-        if: runner.os == 'Linux'
+      - name: Build application with Wails
         shell: bash
-        run: |
-          python -c "
-          import gi
-          gi.require_version('Gtk', '3.0')
-          from gi.repository import Gtk, GLib, GObject
-          print('PyGObject and GTK OK')
-          "
+        run: wails build -clean -platform "${{ matrix.platform }}" -s -o TGDown -webview2 download
 
-
-      # ==================================================
-      # WINDOWS VERSION INFORMATION
-      # ==================================================
-
-      - name: Create Windows version information
+      - name: Package Windows
         if: runner.os == 'Windows'
         shell: powershell
-        run: |
-          $VERSION = "${{ env.VERSION }}"
-          $VERSION_PARTS = $VERSION.Split('.')
+        run: Compress-Archive -Path build/bin/* -DestinationPath "${{ matrix.archive }}"
 
-          $MAJOR = [int]$VERSION_PARTS[0]
-          $MINOR = if ($VERSION_PARTS.Length -gt 1) { [int]$VERSION_PARTS[1] } else { 0 }
-          $PATCH = if ($VERSION_PARTS.Length -gt 2) { [int]$VERSION_PARTS[2] } else { 0 }
-
-          @"
-          VSVersionInfo(
-            ffi=FixedFileInfo(
-              filevers=($MAJOR, $MINOR, $PATCH, 0),
-              prodvers=($MAJOR, $MINOR, $PATCH, 0),
-              mask=0x3f,
-              flags=0x0,
-              OS=0x40004,
-              fileType=0x1,
-              subtype=0x0,
-              date=(0, 0)
-            ),
-            kids=[
-              StringFileInfo(
-                [
-                  StringTable(
-                    u'040904B0',
-                    [
-                      StringStruct(u'CompanyName', u'InfinityxGame'),
-                      StringStruct(u'FileDescription', u'Descarga y gestiona archivos multimedia de Telegram'),
-                      StringStruct(u'FileVersion', u'$VERSION'),
-                      StringStruct(u'InternalName', u'TelegramDL'),
-                      StringStruct(u'LegalCopyright', u'Copyright © 2026 InfinityxGame'),
-                      StringStruct(u'OriginalFilename', u'TelegramDL.exe'),
-                      StringStruct(u'ProductName', u'TGDown'),
-                      StringStruct(u'ProductVersion', u'$VERSION')
-                    ]
-                  )
-                ]
-              ),
-              VarFileInfo(
-                [
-                  VarStruct(u'Translation', [1033, 1200])
-                ]
-              )
-            ]
-          )
-          "@ | Out-File -Encoding utf8 version_info.txt
-
-
-      # ==================================================
-      # WINDOWS BUILD
-      # ==================================================
-
-      - name: Build with PyInstaller (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --onedir `
-            --noconsole `
-            --icon="icon.ico" `
-            --version-file="version_info.txt" `
-            --name "TelegramDL" `
-            --add-data "dashboard/dist;dashboard/dist" `
-            TelegramDL.py
-
-          Compress-Archive `
-            -Path dist/TelegramDL/* `
-            -DestinationPath "${{ matrix.artifact_name }}-${{ github.ref_name }}.zip"
-
-
-      # ==================================================
-      # LINUX BUILD WITH GTK / PyGObject
-      # ==================================================
-
-      - name: Build with PyInstaller (Linux)
+      - name: Package Linux
         if: runner.os == 'Linux'
         shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --onedir \
-            --name "TelegramDL" \
-            --add-data "dashboard/dist:dashboard/dist" \
-            --exclude-module tkinter \
-            --exclude-module tcl \
-            --exclude-module tk \
-            --exclude-module _tkinter \
-            --exclude-module idlelib \
-            --exclude-module unittest \
-            --collect-submodules gi \
-            --collect-submodules gi.repository \
-            --hidden-import gi \
-            --hidden-import gi.repository.Gtk \
-            --hidden-import gi.repository.Gdk \
-            --hidden-import gi.repository.GLib \
-            --hidden-import gi.repository.GObject \
-            --hidden-import webview.platforms.gtk \
-            TelegramDL.py
+        run: tar -czf "${{ matrix.archive }}" -C build/bin TGDown
 
-
-      # ==================================================
-      # VERIFY LINUX BUILD
-      # ==================================================
-
-      - name: Verify Linux build
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "=========================================="
-          echo "Linux build contents"
-          echo "=========================================="
-
-          ls -lah dist/TelegramDL
-
-          echo ""
-          echo "=========================================="
-          echo "Searching for critical files"
-          echo "=========================================="
-
-          find dist/TelegramDL -maxdepth 3
-
-
-      # ==================================================
-      # DOWNLOAD LINUXDEPLOY
-      # ==================================================
-
-      - name: Download linuxdeploy
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          wget -q \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
-            -O linuxdeploy-x86_64.AppImage
-
-          chmod +x linuxdeploy-x86_64.AppImage
-
-
-      # ==================================================
-      # CREATE APPDIR
-      # ==================================================
-
-      - name: Create AppImage structure
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          rm -rf AppDir
-
-          # Estructura principal
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/lib/TGDown
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-
-          # ==================================================
-          # COPIAR BUNDLE COMPLETO DE PYINSTALLER Y LIMPIAR
-          # ==================================================
-
-          cp -R dist/TelegramDL/* AppDir/usr/lib/TGDown/
-
-          # Eliminar archivos innecesarios para reducir peso
-          rm -rf AppDir/usr/lib/TGDown/_internal/share/icons
-          rm -rf AppDir/usr/lib/TGDown/_internal/share/help
-          rm -rf AppDir/usr/lib/TGDown/_internal/share/doc
-          rm -rf AppDir/usr/lib/TGDown/_internal/share/man
-
-          # ==================================================
-          # LAUNCHER
-          # ==================================================
-
-          cat > AppDir/usr/bin/TGDown << 'EOF'
-          #!/bin/bash
-
-          HERE="$(dirname "$(readlink -f "$0")")"
-
-          exec "$HERE/../lib/TGDown/TelegramDL" "$@"
-          EOF
-
-          chmod +x AppDir/usr/bin/TGDown
-
-          # ==================================================
-          # DESKTOP FILE
-          # ==================================================
-
-          cat > AppDir/TGDown.desktop << EOF
-          [Desktop Entry]
-          Type=Application
-          Name=TGDown
-          Comment=Descarga y gestiona archivos multimedia de Telegram
-          Exec=TGDown
-          Icon=TGDown
-          Terminal=false
-          Categories=Network;
-          Version=1.0
-          EOF
-
-          # linuxdeploy espera el desktop file aquí
-          cp AppDir/TGDown.desktop \
-             AppDir/usr/share/applications/TGDown.desktop
-
-          # ==================================================
-          # ICON
-          # ==================================================
-
-          cp icon.png \
-            AppDir/TGDown.png
-
-          cp icon.png \
-            AppDir/usr/share/icons/hicolor/256x256/apps/TGDown.png
-
-
-      # ==================================================
-      # CREATE APPRUN
-      # ==================================================
-
-      - name: Create AppRun
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          cat > AppDir/AppRun << 'EOF'
-          #!/bin/bash
-
-          HERE="$(dirname "$(readlink -f "$0")")"
-
-          export APPDIR="$HERE"
-
-          exec "$HERE/usr/bin/TGDown" "$@"
-          EOF
-
-          chmod +x AppDir/AppRun
-
-
-      # ==================================================
-      # VERIFY APPDIR
-      # ==================================================
-
-      - name: Verify AppDir
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "=========================================="
-          echo "AppDir structure"
-          echo "=========================================="
-
-          find AppDir -maxdepth 4 -type f | sort
-
-          echo ""
-          echo "=========================================="
-          echo "Desktop file"
-          echo "=========================================="
-
-          cat AppDir/TGDown.desktop
-
-          echo ""
-          echo "=========================================="
-          echo "AppRun"
-          echo "=========================================="
-
-          cat AppDir/AppRun
-
-
-      # ==================================================
-      # BUILD APPIMAGE
-      # ==================================================
-
-      - name: Build AppImage
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          export ARCH=x86_64
-          export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
-
-          ./linuxdeploy-x86_64.AppImage \
-            --appdir AppDir \
-            --output appimage
-
-          GENERATED_APPIMAGE=$(find . -maxdepth 1 \
-            -type f \
-            -name "*.AppImage" \
-            ! -name "linuxdeploy*" \
-            | head -n 1)
-
-          if [ -z "$GENERATED_APPIMAGE" ]; then
-            echo "ERROR: AppImage was not generated."
-            exit 1
-          fi
-
-          mv "$GENERATED_APPIMAGE" \
-            "${{ matrix.artifact_name }}-${{ github.ref_name }}.AppImage"
-
-          chmod +x \
-            "${{ matrix.artifact_name }}-${{ github.ref_name }}.AppImage"
-
-          echo ""
-          echo "=========================================="
-          echo "AppImage generated"
-          echo "=========================================="
-
-          ls -lh \
-            "${{ matrix.artifact_name }}-${{ github.ref_name }}.AppImage"
-
-
-      # ==========================================
-      # macOS BUILD
-      # ==========================================
-
-      - name: Build macOS App with PyInstaller
+      - name: Package macOS
         if: runner.os == 'macOS'
         shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --onedir \
-            --windowed \
-            --icon="icon.icns" \
-            --target-arch "${{ matrix.macos_arch }}" \
-            --osx-bundle-identifier "com.infinityxgame.tgdown" \
-            --name "TelegramDL" \
-            --add-data "dashboard/dist:dashboard/dist" \
-            TelegramDL.py
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/TGDown.app "${{ matrix.archive }}"
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
 
-      # ==================================================
-      # macOS APPLICATION INFORMATION
-      # ==================================================
-
-      - name: Add macOS application information
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          PLIST="dist/TelegramDL.app/Contents/Info.plist"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleName TGDown" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleName string TGDown" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleDisplayName TGDown" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleDisplayName string TGDown" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleShortVersionString ${VERSION}" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleShortVersionString string ${VERSION}" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleVersion ${VERSION}" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleVersion string ${VERSION}" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleIdentifier com.infinityxgame.tgdown" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :CFBundleIdentifier string com.infinityxgame.tgdown" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :NSHumanReadableCopyright 'Copyright © 2026 InfinityxGame'" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :NSHumanReadableCopyright string 'Copyright © 2026 InfinityxGame'" \
-            "$PLIST"
-
-          /usr/libexec/PlistBuddy \
-            -c "Set :NSHumanReadableDescription 'Descarga y gestiona archivos multimedia de Telegram'" \
-            "$PLIST" || \
-          /usr/libexec/PlistBuddy \
-            -c "Add :NSHumanReadableDescription string 'Descarga y gestiona archivos multimedia de Telegram'" \
-            "$PLIST"
-
-
-      # ==================================================
-      # macOS ARCHITECTURE CHECK
-      # ==================================================
-
-      - name: Check macOS architecture
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          file "dist/TelegramDL.app/Contents/MacOS/TelegramDL"
-
-
-      # ==================================================
-      # macOS AD-HOC SIGNING
-      # ==================================================
-
-      - name: Ad-Hoc Sign macOS App
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          codesign \
-            --force \
-            --deep \
-            --sign - \
-            "dist/TelegramDL.app"
-
-
-      # ==================================================
-      # VERIFY macOS SIGNATURE
-      # ==================================================
-
-      - name: Verify macOS signature
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          codesign \
-            --verify \
-            --deep \
-            --strict \
-            --verbose=2 \
-            "dist/TelegramDL.app"
-
-
-      # ==================================================
-      # VERIFY macOS ARCHITECTURE
-      # ==================================================
-
-      - name: Verify macOS architecture
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          file "dist/TelegramDL.app/Contents/MacOS/TelegramDL"
-
-
-      # ==================================================
-      # CREATE macOS ARTIFACT (ZIP)
-      # ==================================================
-
-      - name: Create macOS Artifact
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          cd dist
-          zip -r "../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip" "TelegramDL.app"
-
-      # ==================================================
-      # UPLOAD RELEASE ASSET
-      # ==================================================
-
-      - name: Upload Release Asset
+      - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}-${{ github.ref_name }}${{ matrix.asset_extension }}
+          files: ${{ matrix.archive }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
