@@ -60,7 +60,7 @@ func runDesktopMode() {
 	err := wails.Run(&options.App{
 		Title:     "Telegram DL",
 		Width:     1280,
-		Height:    800,
+		Height:    720,
 		MinWidth:  950,
 		MinHeight: 680,
 		AssetServer: &assetserver.Options{
