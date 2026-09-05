@@ -479,12 +479,17 @@ func (e *Engine) startDownloadJob(itemID string) {
 func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	e.mu.RLock()
 	item := e.downloads[itemID]
-	rawClient := e.clientMgr.RawClient()
 	downloadFolder := e.config.DownloadFolder
 	parallelChunks := e.config.ParallelChunks
 	chunkWorkers := e.config.ChunkWorkers
 	e.mu.RUnlock()
 
+	if err := e.clientMgr.WaitReady(ctx); err != nil {
+		log.Printf("[DOWNLOAD ERROR] Cliente de Telegram no listo para item %s: %v", itemID, err)
+		return fmt.Errorf("cliente de Telegram no listo: %w", err)
+	}
+
+	rawClient := e.clientMgr.RawClient()
 	if rawClient == nil {
 		log.Printf("[DOWNLOAD ERROR] Cliente de Telegram no listo para item %s", itemID)
 		return errors.New("cliente de Telegram no listo")
@@ -695,12 +700,13 @@ func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg
 		return nil, errors.New("mensaje no encontrado en Telegram")
 	}
 
-	msg, ok := messages[0].(*tg.Message)
-	if !ok {
-		return nil, errors.New("el contenido no es un mensaje regular")
+	for _, m := range messages {
+		if realMsg, ok := m.(*tg.Message); ok {
+			return realMsg, nil
+		}
 	}
 
-	return msg, nil
+	return nil, errors.New("el mensaje no contiene datos válidos o fue eliminado en Telegram")
 }
 
 func strconvParse(s string) (int64, error) {

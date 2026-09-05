@@ -341,6 +341,29 @@ func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (
 	return 0, errors.New("tipo de chat desconocido")
 }
 
+func (cm *ClientManager) WaitReady(ctx context.Context) error {
+	cm.mu.RLock()
+	ready := cm.readyChan
+	client := cm.client
+	cm.mu.RUnlock()
+
+	if client == nil {
+		return errors.New("cliente no configurado")
+	}
+	if ready == nil {
+		return nil
+	}
+
+	select {
+	case <-ready:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(15 * time.Second):
+		return errors.New("tiempo de espera agotado conectando a Telegram")
+	}
+}
+
 func (cm *ClientManager) RawClient() *tg.Client {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -506,23 +529,6 @@ func (cm *ClientManager) stopRunning() {
 	cm.runWg.Wait()
 	cm.client = nil
 	cm.rawClient = nil
-}
-
-func (cm *ClientManager) WaitReady(ctx context.Context) error {
-	cm.mu.RLock()
-	ready := cm.readyChan
-	cm.mu.RUnlock()
-
-	if ready == nil {
-		return errors.New("cliente no inicializado")
-	}
-
-	select {
-	case <-ready:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
