@@ -141,19 +141,18 @@ func runServerMode() int {
 		})
 		_, _, _ = setHandler.Call(cb, 1)
 
-		// En PowerShell el proceso queda en segundo plano.
-		// Escuchamos Stdin para permitir cerrar con ENTER o detectar pérdida de consola.
+		// Detectar pérdida de consola o señales de interrupción a través de Stdin
 		go func() {
 			buf := make([]byte, 1)
 			for {
-				_, err := os.Stdin.Read(buf)
+				n, err := os.Stdin.Read(buf)
 				if err != nil {
-					// Si Stdin da error (consola cerrada), cerramos
+					// Si Stdin falla, es que la consola se ha cerrado
 					sigCh <- os.Interrupt
 					return
 				}
-				// Si el usuario pulsa ENTER en la consola compartida
-				if buf[0] == '\n' || buf[0] == '\r' {
+				// Si detectamos específicamente Ctrl+C (ASCII 3) en el buffer de entrada
+				if n > 0 && buf[0] == 3 {
 					sigCh <- os.Interrupt
 					return
 				}
