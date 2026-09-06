@@ -39,6 +39,7 @@ type Engine struct {
 	pauseStates        map[string]bool
 	activeCond         *sync.Cond
 	runningJobs        int
+	metadataSem        chan struct{}
 	stateListeners     []DownloadStateListener
 	startTimes         map[string]time.Time
 	lastBroadcastTimes map[string]time.Time
@@ -52,6 +53,7 @@ type Engine struct {
 	jobsWG             sync.WaitGroup
 	persistWG          sync.WaitGroup
 	stopping           bool
+	cancelledForLimit  map[string]bool
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -78,6 +80,8 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		lastProgressTimes:  make(map[string]time.Time),
 		persistCh:          make(chan storage.DownloadItem, 256),
 		forceDuplicate:     make(map[string]bool),
+		cancelledForLimit:  make(map[string]bool),
+		metadataSem:        make(chan struct{}, 5),
 	}
 	eng.activeCond = sync.NewCond(&eng.mu)
 	if st != nil {
@@ -227,13 +231,51 @@ func (e *Engine) notifyState(item storage.DownloadItem) {
 
 func (e *Engine) UpdateConfig(cfg config.Config) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	oldMax := e.config.MaxConcurrentDownloads
 	e.config = config.NormalizeConfig(cfg)
+	newMax := e.config.MaxConcurrentDownloads
+	e.mu.Unlock()
 
-	if oldMax != e.config.MaxConcurrentDownloads {
+	if oldMax != newMax {
 		e.activeCond.Broadcast()
+		if oldMax > newMax {
+			e.enforceConcurrencyLimit()
+		}
+	}
+}
+
+func (e *Engine) enforceConcurrencyLimit() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.runningJobs <= e.config.MaxConcurrentDownloads {
+		return
+	}
+
+	diff := e.runningJobs - e.config.MaxConcurrentDownloads
+	log.Printf("[ENGINE] Reduciendo concurrencia: deteniendo %d tareas en exceso", diff)
+
+	type jobInfo struct {
+		id        string
+		startTime time.Time
+	}
+	running := make([]jobInfo, 0, len(e.cancelFuncs))
+	for id := range e.cancelFuncs {
+		running = append(running, jobInfo{id: id, startTime: e.startTimes[id]})
+	}
+
+	// Ordenar por tiempo de inicio descendente (las más nuevas primero)
+	sort.Slice(running, func(i, j int) bool {
+		return running[i].startTime.After(running[j].startTime)
+	})
+
+	for i := 0; i < diff && i < len(running); i++ {
+		id := running[i].id
+		if cancel, ok := e.cancelFuncs[id]; ok {
+			log.Printf("[ENGINE] Pausando tarea en exceso %s para respetar nuevo límite", id)
+			e.cancelledForLimit[id] = true
+			cancel()
+		}
 	}
 }
 
@@ -265,9 +307,7 @@ func statusPriority(status string) int {
 	switch status {
 	case "downloading":
 		return 4
-	case "paused":
-		return 3
-	case "queued", "pending":
+	case "paused", "queued", "pending":
 		return 2
 	default:
 		return 1
@@ -454,10 +494,14 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 		return errors.New("descarga no encontrada")
 	}
 
-	if item.Status != "paused" && item.Status != "failed" && item.Status != "cancelled" && item.Status != "duplicate" {
+	if item.Status != "paused" && item.Status != "failed" && item.Status != "cancelled" && item.Status != "duplicate" && item.Status != "queued" {
 		e.mu.Unlock()
-		return errors.New("la descarga no está pausada, cancelada ni pendiente de confirmación")
+		return errors.New("la descarga no se puede reanudar en su estado actual")
 	}
+
+	// Si ya está en cola pero no ejecutándose (por ejemplo, pausada por límite),
+	// no lanzamos otro job duplicado.
+	alreadyQueued := item.Status == "queued" && !e.pauseStates[id]
 
 	delete(e.pauseStates, id)
 	if item.Status == "duplicate" {
@@ -475,22 +519,32 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	}
 	e.notifyState(cp)
 
-	e.launchDownloadJob(id)
+	if !alreadyQueued {
+		e.launchDownloadJob(id)
+	}
 	return nil
 }
 
 func (e *Engine) ResumeAll(ctx context.Context) {
 	e.mu.Lock()
-	ids := make([]string, 0, len(e.downloads))
-	for id, item := range e.downloads {
+	items := make([]*storage.DownloadItem, 0, len(e.downloads))
+	for _, item := range e.downloads {
 		if item.Status == "paused" || item.Status == "failed" || item.Status == "cancelled" {
-			ids = append(ids, id)
+			items = append(items, item)
 		}
 	}
+
+	// Ordenar por MessageID para respetar el orden original al reanudar
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].MessageID != items[j].MessageID {
+			return items[i].MessageID < items[j].MessageID
+		}
+		return items[i].ID < items[j].ID
+	})
 	e.mu.Unlock()
 
-	for _, id := range ids {
-		_ = e.ResumeDownload(ctx, id)
+	for _, item := range items {
+		_ = e.ResumeDownload(ctx, item.ID)
 	}
 }
 
@@ -499,6 +553,13 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	if item.ID == "" {
 		item.ID = uuid.New().String()
 	}
+
+	// Si ya existe en memoria, no duplicar el registro ni lanzar otro job
+	if existing, ok := e.downloads[item.ID]; ok {
+		e.mu.Unlock()
+		return existing.ID
+	}
+
 	item.Status = "queued"
 	delete(e.forceDuplicate, item.ID)
 	item.CreatedAt = float64(time.Now().Unix())
@@ -649,6 +710,9 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 }
 
 func (e *Engine) startDownloadJob(itemID string) {
+	// Pre-resolver metadatos (nombre, tamaño) antes de esperar el slot de descarga
+	go e.resolveItemMetadata(itemID)
+
 	// Adquirir slot de concurrencia
 	log.Printf("[DOWNLOAD] Solicitando slot de concurrencia para item %s...", itemID)
 	e.mu.Lock()
@@ -693,7 +757,13 @@ func (e *Engine) startDownloadJob(itemID string) {
 		delete(e.lastProgressBytes, itemID)
 		delete(e.lastProgressTimes, itemID)
 		delete(e.forceDuplicate, itemID)
+		isLimitCancel := e.cancelledForLimit[itemID]
+		delete(e.cancelledForLimit, itemID)
 		e.mu.Unlock()
+
+		if isLimitCancel {
+			e.launchDownloadJob(itemID)
+		}
 	}()
 
 	err := e.executeDownloadWithRetry(ctx, itemID)
@@ -712,7 +782,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	if errors.Is(err, context.Canceled) {
-		if e.stopping {
+		if e.stopping || e.cancelledForLimit[itemID] {
 			curItem.Status = "queued"
 			delete(e.pauseStates, itemID)
 		} else if e.pauseStates[itemID] {
@@ -745,6 +815,65 @@ func (e *Engine) startDownloadJob(itemID string) {
 	curItem.UpdatedAt = float64(time.Now().Unix())
 	cp = *curItem
 	e.mu.Unlock()
+	if e.storage != nil {
+		_ = e.storage.SaveDownload(cp)
+	}
+	e.notifyState(cp)
+}
+
+func (e *Engine) resolveItemMetadata(itemID string) {
+	// Limitar concurrencia de resolución de metadatos
+	select {
+	case e.metadataSem <- struct{}{}:
+		defer func() { <-e.metadataSem }()
+	case <-time.After(1 * time.Minute):
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	e.mu.RLock()
+	item, ok := e.downloads[itemID]
+	if !ok {
+		e.mu.RUnlock()
+		return
+	}
+	// Si ya tiene nombre real y tamaño, no hacer nada
+	if item.FileName != "" && !strings.HasPrefix(strings.ToLower(item.FileName), "mensaje_") && item.TotalBytes > 0 {
+		e.mu.RUnlock()
+		return
+	}
+	e.mu.RUnlock()
+
+	if err := e.clientMgr.WaitReady(ctx); err != nil {
+		return
+	}
+
+	msg, err := e.fetchMessage(ctx, item.ChatID, int(item.MessageID))
+	if err != nil {
+		return
+	}
+
+	media := ExtractMediaInfo(msg)
+	if media == nil {
+		return
+	}
+
+	e.mu.Lock()
+	it, exists := e.downloads[itemID]
+	if !exists {
+		e.mu.Unlock()
+		return
+	}
+
+	it.FileName = media.FileName
+	it.Kind = string(media.Kind)
+	it.TotalBytes = media.FileSize
+	it.TotalStr = config.FormatBytes(float64(media.FileSize))
+	cp := *it
+	e.mu.Unlock()
+
 	if e.storage != nil {
 		_ = e.storage.SaveDownload(cp)
 	}
@@ -835,8 +964,17 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 
 	log.Printf("[DOWNLOAD] Multimedia extraída: %s (%s, %d bytes)", mediaInfo.FileName, mediaInfo.Kind, mediaInfo.FileSize)
 
+	e.mu.Lock()
+	currentFileName := item.FileName
+	// Si el nombre actual es un placeholder, lo actualizamos al nombre real extraído
+	if strings.HasPrefix(strings.ToLower(currentFileName), "mensaje_") || currentFileName == "" {
+		item.FileName = mediaInfo.FileName
+		currentFileName = mediaInfo.FileName
+	}
+	e.mu.Unlock()
+
 	finalPath, finalName, alreadyExists := e.reservations.ReservePath(
-		downloadFolder, mediaInfo.FileName, item.MessageID, mediaInfo.FileSize, allowDuplicate,
+		downloadFolder, currentFileName, item.MessageID, mediaInfo.FileSize, allowDuplicate,
 	)
 	defer e.reservations.ReleasePath(finalPath)
 
@@ -847,7 +985,12 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		item.Status = "duplicate"
 		item.Progress = 100.0
 		item.Speed = "0 B/s"
+		cp := *item
 		e.mu.Unlock()
+		if e.storage != nil {
+			_ = e.storage.SaveDownload(cp)
+		}
+		e.notifyState(cp)
 		return errDownloadAlreadyExists
 	}
 
