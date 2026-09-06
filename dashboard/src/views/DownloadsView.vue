@@ -52,18 +52,24 @@ const inputUrl = ref('')
 
 const statusPriority = status => ({
   downloading: 4,
-  paused: 3,
+  paused: 2,
   queued: 2,
   pending: 2
 }[status] || 1)
 
 const compareDownloads = (a, b) => {
-  const priorityDifference = statusPriority(b.status) - statusPriority(a.status)
-  if (priorityDifference !== 0) return priorityDifference
+  const sA = statusPriority(a.status)
+  const sB = statusPriority(b.status)
 
-  const messageDifference = Number(b.message_id || 0) - Number(a.message_id || 0)
-  if (messageDifference !== 0) return messageDifference
-  return String(b.id || '').localeCompare(String(a.id || ''))
+  if (sA !== sB) return sB - sA
+
+  // Para Activos/En cola (prioridad >= 2), orden cronológico ascendente (ID mensaje)
+  if (sA >= 2) {
+    return Number(a.message_id || 0) - Number(b.message_id || 0)
+  }
+
+  // Para Historial (prioridad 1), lo más reciente primero (updated_at)
+  return (b.updated_at || 0) - (a.updated_at || 0)
 }
 
 const orderedDownloads = computed(() => [...props.downloads].sort(compareDownloads))

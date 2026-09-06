@@ -294,8 +294,16 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 		if sI != sJ {
 			return sI > sJ
 		}
-		if res[i].MessageID != res[j].MessageID {
-			return res[i].MessageID < res[j].MessageID
+		// Para activos/en cola (prioridad >= 2), orden cronológico ascendente
+		if sI >= 2 {
+			if res[i].MessageID != res[j].MessageID {
+				return res[i].MessageID < res[j].MessageID
+			}
+		} else {
+			// Para historial, lo más reciente primero
+			if res[i].UpdatedAt != res[j].UpdatedAt {
+				return res[i].UpdatedAt > res[j].UpdatedAt
+			}
 		}
 		return res[i].ID < res[j].ID
 	})
@@ -554,10 +562,21 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 		item.ID = uuid.New().String()
 	}
 
-	// Si ya existe en memoria, no duplicar el registro ni lanzar otro job
+	// Evitar duplicados por ID único
 	if existing, ok := e.downloads[item.ID]; ok {
 		e.mu.Unlock()
 		return existing.ID
+	}
+
+	// Evitar duplicados por ChatID y MessageID (evita "mensajes a lo loco")
+	for _, existing := range e.downloads {
+		if existing.ChatID == item.ChatID && existing.MessageID == item.MessageID {
+			// Si el item ya existe y no está fallido/cancelado, no duplicar
+			if existing.Status != "failed" && existing.Status != "cancelled" {
+				e.mu.Unlock()
+				return existing.ID
+			}
+		}
 	}
 
 	item.Status = "queued"
