@@ -89,7 +89,7 @@ func (u *AppUpdater) CheckForUpdate() (*ReleaseInfo, *ReleaseAsset, error) {
 	asset := &ReleaseAsset{
 		Name:        latest.AssetName,
 		DownloadURL: latest.AssetURL,
-		Size:        latest.AssetSize,
+		Size:        int64(latest.AssetByteSize),
 	}
 	rel.Assets = []ReleaseAsset{*asset}
 
@@ -111,7 +111,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 
 		// Reemplazo nativo del binario
-		err = selfupdate.UpdateTo(context.Background(), rel.release, exe)
+		err = selfupdate.UpdateTo(context.Background(), rel.release.AssetURL, rel.release.AssetName, exe)
 		if err != nil {
 			u.setProgress("error: "+err.Error(), 0, 0, 0)
 			return
