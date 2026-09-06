@@ -763,6 +763,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	item, ok := e.downloads[itemID]
 	if !ok || item.Status == "cancelled" || item.Status == "paused" || e.stopping {
 		e.mu.Unlock()
+		e.activeCond.Broadcast() // Despertar al siguiente si este decide no iniciar
 		return
 	}
 
@@ -786,7 +787,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	defer func() {
 		e.mu.Lock()
 		e.runningJobs--
-		e.activeCond.Signal()
+		e.activeCond.Broadcast() // Broadcast es más seguro que Signal para asegurar que la cola siga
 
 		delete(e.cancelFuncs, itemID)
 		delete(e.startTimes, itemID)
