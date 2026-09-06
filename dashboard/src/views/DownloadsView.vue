@@ -51,7 +51,7 @@ const emit = defineEmits([
 const inputUrl = ref('')
 
 const statusPriority = status => ({
-  downloading: 4,
+  downloading: 2,
   paused: 2,
   queued: 2,
   pending: 2
@@ -63,9 +63,9 @@ const compareDownloads = (a, b) => {
 
   if (sA !== sB) return sB - sA
 
-  // Para Activos/En cola (prioridad >= 2), orden cronológico ascendente (ID mensaje)
+  // Para Activos/En cola (prioridad >= 2), orden de creación ascendente
   if (sA >= 2) {
-    return Number(a.message_id || 0) - Number(b.message_id || 0)
+    return (a.created_at || 0) - (b.created_at || 0)
   }
 
   // Para Historial (prioridad 1), lo más reciente primero (updated_at)
@@ -73,6 +73,10 @@ const compareDownloads = (a, b) => {
 }
 
 const orderedDownloads = computed(() => [...props.downloads].sort(compareDownloads))
+
+const monitorDownloads = computed(() =>
+  orderedDownloads.value.filter(item => ['downloading', 'paused', 'pending', 'queued'].includes(item.status))
+)
 
 const handleStart = () => {
   const url = inputUrl.value.trim()
@@ -243,7 +247,7 @@ const allActivePaused = computed(() => {
         </div>
 
         <div
-          v-for="item in [...activeDownloads, ...pendingDownloads]"
+          v-for="item in monitorDownloads"
           :key="item.id"
           class="download-row"
         >

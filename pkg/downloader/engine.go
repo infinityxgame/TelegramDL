@@ -220,7 +220,7 @@ func (e *Engine) persistSeenChunks(itemID string) {
 	}
 	e.mu.RUnlock()
 	for _, index := range chunks {
-		_ = e.storage.AddChunk(itemID, int(index))
+		_ = e.storage.AddChunk(itemID, index)
 	}
 }
 
@@ -308,10 +308,10 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 		if sI != sJ {
 			return sI > sJ
 		}
-		// Para activos/en cola (prioridad >= 2), orden cronológico ascendente
+		// Para activos/en cola (prioridad >= 2), orden de creación ascendente
 		if sI >= 2 {
-			if res[i].MessageID != res[j].MessageID {
-				return res[i].MessageID < res[j].MessageID
+			if res[i].CreatedAt != res[j].CreatedAt {
+				return res[i].CreatedAt < res[j].CreatedAt
 			}
 		} else {
 			// Para historial, lo más reciente primero
@@ -557,10 +557,10 @@ func (e *Engine) ResumeAll(ctx context.Context) {
 		}
 	}
 
-	// Ordenar por MessageID para respetar el orden original al reanudar
+	// Ordenar por CreatedAt para respetar el orden original al reanudar
 	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].MessageID != items[j].MessageID {
-			return items[i].MessageID < items[j].MessageID
+		if items[i].CreatedAt != items[j].CreatedAt {
+			return items[i].CreatedAt < items[j].CreatedAt
 		}
 		return items[i].ID < items[j].ID
 	})
@@ -667,33 +667,37 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 	}
 
 	now := time.Now()
+	// Sumar siempre los bytes escritos al progreso actual para evitar que se detenga
+	item.CurrentBytes += bytesWritten
+
+	if totalBytes > 0 {
+		item.TotalBytes = totalBytes
+		progressVal := (float64(item.CurrentBytes) / float64(totalBytes)) * 100.0
+		if progressVal >= 100.0 {
+			item.Progress = 100.0
+		} else {
+			item.Progress = math.Min(99.9, progressVal)
+		}
+		item.TotalStr = config.FormatBytes(float64(totalBytes))
+	}
+	item.CurrentStr = config.FormatBytes(float64(item.CurrentBytes))
+	item.UpdatedAt = float64(now.Unix())
+
+	// Deduplicación solo para la base de datos (para no saturar con miles de inserts)
 	chunkIndex := offset / downloadPartSize
 	chunks := e.seenChunks[itemID]
 	if chunks == nil {
 		chunks = make(map[int64]struct{})
 		e.seenChunks[itemID] = chunks
 	}
-	newBytes := bytesWritten
-	if _, seen := chunks[chunkIndex]; seen {
-		newBytes = 0
-	} else {
+	if _, seen := chunks[chunkIndex]; !seen {
 		chunks[chunkIndex] = struct{}{}
 		chunkAdded = true
 	}
-	item.CurrentBytes += newBytes
-	if totalBytes > 0 {
-		item.TotalBytes = totalBytes
-		// El 100% se reserva para cuando Parallel() termina sin errores y el
-		// archivo temporal ya fue finalizado correctamente.
-		item.Progress = math.Min(99.9, float64(item.CurrentBytes)/float64(totalBytes)*100.0)
-		item.TotalStr = config.FormatBytes(float64(totalBytes))
-	}
-	item.CurrentStr = config.FormatBytes(float64(item.CurrentBytes))
-	item.UpdatedAt = float64(now.Unix())
 
 	lastTime := e.lastProgressTimes[itemID]
 	lastBytes := e.lastProgressBytes[itemID]
-	if !lastTime.IsZero() && newBytes > 0 {
+	if !lastTime.IsZero() && bytesWritten > 0 {
 		elapsed := now.Sub(lastTime).Seconds()
 		bytesDelta := item.CurrentBytes - lastBytes
 		if elapsed > 0 && bytesDelta >= 0 {
@@ -707,7 +711,7 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 			e.itemSpeeds[itemID] = speedVal
 		}
 	}
-	if newBytes > 0 {
+	if bytesWritten > 0 {
 		e.lastProgressTimes[itemID] = now
 		e.lastProgressBytes[itemID] = item.CurrentBytes
 	}
@@ -730,7 +734,7 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 		e.persistWG.Add(1)
 		go func() {
 			defer e.persistWG.Done()
-			_ = e.storage.AddChunk(itemID, int(chunkIndex))
+			_ = e.storage.AddChunk(itemID, chunkIndex)
 		}()
 	}
 
@@ -816,6 +820,13 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	if errors.Is(err, context.Canceled) {
+		// Si el estado ya es 'queued', significa que fue reanudado mientras se cerraba
+		if curItem.Status == "queued" && !e.pauseStates[itemID] {
+			e.mu.Unlock()
+			e.launchDownloadJob(itemID)
+			return
+		}
+
 		if e.stopping || e.cancelledForLimit[itemID] {
 			curItem.Status = "queued"
 			delete(e.pauseStates, itemID)

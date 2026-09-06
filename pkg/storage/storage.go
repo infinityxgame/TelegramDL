@@ -590,11 +590,11 @@ func (s *Storage) DeleteDownload(id string) error {
 	return err
 }
 
-func (s *Storage) Chunks(downloadID string) (map[int]bool, error) {
+func (s *Storage) Chunks(downloadID string) (map[int64]bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	res := make(map[int]bool)
+	res := make(map[int64]bool)
 	rows, err := s.db.Query("SELECT chunk_index FROM download_chunks WHERE download_id=?", downloadID)
 	if err != nil {
 		return res, err
@@ -602,7 +602,7 @@ func (s *Storage) Chunks(downloadID string) (map[int]bool, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var idx int
+		var idx int64
 		if err := rows.Scan(&idx); err == nil {
 			res[idx] = true
 		}
@@ -610,7 +610,7 @@ func (s *Storage) Chunks(downloadID string) (map[int]bool, error) {
 	return res, nil
 }
 
-func (s *Storage) AddChunk(downloadID string, chunkIndex int) error {
+func (s *Storage) AddChunk(downloadID string, chunkIndex int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
