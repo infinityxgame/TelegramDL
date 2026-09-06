@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -94,11 +95,8 @@ func (u *AppUpdater) IsPostponed(version string) bool {
 func (u *AppUpdater) CheckForUpdate() (*ReleaseInfo, *ReleaseAsset, error) {
 	log.Printf("[UPDATER] Comprobando actualizaciones para %s (Versión actual: %s)", u.repoURL, u.currentVersion)
 
-	updater, err := goupdate.NewUpdater(goupdate.Config{
-		Filters: []string{
-			"win", "windows", "linux", "mac", "darwin", "exe", "zip", "tar.gz", "appimage",
-		},
-	})
+	// 1. Intentar detección automática primero
+	updater, err := goupdate.NewUpdater(goupdate.Config{})
 	if err != nil {
 		log.Printf("[UPDATER] Error al crear updater: %v", err)
 		return nil, nil, err
@@ -110,15 +108,48 @@ func (u *AppUpdater) CheckForUpdate() (*ReleaseInfo, *ReleaseAsset, error) {
 		return nil, nil, err
 	}
 
+	// 2. Validar si el asset detectado es para nuestra plataforma
+	if found {
+		assetName := strings.ToLower(latest.AssetName)
+		isWin := strings.Contains(assetName, "win") || strings.Contains(assetName, "exe")
+		isLin := strings.Contains(assetName, "linux")
+		isMac := strings.Contains(assetName, "darwin") || strings.Contains(assetName, "mac")
+
+		currentOS := runtime.GOOS
+		if (currentOS == "windows" && !isWin) || (currentOS == "linux" && !isLin) || (currentOS == "darwin" && !isMac) {
+			log.Printf("[UPDATER] El asset detectado automáticamente (%s) no parece correcto para %s. Reintentando con filtros...", latest.AssetName, currentOS)
+			found = false
+		}
+	}
+
+	// 3. Si no se encontró o no era válido, forzar con filtros específicos
 	if !found {
-		log.Printf("[UPDATER] No se encontró ninguna release compatible automáticamente.")
+		var filters []string
+		switch runtime.GOOS {
+		case "windows":
+			filters = []string{"win"}
+		case "darwin":
+			filters = []string{"mac"}
+		case "linux":
+			filters = []string{"linux"}
+		}
+
+		updater, _ = goupdate.NewUpdater(goupdate.Config{
+			Filters: filters,
+		})
+		latest, found, err = updater.DetectLatest(context.Background(), goupdate.ParseSlug(u.repoURL))
+	}
+
+	if !found || latest == nil {
+		log.Printf("[UPDATER] No se encontró ninguna actualización compatible.")
 		return nil, nil, nil
 	}
 
 	log.Printf("[UPDATER] Última versión encontrada: %s (Asset: %s)", latest.Version(), latest.AssetName)
 
-	// Comparar versiones
-	if latest.LessOrEqual(u.currentVersion) {
+	// Comparar versiones (normalizando)
+	currV := strings.TrimPrefix(u.currentVersion, "v")
+	if latest.LessOrEqual(currV) {
 		log.Printf("[UPDATER] La versión actual (%s) ya está al día respecto a %s", u.currentVersion, latest.Version())
 		return nil, nil, nil
 	}
@@ -194,7 +225,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 
 		// 4. Aplicar actualización atómica (reemplazo seguro)
 		u.setProgress("Instalando...", 0, 0, 95)
-		exe, err := os.Executable()
+		exePath, err := os.Executable()
 		if err != nil {
 			u.setProgress("error: no se pudo obtener ruta del ejecutable", 0, 0, 0)
 			return
@@ -207,8 +238,9 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 		defer newBinaryFile.Close()
 
+		log.Printf("[UPDATER] Aplicando actualización sobre: %s", exePath)
 		err = selfupdate.Apply(newBinaryFile, selfupdate.Options{
-			TargetPath: exe,
+			TargetPath: exePath,
 		})
 		if err != nil {
 			u.setProgress("error: fallo al aplicar actualización: "+err.Error(), 0, 0, 0)
@@ -216,9 +248,9 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 
 		u.setProgress("¡Actualizado! Reiniciando...", 0, 0, 100)
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 
-		u.restartApp()
+		u.restartApp(exePath)
 	}()
 
 	return nil
@@ -275,34 +307,65 @@ func (u *AppUpdater) findExecutable(path string) string {
 	}
 
 	var found string
+	var priority int = -1
+
 	_ = filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
+
 		name := strings.ToLower(info.Name())
-		// Buscamos nombres comunes o que contengan tgdown/telegramdl
-		if name == "telegramdl.exe" || name == "tgdown.exe" || name == "telegramdl" || name == "tgdown" ||
-		   strings.Contains(name, "telegramdl") || strings.Contains(name, "tgdown") {
+		ext := strings.ToLower(filepath.Ext(name))
+
+		// En Windows solo aceptamos .exe
+		// En otros sistemas aceptamos sin extensión o cualquier cosa que parezca el binario
+		isWindows := runtime.GOOS == "windows"
+		if isWindows && ext != ".exe" {
+			return nil
+		}
+
+		currPriority := -1
+		// Nombres exactos tienen prioridad máxima
+		if name == "telegramdl.exe" || name == "tgdown.exe" || name == "telegramdl" || name == "tgdown" {
+			currPriority = 100
+		} else if strings.Contains(name, "telegramdl") || strings.Contains(name, "tgdown") {
+			currPriority = 50
+		} else if !isWindows && ext == "" {
+			// En Linux/Mac, un archivo sin extensión podría ser el binario
+			currPriority = 10
+		}
+
+		if currPriority > priority {
+			priority = currPriority
 			found = p
-			return io.EOF // Stop walking
+		}
+
+		if priority == 100 {
+			return io.EOF // Encontrado el mejor match posible
 		}
 		return nil
 	})
 	return found
 }
 
-func (u *AppUpdater) restartApp() {
-	self, err := os.Executable()
-	if err != nil {
-		os.Exit(0)
+func (u *AppUpdater) restartApp(exePath string) {
+	// Usamos la ruta original donde instalamos el nuevo binario
+	// En lugar de os.Executable() que podría devolver la ruta del archivo .old en Windows
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// En Windows, ejecutar el binario directamente suele funcionar si no heredamos nada
+		cmd = exec.Command(exePath, os.Args[1:]...)
+	} else {
+		cmd = exec.Command(exePath, os.Args[1:]...)
 	}
 
-	cmd := exec.Command(self, os.Args[1:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	log.Printf("[UPDATER] Lanzando nueva versión: %s", exePath)
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("[UPDATER] Error crítico al reiniciar aplicación: %v", err)
+	}
 
-	_ = cmd.Start()
 	os.Exit(0)
 }
 
@@ -335,9 +398,12 @@ func unzip(src, dest string) error {
 			outFile.Close()
 			return err
 		}
-		_, _ = io.Copy(outFile, rc)
+		_, err = io.Copy(outFile, rc)
 		outFile.Close()
 		rc.Close()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -375,8 +441,11 @@ func untarGz(src, dest string) error {
 			if err != nil {
 				return err
 			}
-			_, _ = io.Copy(outFile, tr)
+			_, err = io.Copy(outFile, tr)
 			outFile.Close()
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
