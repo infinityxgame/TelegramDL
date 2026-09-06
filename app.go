@@ -149,3 +149,10 @@ func (a *App) GetServerInfo() ServerInfo {
 		Port: config.GetServerPort(),
 	}
 }
+
+// PostponeUpdate marca la actualización para no mostrarse más en esta sesión
+func (a *App) PostponeUpdate(version string) {
+	if a.updater != nil {
+		a.updater.Postpone(version)
+	}
+}

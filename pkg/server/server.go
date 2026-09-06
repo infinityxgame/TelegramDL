@@ -155,6 +155,18 @@ func (s *Server) Start(port int) error {
 	go s.periodicBroadcastLoop()
 	go s.broadcastDebounceLoop()
 
+	// Comprobación de actualización inmediata al iniciar
+	go func() {
+		time.Sleep(1 * time.Second)
+		rel, _, err := s.updater.CheckForUpdate()
+		if err == nil && rel != nil {
+			s.mu.Lock()
+			s.latestRel = rel
+			s.mu.Unlock()
+			s.triggerBroadcast()
+		}
+	}()
+
 	go func() {
 		_ = s.httpServer.Serve(listener)
 	}()
@@ -273,6 +285,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/updates/progress", s.handleUpdateProgress)
 	mux.HandleFunc("/api/update/install", s.handleInstallUpdate)
 	mux.HandleFunc("/api/updates/install", s.handleInstallUpdate)
+	mux.HandleFunc("/api/update/postpone", s.handlePostponeUpdate)
 
 	// App Exit (Soporta /api/app/exit y /api/exit)
 	mux.HandleFunc("/api/app/exit", s.handleExit)
@@ -313,8 +326,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) periodicBroadcastLoop() {
 	broadcastTicker := time.NewTicker(1 * time.Second)
 	diskTicker := time.NewTicker(3 * time.Second)
+	updateTicker := time.NewTicker(5 * time.Minute)
 	defer broadcastTicker.Stop()
 	defer diskTicker.Stop()
+	defer updateTicker.Stop()
 
 	for {
 		select {
@@ -329,6 +344,17 @@ func (s *Server) periodicBroadcastLoop() {
 				s.mu.Lock()
 				s.cachedDisk = disk
 				s.mu.Unlock()
+			}
+		case <-updateTicker.C:
+			rel, _, err := s.updater.CheckForUpdate()
+			if err == nil && rel != nil {
+				// Solo disparamos el broadcast si la actualización no ha sido pospuesta en esta sesión
+				if !s.updater.IsPostponed(rel.TagName) {
+					s.mu.Lock()
+					s.latestRel = rel
+					s.mu.Unlock()
+					s.triggerBroadcast()
+				}
 			}
 		case <-broadcastTicker.C:
 			s.triggerBroadcast()
@@ -441,6 +467,19 @@ func (s *Server) buildStateSnapshot() map[string]any {
 
 	listenerItems := s.listener.GetItems()
 
+	s.mu.RLock()
+	latest := s.latestRel
+	s.mu.RUnlock()
+
+	var updateInfo any = nil
+	if latest != nil {
+		updateInfo = map[string]any{
+			"available": true,
+			"version":   latest.TagName,
+			"changelog": latest.Body,
+		}
+	}
+
 	return map[string]any{
 		"type":         "state",
 		"downloads":    downloads,
@@ -451,6 +490,7 @@ func (s *Server) buildStateSnapshot() map[string]any {
 		"speed_total":  config.FormatBytes(float64(speedBytes)) + "/s",
 		"speed_bytes":  speedBytes,
 		"disk":         disk,
+		"update":       updateInfo,
 		"server_time":  float64(time.Now().Unix()),
 	}
 }
@@ -1355,6 +1395,19 @@ func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"message": "Iniciando descarga e instalación",
 	})
+}
+
+func (s *Server) handlePostponeUpdate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Version == "" {
+		s.errorResponse(w, http.StatusUnprocessableEntity, "Versión requerida")
+		return
+	}
+
+	s.updater.Postpone(body.Version)
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
