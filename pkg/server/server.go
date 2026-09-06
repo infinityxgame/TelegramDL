@@ -444,7 +444,7 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.clientMgr.InitClient(body.APIID, body.APIHash)
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.jsonResponse(w, http.StatusOK, s.clientMgr.GetAuthStatus(r.Context()))
 }
 
 func (s *Server) handleAuthSendCode(w http.ResponseWriter, r *http.Request) {
@@ -501,7 +501,18 @@ func (s *Server) handleAuthVerifyCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": status})
+	st := s.clientMgr.GetAuthStatus(r.Context())
+	// Inyectar el estado específico de la verificación (como 2fa_required)
+	// para que el frontend sepa si debe mostrar el paso de contraseña.
+	response := struct {
+		telegram.AuthStatus
+		Status string `json:"status"`
+	}{
+		AuthStatus: st,
+		Status:     status,
+	}
+
+	s.jsonResponse(w, http.StatusOK, response)
 }
 
 func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
@@ -518,7 +529,7 @@ func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.jsonResponse(w, http.StatusOK, s.clientMgr.GetAuthStatus(r.Context()))
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
