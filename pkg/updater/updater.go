@@ -52,11 +52,13 @@ type AppUpdater struct {
 
 func NewAppUpdater() *AppUpdater {
 	config.InitPaths()
+	// Usar el directorio temporal del sistema para evitar que se borre a sí mismo en macOS
+	tempDir := filepath.Join(os.TempDir(), "tgdown_update")
 	return &AppUpdater{
 		currentVersion: config.AppVersion,
 		repoURL:        config.GithubRepo,
 		baseDir:        config.BaseDir,
-		tempDir:        filepath.Join(config.BaseDir, "update_temp"),
+		tempDir:        tempDir,
 		progress: Progress{
 			Status: "idle",
 		},
@@ -372,31 +374,41 @@ exit
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
 	} else if runtime.GOOS == "darwin" {
-		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
+		scriptPath := filepath.Join(os.TempDir(), "tgdown_finish_update.sh")
 		targetAppPath := u.baseDir
 		if filepath.Base(targetAppPath) == "MacOS" && filepath.Base(filepath.Dir(targetAppPath)) == "Contents" {
 			targetAppPath = filepath.Dir(filepath.Dir(targetAppPath))
 		}
 
+		// Usar ditto si está disponible para preservar metadatos de macOS, sino cp -R
 		scriptContent := fmt.Sprintf(`#!/bin/bash
-sleep 1
+sleep 2
 while kill -0 %d 2>/dev/null; do
     sleep 0.5
 done
+
+if [ -d "%s" ]; then
+    rm -rf "%s"
+    if command -v ditto >/dev/null 2>&1; then
+        ditto "%s" "%s/%s"
+    else
+        cp -R "%s" "%s/"
+    fi
+    xattr -rd com.apple.quarantine "%s" 2>/dev/null
+    open "%s"
+fi
 rm -rf "%s"
-cp -R "%s" "%s"
-rm -rf "%s"
-open "%s"
 rm -f "$0"
 exit 0
-`, pid, targetAppPath, srcPath, filepath.Dir(targetAppPath), u.tempDir, targetAppPath)
+`, pid, srcPath, targetAppPath, srcPath, filepath.Dir(targetAppPath), filepath.Base(targetAppPath), srcPath, filepath.Dir(targetAppPath), targetAppPath, targetAppPath, u.tempDir)
 
 		_ = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		cmd := exec.Command("/bin/bash", scriptPath)
 		_ = cmd.Start()
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
-	} else {
+	}
+ else {
 		// Linux estándar
 		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
 		scriptContent := fmt.Sprintf(`#!/bin/bash
