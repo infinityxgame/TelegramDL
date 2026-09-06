@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"tgdown/pkg/config"
@@ -88,6 +89,19 @@ func runDesktopMode() {
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			BackdropType:         windows.None,
+		},
+		Mac: &mac.Options{
+			TitleBar: &mac.TitleBar{
+				TitlebarAppearsTransparent: true,
+				HideTitle:                  false,
+				HideTitleBar:               false,
+				FullSizeContent:            false,
+				UseToolbar:                 false,
+				HideToolbarSeparator:       true,
+			},
+			Appearance:           mac.NSAppearanceNameDarkAqua,
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
 		},
 	})
 

@@ -103,13 +103,24 @@ func InitPaths() {
 	})
 }
 
-func DefaultConfig() Config {
+func GetDefaultDownloadFolder() string {
 	InitPaths()
+	home, err := os.UserHomeDir()
+	if err == nil {
+		downloadsDir := filepath.Join(home, "Downloads")
+		if _, err := os.Stat(downloadsDir); err == nil {
+			return filepath.Join(downloadsDir, "TelegramDL")
+		}
+	}
+	return filepath.Join(BaseDir, "descargas")
+}
+
+func DefaultConfig() Config {
 	return Config{
 		MaxConcurrentDownloads: 3,
 		ParallelChunks:         true,
 		ChunkWorkers:           8,
-		DownloadFolder:         filepath.Join(BaseDir, "descargas"),
+		DownloadFolder:         GetDefaultDownloadFolder(),
 		ColorID:                nil,
 		SpeedLimit: SpeedLimit{
 			Value: 0,
@@ -211,7 +222,7 @@ func NormalizeConfig(raw Config) Config {
 	}
 
 	if strings.TrimSpace(raw.DownloadFolder) == "" {
-		raw.DownloadFolder = filepath.Join(BaseDir, "descargas")
+		raw.DownloadFolder = GetDefaultDownloadFolder()
 	}
 
 	raw.SpeedLimit.Unit = strings.ToUpper(strings.TrimSpace(raw.SpeedLimit.Unit))
