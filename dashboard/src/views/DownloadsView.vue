@@ -65,7 +65,11 @@ const compareDownloads = (a, b) => {
 
   // Para Activos/En cola (prioridad >= 2), orden de creación ascendente
   if (sA >= 2) {
-    return (a.created_at || 0) - (b.created_at || 0)
+    if ((a.created_at || 0) !== (b.created_at || 0)) {
+      return (a.created_at || 0) - (b.created_at || 0)
+    }
+    // Desempate por MessageID para rangos
+    return (a.message_id || 0) - (b.message_id || 0)
   }
 
   // Para Historial (prioridad 1), lo más reciente primero (updated_at)

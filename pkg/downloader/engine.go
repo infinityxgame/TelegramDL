@@ -313,6 +313,8 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 			if res[i].CreatedAt != res[j].CreatedAt {
 				return res[i].CreatedAt < res[j].CreatedAt
 			}
+			// Si se crearon en el mismo segundo (ej. un rango), desempatar por MessageID
+			return res[i].MessageID < res[j].MessageID
 		} else {
 			// Para historial, lo más reciente primero
 			if res[i].UpdatedAt != res[j].UpdatedAt {
