@@ -33,8 +33,9 @@ func getPlatformDiskSpace(path string) (free int64, total int64, err error) {
 		return 0, 0, err
 	}
 
-	// Available blocks * block size
-	free = int64(stat.Bavail) * int64(stat.Bsize)
+	// Bfree (bloques libres totales) en lugar de Bavail para aproximarse más
+	// al "Espacio disponible" que muestra macOS Finder.
+	free = int64(stat.Bfree) * int64(stat.Bsize)
 	// Total blocks * block size
 	total = int64(stat.Blocks) * int64(stat.Bsize)
 

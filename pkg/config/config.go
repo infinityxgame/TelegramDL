@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	AppVersion = "2.2.4"
+	AppVersion = "2.2.5"
 	GithubRepo = "infinityxgame/tgdown"
 )
 
@@ -246,10 +247,15 @@ func FormatBytes(size float64) string {
 	if size <= 0 {
 		return "0 B"
 	}
+	// macOS utiliza base 1000 para todo (Finder, Disk Utility)
+	base := 1024.0
+	if runtime.GOOS == "darwin" {
+		base = 1000.0
+	}
 	units := []string{"B", "KB", "MB", "GB", "TB"}
 	i := 0
-	for size >= 1024 && i < len(units)-1 {
-		size /= 1024
+	for size >= base && i < len(units)-1 {
+		size /= base
 		i++
 	}
 	if i == 0 {
