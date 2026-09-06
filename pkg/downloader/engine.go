@@ -37,7 +37,8 @@ type Engine struct {
 	downloads          map[string]*storage.DownloadItem
 	cancelFuncs        map[string]context.CancelFunc
 	pauseStates        map[string]bool
-	activeSem          chan struct{}
+	activeCond         *sync.Cond
+	runningJobs        int
 	stateListeners     []DownloadStateListener
 	startTimes         map[string]time.Time
 	lastBroadcastTimes map[string]time.Time
@@ -68,7 +69,6 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		downloads:          make(map[string]*storage.DownloadItem),
 		cancelFuncs:        make(map[string]context.CancelFunc),
 		pauseStates:        make(map[string]bool),
-		activeSem:          make(chan struct{}, cfg.MaxConcurrentDownloads),
 		startTimes:         make(map[string]time.Time),
 		lastBroadcastTimes: make(map[string]time.Time),
 		lastSaveTimes:      make(map[string]time.Time),
@@ -79,6 +79,7 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		persistCh:          make(chan storage.DownloadItem, 256),
 		forceDuplicate:     make(map[string]bool),
 	}
+	eng.activeCond = sync.NewCond(&eng.mu)
 	if st != nil {
 		go eng.persistenceLoop()
 	}
@@ -125,6 +126,7 @@ func (e *Engine) launchDownloadJob(itemID string) {
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	e.stopping = true
+	e.activeCond.Broadcast()
 	for id, cancel := range e.cancelFuncs {
 		if item, ok := e.downloads[id]; ok && item.Status == "downloading" {
 			item.Status = "queued"
@@ -231,7 +233,7 @@ func (e *Engine) UpdateConfig(cfg config.Config) {
 	e.config = config.NormalizeConfig(cfg)
 
 	if oldMax != e.config.MaxConcurrentDownloads {
-		e.activeSem = make(chan struct{}, e.config.MaxConcurrentDownloads)
+		e.activeCond.Broadcast()
 	}
 }
 
@@ -383,6 +385,19 @@ func (e *Engine) CancelDownload(id string) error {
 	return nil
 }
 
+func (e *Engine) CancelAll() {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.downloads))
+	for id := range e.downloads {
+		ids = append(ids, id)
+	}
+	e.mu.Unlock()
+
+	for _, id := range ids {
+		_ = e.CancelDownload(id)
+	}
+}
+
 func (e *Engine) PauseDownload(id string) error {
 	e.mu.Lock()
 	item, ok := e.downloads[id]
@@ -416,6 +431,21 @@ func (e *Engine) PauseDownload(id string) error {
 	return nil
 }
 
+func (e *Engine) PauseAll() {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.downloads))
+	for id, item := range e.downloads {
+		if item.Status == "downloading" || item.Status == "queued" {
+			ids = append(ids, id)
+		}
+	}
+	e.mu.Unlock()
+
+	for _, id := range ids {
+		_ = e.PauseDownload(id)
+	}
+}
+
 func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	e.mu.Lock()
 	item, ok := e.downloads[id]
@@ -447,6 +477,21 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 
 	e.launchDownloadJob(id)
 	return nil
+}
+
+func (e *Engine) ResumeAll(ctx context.Context) {
+	e.mu.Lock()
+	ids := make([]string, 0, len(e.downloads))
+	for id, item := range e.downloads {
+		if item.Status == "paused" || item.Status == "failed" || item.Status == "cancelled" {
+			ids = append(ids, id)
+		}
+	}
+	e.mu.Unlock()
+
+	for _, id := range ids {
+		_ = e.ResumeDownload(ctx, id)
+	}
 }
 
 func (e *Engine) QueueItem(item storage.DownloadItem) string {
@@ -606,15 +651,18 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 func (e *Engine) startDownloadJob(itemID string) {
 	// Adquirir slot de concurrencia
 	log.Printf("[DOWNLOAD] Solicitando slot de concurrencia para item %s...", itemID)
-	e.activeSem <- struct{}{}
-	defer func() { <-e.activeSem }()
-
 	e.mu.Lock()
+	for e.runningJobs >= e.config.MaxConcurrentDownloads && !e.stopping {
+		e.activeCond.Wait()
+	}
+
 	item, ok := e.downloads[itemID]
 	if !ok || item.Status == "cancelled" || item.Status == "paused" || e.stopping {
 		e.mu.Unlock()
 		return
 	}
+
+	e.runningJobs++
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancelFuncs[itemID] = cancel
@@ -633,6 +681,9 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 	defer func() {
 		e.mu.Lock()
+		e.runningJobs--
+		e.activeCond.Signal()
+
 		delete(e.cancelFuncs, itemID)
 		delete(e.startTimes, itemID)
 		delete(e.lastBroadcastTimes, itemID)

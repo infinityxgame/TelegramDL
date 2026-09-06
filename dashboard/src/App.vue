@@ -367,6 +367,38 @@ const retryDownload = async (item) => {
   } catch (err) { showMessage(err.message, true) }
 }
 
+const pauseAllDownloads = async () => {
+  try {
+    await api('/api/downloads/pause-all', { method: 'POST' })
+    showMessage('Todas las descargas pausadas')
+    await fetchDownloads()
+  } catch (err) { showMessage(err.message, true) }
+}
+
+const resumeAllDownloads = async () => {
+  try {
+    await api('/api/downloads/resume-all', { method: 'POST' })
+    showMessage('Todas las descargas reanudadas')
+    await fetchDownloads()
+  } catch (err) { showMessage(err.message, true) }
+}
+
+const cancelAllDownloads = async () => {
+  openConfirm({
+    title: 'Cancelar todo',
+    message: '¿Estás seguro de que quieres cancelar todas las descargas activas y en cola?',
+    confirmText: 'Sí, cancelar todo',
+    type: 'danger',
+    action: async () => {
+      try {
+        await api('/api/downloads/cancel-all', { method: 'POST' })
+        showMessage('Todas las descargas canceladas')
+        await fetchDownloads()
+      } catch (err) { showMessage(err.message, true) }
+    }
+  })
+}
+
 const deleteDownload = async item => {
   openConfirm({
     title: 'Borrar archivo',
@@ -782,6 +814,9 @@ onUnmounted(() => {
             @retry-download="retryDownload"
             @delete-download="deleteDownload"
             @open-file="openFile"
+            @pause-all="pauseAllDownloads"
+            @resume-all="resumeAllDownloads"
+            @cancel-all="cancelAllDownloads"
           />
 
           <ListenerView
@@ -1015,5 +1050,30 @@ onUnmounted(() => {
   background: var(--user-icon-bg);
   color: var(--user-accent);
   border-color: var(--user-primary);
+}
+
+.action-btn-mini {
+  background: var(--user-surface-light);
+  border: 1px solid var(--user-border);
+  color: var(--user-text-dim);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.action-btn-mini:hover {
+  background: var(--user-icon-bg);
+  color: var(--user-accent);
+  border-color: var(--user-primary);
+}
+.action-btn-mini.danger:hover {
+  background: rgba(125, 48, 61, .3);
+  border-color: #a95663;
+  color: #ffadb5;
 }
 </style>

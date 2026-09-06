@@ -227,6 +227,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Downloads (Soporta /api/downloads, /api/downloads/history, /api/downloads/open, /api/downloads/{id})
 	mux.HandleFunc("/api/downloads", s.handleDownloadsRoute)
 	mux.HandleFunc("/api/downloads/", s.handleDownloadsRoute)
+	mux.HandleFunc("/api/downloads/cancel-all", s.handleCancelAllDownloads)
+	mux.HandleFunc("/api/downloads/pause-all", s.handlePauseAllDownloads)
+	mux.HandleFunc("/api/downloads/resume-all", s.handleResumeAllDownloads)
 	mux.HandleFunc("/api/download", s.handleStartDownload)
 	mux.HandleFunc("/api/cancel", s.handleCancelDownload)
 	mux.HandleFunc("/api/pause", s.handlePauseDownload)
@@ -650,6 +653,21 @@ func (s *Server) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleCancelAllDownloads(w http.ResponseWriter, r *http.Request) {
+	s.downloader.CancelAll()
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handlePauseAllDownloads(w http.ResponseWriter, r *http.Request) {
+	s.downloader.PauseAll()
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleResumeAllDownloads(w http.ResponseWriter, r *http.Request) {
+	s.downloader.ResumeAll(r.Context())
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

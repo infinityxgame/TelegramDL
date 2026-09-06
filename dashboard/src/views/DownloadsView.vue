@@ -9,6 +9,8 @@ import {
   FileCheck,
   FileDown,
   Gauge,
+  Pause,
+  Play,
   RotateCcw,
   Trash2,
   X
@@ -40,7 +42,10 @@ const emit = defineEmits([
   'cancel-download',
   'retry-download',
   'delete-download',
-  'open-file'
+  'open-file',
+  'pause-all',
+  'resume-all',
+  'cancel-all'
 ])
 
 const inputUrl = ref('')
@@ -107,6 +112,15 @@ const statusText = (status) => {
 }
 
 const progress = (item) => Math.max(0, Math.min(100, Number(item.progress || 0)))
+
+const hasActiveOrQueued = computed(() =>
+  props.downloads.some(item => ['downloading', 'queued', 'pending'].includes(item.status))
+)
+
+const allActivePaused = computed(() => {
+  const activeItems = props.downloads.filter(item => ['downloading', 'queued', 'pending', 'paused'].includes(item.status))
+  return activeItems.length > 0 && activeItems.every(item => item.status === 'paused')
+})
 </script>
 
 <template>
@@ -181,6 +195,22 @@ const progress = (item) => Math.max(0, Math.min(100, Number(item.progress || 0))
             <h2>Actividad en tiempo real</h2>
           </div>
           <div class="header-actions">
+            <button
+              v-if="hasActiveOrQueued || allActivePaused"
+              class="action-btn-mini"
+              @click="allActivePaused ? emit('resume-all') : emit('pause-all')"
+            >
+              <component :is="allActivePaused ? Play : Pause" :size="12" />
+              {{ allActivePaused ? 'Reanudar todo' : 'Pausar todo' }}
+            </button>
+            <button
+              v-if="activeDownloads.length || pendingDownloads.length"
+              class="action-btn-mini danger"
+              @click="emit('cancel-all')"
+            >
+              <X :size="12" />
+              <span>Cancelar todo</span>
+            </button>
             <div v-if="disk" class="disk-monitor">
               <div class="disk-bar">
                 <div
