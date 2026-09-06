@@ -407,8 +407,7 @@ exit 0
 		_ = cmd.Start()
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
-	}
- else {
+	} else {
 		// Linux estándar
 		scriptPath := filepath.Join(u.baseDir, "finish_update.sh")
 		scriptContent := fmt.Sprintf(`#!/bin/bash
