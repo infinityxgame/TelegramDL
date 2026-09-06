@@ -47,6 +47,8 @@ type Server struct {
 	latestRel    *updater.ReleaseInfo
 	cachedDisk   *downloader.DiskInfo
 	exitCallback func()
+	broadcastCh  chan struct{}
+	onBroadcast  func(snap map[string]any)
 }
 
 type wsClient struct {
@@ -92,18 +94,19 @@ func NewServer(
 		exitCallback: exitCb,
 		mux:          http.NewServeMux(),
 		stopCh:       make(chan struct{}),
+		broadcastCh:  make(chan struct{}, 1),
 	}
 
 	s.registerRoutes(s.mux)
 
 	// Escuchar cambios de estado en el motor de descargas para emitir a los WebSockets
 	dl.OnStateChange(func(item storage.DownloadItem) {
-		s.broadcastState()
+		s.triggerBroadcast()
 	})
 
 	// Escuchar cambios de estado en el motor de escucha para emitir a los WebSockets
 	le.OnStateChange(func(item listener.ListenerItem) {
-		s.broadcastState()
+		s.triggerBroadcast()
 	})
 
 	return s
@@ -148,8 +151,9 @@ func (s *Server) Start(port int) error {
 		Handler: s.WebHandler(),
 	}
 
-	// Tarea de refresco y broadcast periódico
+	// Tarea de refresco y broadcast periódico debounced
 	go s.periodicBroadcastLoop()
+	go s.broadcastDebounceLoop()
 
 	go func() {
 		_ = s.httpServer.Serve(listener)
@@ -327,14 +331,48 @@ func (s *Server) periodicBroadcastLoop() {
 				s.mu.Unlock()
 			}
 		case <-broadcastTicker.C:
-			s.broadcastState()
+			s.triggerBroadcast()
 		}
 	}
 }
 
+func (s *Server) broadcastDebounceLoop() {
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+	pending := false
+
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-s.broadcastCh:
+			pending = true
+		case <-ticker.C:
+			if pending {
+				s.broadcastState()
+				pending = false
+			}
+		}
+	}
+}
+
+func (s *Server) triggerBroadcast() {
+	select {
+	case s.broadcastCh <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Server) SetBroadcastCallback(cb func(map[string]any)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onBroadcast = cb
+}
+
 func (s *Server) broadcastState() {
 	s.mu.RLock()
-	if len(s.wsClients) == 0 {
+	cb := s.onBroadcast
+	if len(s.wsClients) == 0 && cb == nil {
 		s.mu.RUnlock()
 		return
 	}
@@ -345,6 +383,10 @@ func (s *Server) broadcastState() {
 	s.mu.RUnlock()
 
 	snap := s.buildStateSnapshot()
+
+	if cb != nil {
+		cb(snap)
+	}
 
 	var toRemove []*wsClient
 	for _, c := range clients {

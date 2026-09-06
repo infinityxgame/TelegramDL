@@ -128,7 +128,7 @@ func (le *ListenerEngine) notifyState(item ListenerItem) {
 	le.mu.RUnlock()
 
 	for _, l := range listeners {
-		go func(listener ListenerStateListener) {
+		func(listener ListenerStateListener) {
 			defer func() { _ = recover() }()
 			listener(item)
 		}(l)

@@ -54,6 +54,7 @@ type Engine struct {
 	persistWG          sync.WaitGroup
 	stopping           bool
 	cancelledForLimit  map[string]bool
+	jobsInFlight       map[string]bool
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -81,6 +82,7 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		persistCh:          make(chan storage.DownloadItem, 256),
 		forceDuplicate:     make(map[string]bool),
 		cancelledForLimit:  make(map[string]bool),
+		jobsInFlight:       make(map[string]bool),
 		metadataSem:        make(chan struct{}, 5),
 	}
 	eng.activeCond = sync.NewCond(&eng.mu)
@@ -118,9 +120,22 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 }
 
 func (e *Engine) launchDownloadJob(itemID string) {
+	e.mu.Lock()
+	if e.jobsInFlight[itemID] {
+		e.mu.Unlock()
+		return
+	}
+	e.jobsInFlight[itemID] = true
+	e.mu.Unlock()
+
 	e.jobsWG.Add(1)
 	go func() {
 		defer e.jobsWG.Done()
+		defer func() {
+			e.mu.Lock()
+			delete(e.jobsInFlight, itemID)
+			e.mu.Unlock()
+		}()
 		e.startDownloadJob(itemID)
 	}()
 }
@@ -221,8 +236,7 @@ func (e *Engine) notifyState(item storage.DownloadItem) {
 	e.mu.RUnlock()
 
 	for _, l := range listeners {
-		// La persistencia y la UI no deben detener el camino de descarga.
-		go func(listener DownloadStateListener) {
+		func(listener DownloadStateListener) {
 			defer func() { _ = recover() }()
 			listener(item)
 		}(l)
@@ -313,9 +327,7 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 
 func statusPriority(status string) int {
 	switch status {
-	case "downloading":
-		return 4
-	case "paused", "queued", "pending":
+	case "downloading", "paused", "queued", "pending":
 		return 2
 	default:
 		return 1
@@ -425,6 +437,7 @@ func (e *Engine) CancelDownload(id string) error {
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
 	e.mu.Unlock()
+	e.activeCond.Broadcast() // Despertar tareas en espera para que vean el cambio
 	e.persistSeenChunks(id)
 	if e.storage != nil {
 		_ = e.storage.SaveDownload(cp)
@@ -470,6 +483,7 @@ func (e *Engine) PauseDownload(id string) error {
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
 	e.mu.Unlock()
+	e.activeCond.Broadcast() // Despertar tareas en espera para que vean el cambio
 	e.persistSeenChunks(id)
 	if e.storage != nil {
 		_ = e.storage.SaveDownload(cp)
@@ -537,7 +551,8 @@ func (e *Engine) ResumeAll(ctx context.Context) {
 	e.mu.Lock()
 	items := make([]*storage.DownloadItem, 0, len(e.downloads))
 	for _, item := range e.downloads {
-		if item.Status == "paused" || item.Status == "failed" || item.Status == "cancelled" {
+		// No reanudamos automáticamente lo que fue cancelado
+		if item.Status == "paused" || item.Status == "failed" {
 			items = append(items, item)
 		}
 	}
