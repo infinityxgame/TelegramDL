@@ -640,6 +640,15 @@ const connectWebSocket = async () => {
 
 onMounted(async () => {
   disposed = false
+
+  // Iniciar servicios y comprobación inmediata
+  connectWebSocket()
+  timer = setInterval(fetchDownloads, 1000)
+
+  // Iniciamos el ciclo de actualizaciones de fondo inmediatamente para evitar esperas
+  setTimeout(() => checkForUpdates(false), 1000)
+  updateCheckTimer = setInterval(() => checkForUpdates(false), 2 * 60 * 1000)
+
   try {
     await Promise.all([fetchAuthStatus(), checkForUpdates(true)])
     if (authStatus.value.authenticated) {
@@ -650,10 +659,6 @@ onMounted(async () => {
   } finally {
     bootstrapping.value = false
   }
-
-  connectWebSocket()
-  timer = setInterval(fetchDownloads, 1000)
-  updateCheckTimer = setInterval(() => checkForUpdates(false), 2 * 60 * 1000)
 })
 
 onUnmounted(() => {
