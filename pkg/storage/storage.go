@@ -611,14 +611,33 @@ func (s *Storage) Chunks(downloadID string) (map[int64]bool, error) {
 }
 
 func (s *Storage) AddChunk(downloadID string, chunkIndex int64) error {
+	return s.AddChunks(downloadID, []int64{chunkIndex})
+}
+
+func (s *Storage) AddChunks(downloadID string, indices []int64) error {
+	if len(indices) == 0 {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.Exec(`
-		INSERT OR IGNORE INTO download_chunks(download_id, chunk_index)
-		VALUES(?, ?)
-	`, downloadID, chunkIndex)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT OR IGNORE INTO download_chunks(download_id, chunk_index) VALUES(?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, idx := range indices {
+		_, _ = stmt.Exec(downloadID, idx)
+	}
+
+	return tx.Commit()
 }
 
 func (s *Storage) DeleteChunks(downloadID string) error {

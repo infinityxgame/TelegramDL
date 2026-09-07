@@ -104,8 +104,8 @@ func downloadMissingParts(
 		}
 	}
 
-	if workers > 16 {
-		workers = 16
+	if workers > 64 {
+		workers = 64
 	}
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {

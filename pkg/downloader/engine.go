@@ -49,6 +49,7 @@ type Engine struct {
 	lastProgressBytes  map[string]int64
 	lastProgressTimes  map[string]time.Time
 	persistCh          chan storage.DownloadItem
+	pendingChunks      map[string][]int64
 	forceDuplicate     map[string]bool
 	jobsWG             sync.WaitGroup
 	persistWG          sync.WaitGroup
@@ -80,6 +81,7 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		lastProgressBytes:  make(map[string]int64),
 		lastProgressTimes:  make(map[string]time.Time),
 		persistCh:          make(chan storage.DownloadItem, 256),
+		pendingChunks:      make(map[string][]int64),
 		forceDuplicate:     make(map[string]bool),
 		cancelledForLimit:  make(map[string]bool),
 		jobsInFlight:       make(map[string]bool),
@@ -213,14 +215,13 @@ func (e *Engine) persistSeenChunks(itemID string) {
 	if e.storage == nil {
 		return
 	}
-	e.mu.RLock()
-	chunks := make([]int64, 0, len(e.seenChunks[itemID]))
-	for index := range e.seenChunks[itemID] {
-		chunks = append(chunks, index)
-	}
-	e.mu.RUnlock()
-	for _, index := range chunks {
-		_ = e.storage.AddChunk(itemID, index)
+	e.mu.Lock()
+	chunks := e.pendingChunks[itemID]
+	e.pendingChunks[itemID] = nil
+	e.mu.Unlock()
+
+	if len(chunks) > 0 {
+		_ = e.storage.AddChunks(itemID, chunks)
 	}
 }
 
@@ -669,7 +670,6 @@ func (pw *progressWriterAt) WriteAt(p []byte, off int64) (int, error) {
 }
 
 func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64, offset int64) {
-	chunkAdded := false
 	e.mu.Lock()
 	item, ok := e.downloads[itemID]
 	if !ok || item.Status != "downloading" {
@@ -703,7 +703,7 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 	}
 	if _, seen := chunks[chunkIndex]; !seen {
 		chunks[chunkIndex] = struct{}{}
-		chunkAdded = true
+		e.pendingChunks[itemID] = append(e.pendingChunks[itemID], chunkIndex)
 	}
 
 	lastTime := e.lastProgressTimes[itemID]
@@ -741,16 +741,10 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 
 	cp := *item
 	e.mu.Unlock()
-	if chunkAdded && e.storage != nil {
-		e.persistWG.Add(1)
-		go func() {
-			defer e.persistWG.Done()
-			_ = e.storage.AddChunk(itemID, chunkIndex)
-		}()
-	}
 
 	if shouldSave && e.storage != nil {
 		e.enqueuePersist(cp)
+		e.persistSeenChunks(itemID)
 	}
 
 	if shouldBroadcast {
@@ -1336,23 +1330,44 @@ func copyFile(src, dst string) error {
 
 func (e *Engine) isNextInQueue(itemID string) bool {
 	item, ok := e.downloads[itemID]
-	if !ok || item.Status != "queued" || e.pauseStates[itemID] {
+	if !ok || (item.Status != "queued" && item.Status != "downloading") || e.pauseStates[itemID] {
 		return false
 	}
 
-	for id, other := range e.downloads {
-		if id == itemID {
-			continue
-		}
-		if other.Status != "queued" || e.pauseStates[id] {
-			continue
-		}
-
-		if e.shouldGoBefore(other, item) {
-			return false
+	// Contar cuántos están ya descargando
+	downloadingCount := 0
+	for _, it := range e.downloads {
+		if it.Status == "downloading" {
+			downloadingCount++
 		}
 	}
-	return true
+
+	// Si ya hay hueco para nosotros según el límite, verificamos si hay alguien
+	// antes que nosotros que también esté en "queued" y NO esté pausado.
+	if downloadingCount < e.config.MaxConcurrentDownloads {
+		// Necesitamos saber cuántos huecos libres quedan
+		slotsAvailable := e.config.MaxConcurrentDownloads - downloadingCount
+
+		// Buscamos cuántos elementos "queued" deberían ir antes que nosotros
+		betterCandidates := 0
+		for id, other := range e.downloads {
+			if id == itemID {
+				continue
+			}
+			if other.Status != "queued" || e.pauseStates[id] {
+				continue
+			}
+
+			if e.shouldGoBefore(other, item) {
+				betterCandidates++
+			}
+		}
+
+		// Si el número de personas con prioridad es menor que los slots que van a quedar libres, podemos pasar
+		return betterCandidates < slotsAvailable
+	}
+
+	return false
 }
 
 func (e *Engine) shouldGoBefore(a, b *storage.DownloadItem) bool {

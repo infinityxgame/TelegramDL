@@ -46,10 +46,10 @@ const emit = defineEmits([
               v-model.number="settings.max_concurrent_downloads"
               type="range"
               min="1"
-              max="16"
+              max="32"
               class="range-input"
             />
-            <div class="range-hints"><span>1</span><span>16</span></div>
+            <div class="range-hints"><span>1</span><span>32</span></div>
 
             <div class="setting-line">
               <div>
@@ -70,10 +70,10 @@ const emit = defineEmits([
               :disabled="!settings.parallel_chunks"
               type="range"
               min="1"
-              max="8"
+              max="64"
               class="range-input"
             />
-            <div class="range-hints"><span>1</span><span>8</span></div>
+            <div class="range-hints"><span>1</span><span>64</span></div>
           </div>
 
           <!-- Velocidad y Directorio -->

@@ -118,9 +118,9 @@ func GetDefaultDownloadFolder() string {
 
 func DefaultConfig() Config {
 	return Config{
-		MaxConcurrentDownloads: 3,
+		MaxConcurrentDownloads: 6,
 		ParallelChunks:         true,
-		ChunkWorkers:           8,
+		ChunkWorkers:           16,
 		DownloadFolder:         GetDefaultDownloadFolder(),
 		ColorID:                nil,
 		SpeedLimit: SpeedLimit{
@@ -212,14 +212,14 @@ func GetServerHost() string {
 func NormalizeConfig(raw Config) Config {
 	if raw.MaxConcurrentDownloads < 1 {
 		raw.MaxConcurrentDownloads = 1
-	} else if raw.MaxConcurrentDownloads > 20 {
-		raw.MaxConcurrentDownloads = 20
+	} else if raw.MaxConcurrentDownloads > 32 {
+		raw.MaxConcurrentDownloads = 32
 	}
 
 	if raw.ChunkWorkers < 1 {
 		raw.ChunkWorkers = 1
-	} else if raw.ChunkWorkers > 16 {
-		raw.ChunkWorkers = 16
+	} else if raw.ChunkWorkers > 64 {
+		raw.ChunkWorkers = 64
 	}
 
 	if strings.TrimSpace(raw.DownloadFolder) == "" {
