@@ -685,8 +685,8 @@ onUnmounted(() => {
         <svg viewBox="0 0 500 150" class="hello-svg">
           <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="hello-text">
             <tspan class="c1">T</tspan><tspan class="c2">e</tspan><tspan class="c3">l</tspan><tspan class="c4">e</tspan><tspan class="c5">g</tspan><tspan class="c6">r</tspan><tspan class="c7">a</tspan><tspan class="c8">m</tspan><tspan class="c9">D</tspan><tspan class="c10">L</tspan>
-            <tspan class="dots">
-              <tspan class="dot1">.</tspan><tspan class="dot2">.</tspan><tspan class="dot3">.</tspan>
+            <tspan class="dots" dx="20" dy="12">
+              <tspan class="dot1">●</tspan><tspan class="dot2">●</tspan><tspan class="dot3">●</tspan>
             </tspan>
           </text>
         </svg>
@@ -923,23 +923,22 @@ onUnmounted(() => {
 .c10 { animation-delay: 4.6s; }
 
 .dots {
-  font-family: Arial, sans-serif;
-  font-weight: bold;
-  font-size: 60px;
+  font-size: 24px;
   stroke: none !important;
   stroke-width: 0 !important;
+  vertical-align: middle;
 }
 
 .dot1, .dot2, .dot3 {
-  display: inline-block;
   opacity: 0;
   fill: var(--user-primary) !important;
   animation: dotFade 1.5s infinite;
+  padding: 0 5px;
 }
 
-.dot1 { animation-delay: 5.5s; }
-.dot2 { animation-delay: 5.7s; }
-.dot3 { animation-delay: 5.9s; }
+.dot1 { animation-delay: 5.0s; }
+.dot2 { animation-delay: 5.2s; }
+.dot3 { animation-delay: 5.4s; }
 
 @keyframes dotFade {
   0%, 100% { opacity: 0; }
