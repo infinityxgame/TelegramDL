@@ -771,10 +771,12 @@ onUnmounted(() => {
           <div class="brand">
             <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
             <div class="brand-text">
-              <svg viewBox="0 0 120 45" class="brand-svg">
+              <svg viewBox="0 0 130 45" class="brand-svg">
+                <!-- Nombre de la App animado letra a letra -->
                 <text x="0" y="18" class="brand-logo-text">
                   <tspan class="b1">T</tspan><tspan class="b2">e</tspan><tspan class="b3">l</tspan><tspan class="b4">e</tspan><tspan class="b5">g</tspan><tspan class="b6">r</tspan><tspan class="b7">a</tspan><tspan class="b8">m</tspan><tspan class="brand-accent b9">D</tspan><tspan class="brand-accent b10">L</tspan>
                 </text>
+                <!-- Versión animada sincronizada con el texto de arriba -->
                 <text x="0" y="38" class="brand-version-text" v-if="version">
                   <tspan v-for="(char, i) in ('v' + version).split('')" :key="i" :class="'b' + (i+1)">{{ char }}</tspan>
                 </text>
@@ -1045,11 +1047,10 @@ onUnmounted(() => {
   fill-opacity: 0;
   stroke: #f3f8ff;
   stroke-width: 0.4;
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  transform: translateX(-20px);
-  animation: brandSweepWritingLoop 8s ease-in-out infinite;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
   display: inline-block;
+  animation: brandSweepWritingLoop 8s ease-in-out infinite;
 }
 .brand-version-text tspan {
   stroke: var(--user-text-dim);
@@ -1059,7 +1060,7 @@ onUnmounted(() => {
   stroke: var(--user-accent);
 }
 
-/* Stagger compartido para que logo y versión se escriban juntos */
+/* Stagger compartido: la letra N del nombre y la letra N de la versión aparecen juntas */
 .b1 { animation-delay: 1.0s; }
 .b2 { animation-delay: 1.12s; }
 .b3 { animation-delay: 1.24s; }
@@ -1070,15 +1071,13 @@ onUnmounted(() => {
 .b8 { animation-delay: 1.84s; }
 .b9 { animation-delay: 1.96s; }
 .b10 { animation-delay: 2.08s; }
-.b11 { animation-delay: 2.2s; }
-.b12 { animation-delay: 2.32s; }
 
 @keyframes brandSweepWritingLoop {
   0% {
     opacity: 0;
     fill-opacity: 0;
-    stroke-dashoffset: 100;
-    transform: translateX(-20px);
+    stroke-dashoffset: 80;
+    transform: translateX(-15px);
   }
   25% { /* Entrada: se escribe y se llena mientras se desliza */
     opacity: 1;
@@ -1095,7 +1094,7 @@ onUnmounted(() => {
   90% { /* Salida: se desliza a la derecha y se desvanece */
     opacity: 0;
     fill-opacity: 0;
-    transform: translateX(20px);
+    transform: translateX(15px);
   }
   100% {
     opacity: 0;
