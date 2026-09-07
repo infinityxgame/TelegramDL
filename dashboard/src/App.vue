@@ -659,7 +659,7 @@ onMounted(async () => {
     console.error('Error durante el arranque:', err)
   } finally {
     const elapsed = Date.now() - startBoot
-    const minTime = 8000 // Aumentamos a 8 segundos para que de tiempo a la animación detallada
+    const minTime = 7500 // 5s de animación + 2.5s de reposo
     const remaining = Math.max(0, minTime - elapsed)
     setTimeout(() => {
       bootstrapping.value = false
@@ -685,6 +685,9 @@ onUnmounted(() => {
         <svg viewBox="0 0 500 150" class="hello-svg">
           <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="hello-text">
             <tspan class="c1">T</tspan><tspan class="c2">e</tspan><tspan class="c3">l</tspan><tspan class="c4">e</tspan><tspan class="c5">g</tspan><tspan class="c6">r</tspan><tspan class="c7">a</tspan><tspan class="c8">m</tspan><tspan class="c9">D</tspan><tspan class="c10">L</tspan>
+            <tspan class="dots">
+              <tspan class="dot1">.</tspan><tspan class="dot2">.</tspan><tspan class="dot3">.</tspan>
+            </tspan>
           </text>
         </svg>
       </div>
@@ -893,31 +896,69 @@ onUnmounted(() => {
 }
 .hello-text {
   font-family: 'Yellowtail', cursive;
-  font-size: 78px;
-  fill: transparent;
-  filter: drop-shadow(0 0 15px var(--user-glow));
-  animation: fillText 1.5s ease-in-out 6s forwards;
+  font-size: 82px;
+  filter: drop-shadow(0 0 25px var(--user-glow));
 }
 
-.hello-text tspan {
+.hello-text tspan:not(.dots):not(.dot1):not(.dot2):not(.dot3) {
+  fill: var(--user-primary);
+  fill-opacity: 0;
   stroke: var(--user-primary);
   stroke-width: 1.2;
   stroke-dasharray: 400;
   stroke-dashoffset: 400;
-  animation: write 2.2s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
+  animation: writeAndFill 2s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
 }
 
-/* Retrasos escalonados más lentos para ver el detalle de cada letra */
-.c1 { animation-delay: 0.2s; }
-.c2 { animation-delay: 0.7s; }
-.c3 { animation-delay: 1.2s; }
-.c4 { animation-delay: 1.7s; }
-.c5 { animation-delay: 2.2s; }
-.c6 { animation-delay: 2.7s; }
-.c7 { animation-delay: 3.2s; }
-.c8 { animation-delay: 3.7s; }
-.c9 { animation-delay: 4.3s; }
-.c10 { animation-delay: 4.8s; }
+/* Retrasos escalonados para ver el detalle de escritura letra a letra */
+.c1 { animation-delay: 0.1s; }
+.c2 { animation-delay: 0.6s; }
+.c3 { animation-delay: 1.1s; }
+.c4 { animation-delay: 1.6s; }
+.c5 { animation-delay: 2.1s; }
+.c6 { animation-delay: 2.6s; }
+.c7 { animation-delay: 3.1s; }
+.c8 { animation-delay: 3.6s; }
+.c9 { animation-delay: 4.1s; }
+.c10 { animation-delay: 4.6s; }
+
+.dots {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+  font-size: 60px;
+  stroke: none !important;
+  stroke-width: 0 !important;
+}
+
+.dot1, .dot2, .dot3 {
+  display: inline-block;
+  opacity: 0;
+  fill: var(--user-primary) !important;
+  animation: dotFade 1.5s infinite;
+}
+
+.dot1 { animation-delay: 5.5s; }
+.dot2 { animation-delay: 5.7s; }
+.dot3 { animation-delay: 5.9s; }
+
+@keyframes dotFade {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+@keyframes writeAndFill {
+  0% {
+    stroke-dashoffset: 400;
+    fill-opacity: 0;
+  }
+  40% {
+    fill-opacity: 0.3;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    fill-opacity: 1;
+  }
+}
 
 @keyframes write {
   to { stroke-dashoffset: 0; }
