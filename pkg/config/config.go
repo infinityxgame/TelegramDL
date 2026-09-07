@@ -47,6 +47,7 @@ type Config struct {
 	ChunkWorkers           int            `json:"chunk_workers"`
 	DownloadFolder         string         `json:"download_folder"`
 	ColorID                *int           `json:"color_id"`
+	LoaderColorID          *int           `json:"loader_color_id"`
 	SpeedLimit             SpeedLimit     `json:"speed_limit"`
 	ListenerEnabled        bool           `json:"listener_enabled"`
 	ListenerChats          []ListenerChat `json:"listener_chats"`
@@ -123,6 +124,7 @@ func DefaultConfig() Config {
 		ChunkWorkers:           4,
 		DownloadFolder:         GetDefaultDownloadFolder(),
 		ColorID:                nil,
+		LoaderColorID:          nil,
 		SpeedLimit: SpeedLimit{
 			Value: 0,
 			Unit:  "MB",

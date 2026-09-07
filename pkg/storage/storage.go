@@ -296,6 +296,11 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 			cfg.ColorID = &c
 		}
 	}
+	if val, ok := kv["loader_color_id"]; ok && val != "" && val != "None" && val != "null" {
+		if c, err := strconv.Atoi(val); err == nil {
+			cfg.LoaderColorID = &c
+		}
+	}
 	if val, ok := kv["speed_value"]; ok {
 		if f, err := strconv.ParseFloat(val, 64); err == nil {
 			cfg.SpeedLimit.Value = f
@@ -398,6 +403,12 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		pairs["color_id"] = strconv.Itoa(*cfg.ColorID)
 	} else {
 		pairs["color_id"] = "None"
+	}
+
+	if cfg.LoaderColorID != nil {
+		pairs["loader_color_id"] = strconv.Itoa(*cfg.LoaderColorID)
+	} else {
+		pairs["loader_color_id"] = "None"
 	}
 
 	for k, v := range pairs {

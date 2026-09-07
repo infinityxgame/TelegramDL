@@ -20,7 +20,8 @@ const props = defineProps({
 const emit = defineEmits([
   'save-settings',
   'clear-history',
-  'reset-color'
+  'reset-color',
+  'reset-loader-color'
 ])
 </script>
 
@@ -49,7 +50,7 @@ const emit = defineEmits([
               max="32"
               class="range-input"
             />
-            <div class="range-hints"><span>1</span><span>16</span></div>
+            <div class="range-hints"><span>1</span><span>32</span></div>
 
             <div class="setting-line">
               <div>
@@ -73,7 +74,7 @@ const emit = defineEmits([
               max="8"
               class="range-input"
             />
-            <div class="range-hints"><span>1</span><span>64</span></div>
+            <div class="range-hints"><span>1</span><span>8</span></div>
           </div>
 
           <!-- Velocidad y Directorio -->
@@ -134,6 +135,41 @@ const emit = defineEmits([
 
             <button type="button" class="reset-button-alt" @click="emit('reset-color')">
               <Zap :size="14" /> Restablecer color de la cuenta
+            </button>
+
+            <!-- Color del Loader -->
+            <span class="setting-label compact" style="margin-top: 30px; border-top: 1px solid var(--user-border); padding-top: 20px;">Color de Loader</span>
+            <div class="color-selector-container">
+              <div class="color-row">
+                <button
+                  v-for="id in [0, 1, 2, 3, 4, 5, 6, 7]"
+                  :key="'loader-' + id"
+                  type="button"
+                  class="color-dot"
+                  :class="{ active: settings.loader_color_id === id }"
+                  :style="{ background: themeMap[id]?.gradient || '#38a7ff' }"
+                  :title="'Color Loader ' + id"
+                  @click="settings.loader_color_id = id"
+                ></button>
+              </div>
+              <div class="color-row">
+                <button
+                  v-for="id in [8, 9, 10, 11, 12, 13, 14, 15]"
+                  :key="'loader-grad-' + id"
+                  type="button"
+                  class="color-dot gradient-dot"
+                  :class="{ active: settings.loader_color_id === id }"
+                  :style="{
+                    background: `linear-gradient(135deg, ${themeMap[id]?.primary || '#38a7ff'} 49.8%, ${themeMap[id]?.secondary || '#b48bf2'} 50.2%)`
+                  }"
+                  :title="'Degradado Loader ' + id"
+                  @click="settings.loader_color_id = id"
+                ></button>
+              </div>
+            </div>
+
+            <button type="button" class="reset-button-alt" @click="emit('reset-loader-color')">
+              <Zap :size="14" /> Restablecer color del loader
             </button>
           </div>
         </div>

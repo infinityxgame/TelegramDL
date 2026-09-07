@@ -54,6 +54,14 @@ const themeMap = {
   15: { primary: '#7d8b99', secondary: '#b0b8c2', accent: '#acb8c2', bgBase: '#121416', bgTop: '#282d33', surface: '#1a1e22', surfaceLight: '#22282d', border: '#353d45', borderLight: '#45505a', iconBg: '#282d33', glow: 'rgba(125, 139, 153, 0.15)', textDim: '#888888', gradient: 'linear-gradient(135deg, #7d8b99 0%, #b0b8c2 100%)' }
 }
 
+const applyLoaderTheme = (colorId) => {
+  const theme = themeMap[colorId] || themeMap[5]
+  const root = document.documentElement
+  root.style.setProperty('--loader-primary', theme.primary)
+  root.style.setProperty('--loader-glow', theme.glow)
+  localStorage.setItem('tgdl_loader_color', colorId)
+}
+
 const applyTheme = (colorId) => {
   const theme = themeMap[colorId] || themeMap[5]
   const root = document.documentElement
@@ -72,10 +80,18 @@ const applyTheme = (colorId) => {
 }
 
 const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
+const storedLoaderColor = localStorage.getItem('tgdl_loader_color')
+
 if (storedUser && storedUser.color_id !== undefined) {
   applyTheme(storedUser.color_id)
+  if (storedLoaderColor !== null) {
+    applyLoaderTheme(parseInt(storedLoaderColor))
+  } else {
+    applyLoaderTheme(storedUser.loader_color_id !== undefined ? storedUser.loader_color_id : storedUser.color_id)
+  }
 } else {
   applyTheme(5)
+  applyLoaderTheme(storedLoaderColor !== null ? parseInt(storedLoaderColor) : 5)
 }
 
 const authStatus = ref({
@@ -91,6 +107,7 @@ const settings = reactive({
   chunk_workers: 8,
   speed_limit: { value: 0, unit: 'MB' },
   color_id: 5,
+  loader_color_id: 5,
   download_folder: ''
 })
 
@@ -102,8 +119,16 @@ const resetColor = () => {
   }
 }
 
+const resetLoaderColor = () => {
+  settings.loader_color_id = settings.color_id
+}
+
 watch(() => settings.color_id, (newVal) => {
   if (newVal !== undefined) applyTheme(newVal)
+})
+
+watch(() => settings.loader_color_id, (newVal) => {
+  if (newVal !== undefined) applyLoaderTheme(newVal)
 })
 
 let timer
@@ -858,6 +883,7 @@ onUnmounted(() => {
             @save-settings="saveSettings"
             @clear-history="clearDownloadHistory"
             @reset-color="resetColor"
+            @reset-loader-color="resetLoaderColor"
           />
         </div>
 
@@ -912,13 +938,13 @@ onUnmounted(() => {
   font-family: 'LoaderFont', cursive;
   font-weight: 700;
   font-size: 86px;
-  filter: drop-shadow(0 0 25px var(--user-glow));
+  filter: drop-shadow(0 0 25px var(--loader-glow));
 }
 
 .hello-text tspan:not(.dots):not(.dot1):not(.dot2):not(.dot3) {
-  fill: var(--user-primary);
+  fill: var(--loader-primary);
   fill-opacity: 0;
-  stroke: var(--user-primary);
+  stroke: var(--loader-primary);
   stroke-width: 1.2;
   stroke-dasharray: 400;
   stroke-dashoffset: 400;
@@ -948,7 +974,7 @@ onUnmounted(() => {
 
 .dot1, .dot2, .dot3 {
   opacity: 0;
-  fill: var(--user-primary) !important;
+  fill: var(--loader-primary) !important;
   animation: dotFade 1.5s infinite;
 }
 

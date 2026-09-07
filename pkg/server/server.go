@@ -942,6 +942,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.ColorID = &c
 		}
 	}
+	if v, ok := raw["loader_color_id"]; ok {
+		if v == nil {
+			cfg.LoaderColorID = nil
+		} else {
+			c := int(config.ParseInt64(v))
+			cfg.LoaderColorID = &c
+		}
+	}
 	if v, ok := raw["speed_limit"].(map[string]any); ok {
 		if val, ok := v["value"]; ok && val != nil {
 			if f, ok := val.(float64); ok {
