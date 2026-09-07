@@ -653,7 +653,7 @@ onMounted(async () => {
 
   connectWebSocket()
   timer = setInterval(fetchDownloads, 1000)
-  updateCheckTimer = setInterval(() => checkForUpdates(false), 5 * 60 * 1000)
+  updateCheckTimer = setInterval(() => checkForUpdates(false), 2 * 60 * 1000)
 })
 
 onUnmounted(() => {
