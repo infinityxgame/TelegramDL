@@ -310,10 +310,15 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 		}
 		// Para activos/en cola (prioridad >= 2), orden de creación ascendente
 		if sI >= 2 {
+			// Para rangos (mismo JobID), priorizar MessageID para asegurar el orden
+			if res[i].JobID != "" && res[i].JobID == res[j].JobID {
+				if res[i].MessageID != res[j].MessageID {
+					return res[i].MessageID < res[j].MessageID
+				}
+			}
 			if res[i].CreatedAt != res[j].CreatedAt {
 				return res[i].CreatedAt < res[j].CreatedAt
 			}
-			// Si se crearon en el mismo segundo (ej. un rango), desempatar por MessageID
 			return res[i].MessageID < res[j].MessageID
 		} else {
 			// Para historial, lo más reciente primero
@@ -559,10 +564,13 @@ func (e *Engine) ResumeAll(ctx context.Context) {
 		}
 	}
 
-	// Ordenar por CreatedAt para respetar el orden original al reanudar
+	// Ordenar por CreatedAt y MessageID para respetar el orden original al reanudar
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].CreatedAt != items[j].CreatedAt {
 			return items[i].CreatedAt < items[j].CreatedAt
+		}
+		if items[i].MessageID != items[j].MessageID {
+			return items[i].MessageID < items[j].MessageID
 		}
 		return items[i].ID < items[j].ID
 	})
@@ -598,7 +606,8 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 
 	item.Status = "queued"
 	delete(e.forceDuplicate, item.ID)
-	item.CreatedAt = float64(time.Now().Unix())
+	// Usar mayor precisión para evitar colisiones en CreatedAt durante bucles rápidos (rangos)
+	item.CreatedAt = float64(time.Now().UnixNano()) / 1e9
 	item.UpdatedAt = item.CreatedAt
 
 	e.downloads[item.ID] = &item
@@ -753,11 +762,17 @@ func (e *Engine) startDownloadJob(itemID string) {
 	// Pre-resolver metadatos (nombre, tamaño) antes de esperar el slot de descarga
 	go e.resolveItemMetadata(itemID)
 
-	// Adquirir slot de concurrencia
+	// Adquirir slot de concurrencia respetando el orden de la cola
 	log.Printf("[DOWNLOAD] Solicitando slot de concurrencia para item %s...", itemID)
 	e.mu.Lock()
-	for e.runningJobs >= e.config.MaxConcurrentDownloads && !e.stopping {
+	for (e.runningJobs >= e.config.MaxConcurrentDownloads || !e.isNextInQueue(itemID)) && !e.stopping {
 		e.activeCond.Wait()
+		// Si mientras esperaba fue cancelada, pausada o ya no existe, salir
+		if it, exists := e.downloads[itemID]; !exists || (it.Status != "queued" && it.Status != "downloading") || e.pauseStates[itemID] {
+			e.mu.Unlock()
+			e.activeCond.Broadcast()
+			return
+		}
 	}
 
 	item, ok := e.downloads[itemID]
@@ -768,6 +783,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 	}
 
 	e.runningJobs++
+	item.Status = "downloading" // Cambiar a downloading inmediatamente bajo lock
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancelFuncs[itemID] = cancel
@@ -776,7 +792,6 @@ func (e *Engine) startDownloadJob(itemID string) {
 	e.seenChunks[itemID] = make(map[int64]struct{})
 	delete(e.lastProgressBytes, itemID)
 	delete(e.lastProgressTimes, itemID)
-	item.Status = "downloading"
 	item.Speed = "0 B/s"
 	e.itemSpeeds[itemID] = 0
 	log.Printf("[DOWNLOAD] Iniciando descarga activa para item %s (ChatID: %d, MsgID: %d)", itemID, item.ChatID, item.MessageID)
@@ -1318,3 +1333,40 @@ func copyFile(src, dst string) error {
 	_, err = io.Copy(out, in)
 	return err
 }
+
+func (e *Engine) isNextInQueue(itemID string) bool {
+	item, ok := e.downloads[itemID]
+	if !ok || item.Status != "queued" || e.pauseStates[itemID] {
+		return false
+	}
+
+	for id, other := range e.downloads {
+		if id == itemID {
+			continue
+		}
+		if other.Status != "queued" || e.pauseStates[id] {
+			continue
+		}
+
+		if e.shouldGoBefore(other, item) {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *Engine) shouldGoBefore(a, b *storage.DownloadItem) bool {
+	// 1. Mismo JobID (rango): priorizar MessageID
+	if a.JobID != "" && a.JobID == b.JobID {
+		if a.MessageID != b.MessageID {
+			return a.MessageID < b.MessageID
+		}
+	}
+	// 2. Tiempo de creación
+	if a.CreatedAt != b.CreatedAt {
+		return a.CreatedAt < b.CreatedAt
+	}
+	// 3. Tie-breaker final: MessageID
+	return a.MessageID < b.MessageID
+}
+
