@@ -649,6 +649,7 @@ onMounted(async () => {
   setTimeout(() => checkForUpdates(false), 1000)
   updateCheckTimer = setInterval(() => checkForUpdates(false), 2 * 60 * 1000)
 
+  const startBoot = Date.now()
   try {
     await Promise.all([fetchAuthStatus(), checkForUpdates(true)])
     if (authStatus.value.authenticated) {
@@ -657,7 +658,12 @@ onMounted(async () => {
   } catch (err) {
     console.error('Error durante el arranque:', err)
   } finally {
-    bootstrapping.value = false
+    const elapsed = Date.now() - startBoot
+    const minTime = 8000 // Aumentamos a 8 segundos para que de tiempo a la animación detallada
+    const remaining = Math.max(0, minTime - elapsed)
+    setTimeout(() => {
+      bootstrapping.value = false
+    }, remaining)
   }
 })
 
@@ -673,16 +679,19 @@ onUnmounted(() => {
 
 <template>
   <!-- Pantalla de arranque -->
-  <div v-if="bootstrapping" class="boot-screen">
-    <div class="boot-container">
-      <img :src="logoUrl" alt="TelegramDL" class="boot-logo" />
-      <div class="boot-loader">
-        <div class="boot-bar"></div>
+  <transition name="fade">
+    <div v-if="bootstrapping" class="boot-screen">
+      <div class="boot-container">
+        <svg viewBox="0 0 500 150" class="hello-svg">
+          <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="hello-text">
+            <tspan class="c1">T</tspan><tspan class="c2">e</tspan><tspan class="c3">l</tspan><tspan class="c4">e</tspan><tspan class="c5">g</tspan><tspan class="c6">r</tspan><tspan class="c7">a</tspan><tspan class="c8">m</tspan><tspan class="c9">D</tspan><tspan class="c10">L</tspan>
+          </text>
+        </svg>
       </div>
     </div>
-  </div>
+  </transition>
 
-  <template v-else>
+  <template v-if="!bootstrapping">
     <!-- Diálogo de actualización obligatoria -->
     <div v-if="updateInfo && isUpdateForced" class="update-required-overlay">
       <div class="update-card">
@@ -871,39 +880,59 @@ onUnmounted(() => {
   justify-content: center;
   z-index: 10000;
 }
-.boot-container { text-align: center; }
-.boot-logo {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 24px;
-  filter: drop-shadow(0 0 20px var(--user-glow));
-  animation: bootPulse 2s infinite ease-in-out;
-  border-radius: 20px;
+.boot-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
-.boot-loader {
-  width: 140px;
-  height: 3px;
-  background: var(--user-border);
-  border-radius: 10px;
-  margin: 0 auto;
-  overflow: hidden;
-  position: relative;
+.hello-svg {
+  width: 90%;
+  max-width: 600px;
+  overflow: visible;
 }
-.boot-bar {
-  position: absolute;
-  width: 40%;
-  height: 100%;
-  background: var(--user-primary);
-  border-radius: 10px;
-  animation: bootLoading 1.5s infinite ease-in-out;
+.hello-text {
+  font-family: 'Yellowtail', cursive;
+  font-size: 78px;
+  fill: transparent;
+  filter: drop-shadow(0 0 15px var(--user-glow));
+  animation: fillText 1.5s ease-in-out 6s forwards;
 }
-@keyframes bootPulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.08); opacity: 1; }
+
+.hello-text tspan {
+  stroke: var(--user-primary);
+  stroke-width: 1.2;
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+  animation: write 2.2s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
 }
-@keyframes bootLoading {
-  0% { left: -40%; }
-  100% { left: 100%; }
+
+/* Retrasos escalonados más lentos para ver el detalle de cada letra */
+.c1 { animation-delay: 0.2s; }
+.c2 { animation-delay: 0.7s; }
+.c3 { animation-delay: 1.2s; }
+.c4 { animation-delay: 1.7s; }
+.c5 { animation-delay: 2.2s; }
+.c6 { animation-delay: 2.7s; }
+.c7 { animation-delay: 3.2s; }
+.c8 { animation-delay: 3.7s; }
+.c9 { animation-delay: 4.3s; }
+.c10 { animation-delay: 4.8s; }
+
+@keyframes write {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fillText {
+  from { fill: transparent; }
+  to { fill: var(--user-primary); }
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.8s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }
 
 .update-required-overlay {
