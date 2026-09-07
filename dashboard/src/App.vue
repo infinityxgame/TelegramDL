@@ -746,12 +746,14 @@ onUnmounted(() => {
           <div class="brand">
             <span class="brand-mark"><img :src="logoUrl" alt="" /></span>
             <div class="brand-text">
-              <svg viewBox="0 0 120 20" class="brand-svg">
-                <text x="0" y="15" class="brand-logo-text">
+              <svg viewBox="0 0 120 45" class="brand-svg">
+                <text x="0" y="18" class="brand-logo-text">
                   <tspan class="b1">T</tspan><tspan class="b2">e</tspan><tspan class="b3">l</tspan><tspan class="b4">e</tspan><tspan class="b5">g</tspan><tspan class="b6">r</tspan><tspan class="b7">a</tspan><tspan class="b8">m</tspan><tspan class="brand-accent b9">D</tspan><tspan class="brand-accent b10">L</tspan>
                 </text>
+                <text x="0" y="38" class="brand-version-text" v-if="version">
+                  <tspan v-for="(char, i) in ('v' + version).split('')" :key="i" :class="'b' + (i+1)">{{ char }}</tspan>
+                </text>
               </svg>
-              <span class="version-tag" v-if="version">v{{ version }}</span>
             </div>
             <button
               class="mobile-menu-toggle"
@@ -992,7 +994,7 @@ onUnmounted(() => {
 /* Animación del Logo en el Sidebar */
 .brand-svg {
   width: 120px;
-  height: 22px;
+  height: 40px;
   overflow: visible;
   display: block;
 }
@@ -1002,10 +1004,17 @@ onUnmounted(() => {
   font-size: 19px;
   fill: #f3f8ff;
 }
+.brand-version-text {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  fill: var(--user-text-dim);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
 .brand-logo-text .brand-accent {
   fill: var(--user-accent);
 }
-.brand-logo-text tspan {
+.brand-logo-text tspan, .brand-version-text tspan {
   opacity: 0;
   fill-opacity: 0;
   stroke: #f3f8ff;
@@ -1014,12 +1023,17 @@ onUnmounted(() => {
   stroke-dashoffset: 100;
   transform: translateX(-20px);
   animation: brandSweepWritingLoop 8s ease-in-out infinite;
+  display: inline-block;
+}
+.brand-version-text tspan {
+  stroke: var(--user-text-dim);
+  fill: var(--user-text-dim);
 }
 .brand-logo-text .brand-accent {
   stroke: var(--user-accent);
 }
 
-/* Stagger pausado para efecto de barrido y escritura */
+/* Stagger compartido para que logo y versión se escriban juntos */
 .b1 { animation-delay: 1.0s; }
 .b2 { animation-delay: 1.12s; }
 .b3 { animation-delay: 1.24s; }
@@ -1030,6 +1044,8 @@ onUnmounted(() => {
 .b8 { animation-delay: 1.84s; }
 .b9 { animation-delay: 1.96s; }
 .b10 { animation-delay: 2.08s; }
+.b11 { animation-delay: 2.2s; }
+.b12 { animation-delay: 2.32s; }
 
 @keyframes brandSweepWritingLoop {
   0% {
