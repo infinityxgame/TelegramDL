@@ -52,12 +52,43 @@ type AppUpdater struct {
 
 func NewAppUpdater() *AppUpdater {
 	config.InitPaths()
-	return &AppUpdater{
+	u := &AppUpdater{
 		currentVersion: config.AppVersion,
 		repoURL:        config.GithubRepo,
 		progress: Progress{
 			Status: "idle",
 		},
+	}
+	u.CleanOldVersion()
+	return u
+}
+
+// CleanOldVersion busca y elimina archivos temporales de actualizaciones previas (.old)
+func (u *AppUpdater) CleanOldVersion() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	dir := filepath.Dir(exePath)
+	base := filepath.Base(exePath)
+
+	// Intentar detectar archivos .old (estándar de selfupdate y variantes con punto inicial)
+	targets := []string{
+		exePath + ".old",
+		filepath.Join(dir, "."+base+".old"),
+	}
+
+	for _, target := range targets {
+		if _, err := os.Stat(target); err == nil {
+			log.Printf("[UPDATER] Detectado archivo de versión antigua: %s. Eliminando...", target)
+			// En Windows, intentamos eliminarlo. os.Remove funciona incluso con atributo oculto.
+			if err := os.Remove(target); err != nil {
+				log.Printf("[UPDATER] No se pudo eliminar la versión antigua %s: %v", target, err)
+			} else {
+				log.Printf("[UPDATER] Versión antigua eliminada: %s", target)
+			}
+		}
 	}
 }
 
