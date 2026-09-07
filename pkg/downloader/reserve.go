@@ -44,6 +44,14 @@ func (pr *PathReservations) ReservePath(folder, name string, msgID int64, expect
 			if !allowExisting && expectedSize > 0 && fi.Size() == expectedSize {
 				return candidatePath, candidateName, true
 			}
+
+			// Si permitimos duplicados explícitos, usamos este mismo nombre si es el que queremos
+			// (evita crear file_1.mp4, file_2.mp4 cuando el usuario pide re-descargar)
+			if allowExisting && index == 1 {
+				pr.reserved[candidatePath] = true
+				return candidatePath, candidateName, false
+			}
+
 			// Si tiene tamaño distinto o está reservado, probamos siguiente sufijo
 			candidateName = fmt.Sprintf("%s_%d%s", stem, index, ext)
 			candidatePath = filepath.Join(folder, candidateName)

@@ -29,6 +29,7 @@ type DownloadItem struct {
 	Kind         string  `json:"kind"`
 	FilePath     string  `json:"file_path"`
 	Source       string  `json:"source"`
+	Error        string  `json:"error"`
 	UpdatedAt    float64 `json:"updated_at"`
 	CreatedAt    float64 `json:"created_at"`
 	TotalBytes   int64   `json:"total_bytes"`
@@ -107,6 +108,7 @@ func (s *Storage) initSchema() error {
 		kind TEXT,
 		file_path TEXT,
 		source TEXT,
+		error TEXT,
 		updated_at REAL NOT NULL,
 		created_at REAL NOT NULL,
 		total_bytes INTEGER NOT NULL DEFAULT 0,
@@ -130,6 +132,7 @@ func (s *Storage) initSchema() error {
 	// Migraciones defensivas (idénticas a Python)
 	_, _ = s.db.Exec("ALTER TABLE downloads ADD COLUMN total_bytes INTEGER NOT NULL DEFAULT 0")
 	_, _ = s.db.Exec("ALTER TABLE downloads ADD COLUMN current_bytes INTEGER NOT NULL DEFAULT 0")
+	_, _ = s.db.Exec("ALTER TABLE downloads ADD COLUMN error TEXT")
 	for _, col := range []string{"f_photos", "f_videos", "f_audios", "f_docs", "f_stickers"} {
 		_, _ = s.db.Exec(fmt.Sprintf("ALTER TABLE listener_chats ADD COLUMN %s INTEGER NOT NULL DEFAULT 1", col))
 	}
@@ -493,7 +496,7 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 		}
 	}
 
-	rows, err := s.db.Query("SELECT id, job_id, message_id, chat_id, file_name, status, progress, total_str, current_str, speed, kind, file_path, source, updated_at, created_at, total_bytes, current_bytes FROM downloads ORDER BY updated_at DESC")
+	rows, err := s.db.Query("SELECT id, job_id, message_id, chat_id, file_name, status, progress, total_str, current_str, speed, kind, file_path, source, error, updated_at, created_at, total_bytes, current_bytes FROM downloads ORDER BY updated_at DESC")
 	if err != nil {
 		return items, err
 	}
@@ -501,13 +504,13 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 
 	for rows.Next() {
 		var item DownloadItem
-		var jobID, kind, filePath, source sql.NullString
+		var jobID, kind, filePath, source, errStr sql.NullString
 		var msgID, chatID, totalB, currB sql.NullInt64
 
 		err := rows.Scan(
 			&item.ID, &jobID, &msgID, &chatID, &item.FileName,
 			&item.Status, &item.Progress, &item.TotalStr, &item.CurrentStr,
-			&item.Speed, &kind, &filePath, &source, &item.UpdatedAt,
+			&item.Speed, &kind, &filePath, &source, &errStr, &item.UpdatedAt,
 			&item.CreatedAt, &totalB, &currB,
 		)
 		if err == nil {
@@ -522,6 +525,9 @@ func (s *Storage) LoadDownloads(legacyPath string) (map[string]DownloadItem, err
 			}
 			if source.Valid {
 				item.Source = source.String
+			}
+			if errStr.Valid {
+				item.Error = errStr.String
 			}
 			if msgID.Valid {
 				item.MessageID = msgID.Int64
@@ -558,8 +564,8 @@ func (s *Storage) SaveDownload(item DownloadItem) error {
 		INSERT INTO downloads(
 			id, job_id, message_id, chat_id, file_name,
 			status, progress, total_str, current_str, speed,
-			kind, file_path, source, updated_at, created_at, total_bytes, current_bytes
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			kind, file_path, source, error, updated_at, created_at, total_bytes, current_bytes
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			file_name=excluded.file_name,
 			status=excluded.status,
@@ -570,12 +576,13 @@ func (s *Storage) SaveDownload(item DownloadItem) error {
 			updated_at=excluded.updated_at,
 			file_path=excluded.file_path,
 			kind=excluded.kind,
+			error=excluded.error,
 			total_bytes=excluded.total_bytes,
 			current_bytes=excluded.current_bytes
 	`,
 		item.ID, item.JobID, item.MessageID, item.ChatID, item.FileName,
 		item.Status, item.Progress, item.TotalStr, item.CurrentStr, item.Speed,
-		item.Kind, item.FilePath, item.Source, item.UpdatedAt, item.CreatedAt,
+		item.Kind, item.FilePath, item.Source, item.Error, item.UpdatedAt, item.CreatedAt,
 		item.TotalBytes, item.CurrentBytes,
 	)
 

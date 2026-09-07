@@ -56,6 +56,9 @@ type Engine struct {
 	stopping           bool
 	cancelledForLimit  map[string]bool
 	jobsInFlight       map[string]bool
+	messageCache       map[string]*tg.Message
+	chatMsgMap         map[string]string
+	queuedIDs          map[string]bool
 
 	// Throttling
 	throttleMu   sync.Mutex
@@ -85,6 +88,9 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 		forceDuplicate:     make(map[string]bool),
 		cancelledForLimit:  make(map[string]bool),
 		jobsInFlight:       make(map[string]bool),
+		messageCache:       make(map[string]*tg.Message),
+		chatMsgMap:         make(map[string]string),
+		queuedIDs:          make(map[string]bool),
 		metadataSem:        make(chan struct{}, 5),
 	}
 	eng.activeCond = sync.NewCond(&eng.mu)
@@ -111,7 +117,10 @@ func NewEngine(cm *telegram.ClientManager, st *storage.Storage, cfg config.Confi
 				}
 				copyItem := item
 				eng.downloads[id] = &copyItem
+				key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+				eng.chatMsgMap[key] = id
 				if copyItem.Status == "queued" {
+					eng.queuedIDs[id] = true
 					eng.launchDownloadJob(id)
 				}
 			}
@@ -151,6 +160,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	for id, cancel := range e.cancelFuncs {
 		if item, ok := e.downloads[id]; ok && item.Status == "downloading" {
 			item.Status = "queued"
+			e.queuedIDs[id] = true
 			item.Speed = "0 B/s"
 			item.UpdatedAt = float64(time.Now().Unix())
 		}
@@ -417,8 +427,14 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 
 func (e *Engine) discardDownload(id string) {
 	e.mu.Lock()
+	if item, ok := e.downloads[id]; ok {
+		key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+		delete(e.chatMsgMap, key)
+	}
 	delete(e.downloads, id)
 	delete(e.forceDuplicate, id)
+	delete(e.queuedIDs, id)
+	delete(e.messageCache, id)
 	e.mu.Unlock()
 
 	if e.storage != nil {
@@ -439,8 +455,10 @@ func (e *Engine) CancelDownload(id string) error {
 		cancel()
 		delete(e.cancelFuncs, id)
 	}
+	delete(e.messageCache, id)
 
 	item.Status = "cancelled"
+	delete(e.queuedIDs, id)
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
@@ -485,8 +503,10 @@ func (e *Engine) PauseDownload(id string) error {
 		cancel()
 		delete(e.cancelFuncs, id)
 	}
+	delete(e.messageCache, id)
 
 	item.Status = "paused"
+	delete(e.queuedIDs, id)
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
@@ -524,22 +544,28 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 		return errors.New("descarga no encontrada")
 	}
 
-	if item.Status != "paused" && item.Status != "failed" && item.Status != "cancelled" && item.Status != "duplicate" && item.Status != "queued" {
+	// Permitimos reanudar casi cualquier estado no activo, incluyendo 'completed' para forzar re-descarga
+	allowed := map[string]bool{
+		"paused":    true,
+		"failed":    true,
+		"cancelled": true,
+		"duplicate": true,
+		"queued":    true,
+		"completed": true,
+	}
+	if !allowed[item.Status] {
 		e.mu.Unlock()
 		return errors.New("la descarga no se puede reanudar en su estado actual")
 	}
 
-	// Si ya está en cola pero no ejecutándose (por ejemplo, pausada por límite),
-	// no lanzamos otro job duplicado.
-	alreadyQueued := item.Status == "queued" && !e.pauseStates[id]
-
 	delete(e.pauseStates, id)
-	if item.Status == "duplicate" {
+	if item.Status == "duplicate" || item.Status == "completed" {
 		e.forceDuplicate[id] = true
 	} else {
 		delete(e.forceDuplicate, id)
 	}
 	item.Status = "queued"
+	e.queuedIDs[id] = true
 	item.Speed = "0 B/s"
 	item.UpdatedAt = float64(time.Now().Unix())
 	cp := *item
@@ -549,9 +575,8 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	}
 	e.notifyState(cp)
 
-	if !alreadyQueued {
-		e.launchDownloadJob(id)
-	}
+	// Siempre intentamos lanzar el job, launchDownloadJob ya evita duplicados internos
+	e.launchDownloadJob(id)
 	return nil
 }
 
@@ -594,9 +619,10 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 		return existing.ID
 	}
 
-	// Evitar duplicados por ChatID y MessageID (evita "mensajes a lo loco")
-	for _, existing := range e.downloads {
-		if existing.ChatID == item.ChatID && existing.MessageID == item.MessageID {
+	// Evitar duplicados por ChatID y MessageID usando el mapa optimizado
+	key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+	if existingID, ok := e.chatMsgMap[key]; ok {
+		if existing, exists := e.downloads[existingID]; exists {
 			// Si el item ya existe y no está fallido/cancelado, no duplicar
 			if existing.Status != "failed" && existing.Status != "cancelled" {
 				e.mu.Unlock()
@@ -606,12 +632,14 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	}
 
 	item.Status = "queued"
+	e.queuedIDs[item.ID] = true
 	delete(e.forceDuplicate, item.ID)
 	// Usar mayor precisión para evitar colisiones en CreatedAt durante bucles rápidos (rangos)
 	item.CreatedAt = float64(time.Now().UnixNano()) / 1e9
 	item.UpdatedAt = item.CreatedAt
 
 	e.downloads[item.ID] = &item
+	e.chatMsgMap[key] = item.ID
 	cp := item
 	e.mu.Unlock()
 	if e.storage != nil {
@@ -778,6 +806,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 	e.runningJobs++
 	item.Status = "downloading" // Cambiar a downloading inmediatamente bajo lock
+	delete(e.queuedIDs, itemID)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancelFuncs[itemID] = cancel
@@ -807,6 +836,15 @@ func (e *Engine) startDownloadJob(itemID string) {
 		delete(e.lastProgressBytes, itemID)
 		delete(e.lastProgressTimes, itemID)
 		delete(e.forceDuplicate, itemID)
+		delete(e.messageCache, itemID) // Limpiar cache de mensaje
+
+		// Si el job termina y el estado sigue siendo 'downloading', significa
+		// que hubo un error no controlado o pánico. Lo marcamos como fallido.
+		if it, ok := e.downloads[itemID]; ok && it.Status == "downloading" {
+			it.Status = "failed"
+			it.Error = "descarga interrumpida inesperadamente"
+		}
+
 		isLimitCancel := e.cancelledForLimit[itemID]
 		delete(e.cancelledForLimit, itemID)
 		e.mu.Unlock()
@@ -841,15 +879,18 @@ func (e *Engine) startDownloadJob(itemID string) {
 
 		if e.stopping || e.cancelledForLimit[itemID] {
 			curItem.Status = "queued"
+			e.queuedIDs[itemID] = true
 			delete(e.pauseStates, itemID)
 		} else if e.pauseStates[itemID] {
 			curItem.Status = "paused"
 		} else {
 			curItem.Status = "cancelled"
 		}
+		curItem.Error = "" // Limpiar error si fue cancelado/pausado
 	} else if err != nil {
 		if errors.Is(err, errDownloadAlreadyExists) {
 			curItem.Status = "duplicate"
+			curItem.Error = ""
 			curItem.Progress = 100.0
 			curItem.Speed = "0 B/s"
 			curItem.UpdatedAt = float64(time.Now().Unix())
@@ -862,9 +903,11 @@ func (e *Engine) startDownloadJob(itemID string) {
 			return
 		}
 		curItem.Status = "failed"
+		curItem.Error = err.Error()
 		curItem.Speed = "0 B/s"
 	} else {
 		curItem.Status = "completed"
+		curItem.Error = ""
 		curItem.Progress = 100.0
 		curItem.Speed = "0 B/s"
 	}
@@ -912,14 +955,16 @@ func (e *Engine) resolveItemMetadata(itemID string) {
 		return
 	}
 
-	media := ExtractMediaInfo(msg)
-	if media == nil {
+	e.mu.Lock()
+	e.messageCache[itemID] = msg
+	it, exists := e.downloads[itemID]
+	if !exists {
+		e.mu.Unlock()
 		return
 	}
 
-	e.mu.Lock()
-	it, exists := e.downloads[itemID]
-	if !exists {
+	media := ExtractMediaInfo(msg)
+	if media == nil {
 		e.mu.Unlock()
 		return
 	}
@@ -1005,12 +1050,22 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 
 	_ = os.MkdirAll(downloadFolder, 0755)
 
-	log.Printf("[DOWNLOAD] Obteniendo mensaje %d del chat %d en Telegram...", item.MessageID, item.ChatID)
-	// Resolver mensaje y extraer Multimedia
-	msg, err := e.fetchMessage(ctx, item.ChatID, int(item.MessageID))
-	if err != nil {
-		log.Printf("[DOWNLOAD ERROR] Error al obtener mensaje %d: %v", item.MessageID, err)
-		return fmt.Errorf("error al obtener mensaje: %w", err)
+	e.mu.Lock()
+	cachedMsg := e.messageCache[itemID]
+	e.mu.Unlock()
+
+	var msg *tg.Message
+	if cachedMsg != nil {
+		msg = cachedMsg
+		log.Printf("[DOWNLOAD] Usando mensaje cacheado para item %s", itemID)
+	} else {
+		log.Printf("[DOWNLOAD] Obteniendo mensaje %d del chat %d en Telegram...", item.MessageID, item.ChatID)
+		var err error
+		msg, err = e.fetchMessage(ctx, item.ChatID, int(item.MessageID))
+		if err != nil {
+			log.Printf("[DOWNLOAD ERROR] Error al obtener mensaje %d: %v", item.MessageID, err)
+			return fmt.Errorf("error al obtener mensaje: %w", err)
+		}
 	}
 
 	mediaInfo := ExtractMediaInfo(msg)
@@ -1334,37 +1389,32 @@ func (e *Engine) isNextInQueue(itemID string) bool {
 		return false
 	}
 
-	// Contar cuántos están ya descargando
-	downloadingCount := 0
-	for _, it := range e.downloads {
-		if it.Status == "downloading" {
-			downloadingCount++
-		}
-	}
-
-	// Si ya hay hueco para nosotros según el límite, verificamos si hay alguien
+	// Si hay hueco para nosotros según el límite, verificamos si hay alguien
 	// antes que nosotros que también esté en "queued" y NO esté pausado.
-	if downloadingCount < e.config.MaxConcurrentDownloads {
+	if e.runningJobs < e.config.MaxConcurrentDownloads {
 		// Necesitamos saber cuántos huecos libres quedan
-		slotsAvailable := e.config.MaxConcurrentDownloads - downloadingCount
+		slotsAvailable := e.config.MaxConcurrentDownloads - e.runningJobs
 
 		// Buscamos cuántos elementos "queued" deberían ir antes que nosotros
 		betterCandidates := 0
-		for id, other := range e.downloads {
+		for id := range e.queuedIDs {
 			if id == itemID {
 				continue
 			}
-			if other.Status != "queued" || e.pauseStates[id] {
+			other, ok := e.downloads[id]
+			if !ok || e.pauseStates[id] {
 				continue
 			}
 
 			if e.shouldGoBefore(other, item) {
 				betterCandidates++
+				if betterCandidates >= slotsAvailable {
+					return false
+				}
 			}
 		}
 
-		// Si el número de personas con prioridad es menor que los slots que van a quedar libres, podemos pasar
-		return betterCandidates < slotsAvailable
+		return true
 	}
 
 	return false
