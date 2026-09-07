@@ -118,7 +118,7 @@ const websocketConnected = ref(false)
 const updateInfo = ref(null)
 const isUpdating = ref(false)
 const isUpdateForced = ref(false)
-const updatePostponed = ref(false)
+const updatePostponedVersion = ref(null)
 const bootstrapping = ref(true)
 const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 const resolvedFileNames = new Map()
@@ -464,7 +464,7 @@ const checkForUpdates = async (force = false) => {
       updateInfo.value = data
       if (force) {
         isUpdateForced.value = true
-      } else if (!isUpdateForced.value && !updatePostponed.value && !modal.show) {
+      } else if (!isUpdateForced.value && updatePostponedVersion.value !== data.latest) {
         openConfirm({
           title: 'Nueva versión disponible',
           message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
@@ -476,7 +476,7 @@ const checkForUpdates = async (force = false) => {
             installUpdate()
           },
           cancelAction: () => {
-            updatePostponed.value = true
+            updatePostponedVersion.value = data.latest
           }
         })
       }
