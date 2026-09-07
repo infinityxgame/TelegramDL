@@ -659,7 +659,7 @@ onMounted(async () => {
     console.error('Error durante el arranque:', err)
   } finally {
     const elapsed = Date.now() - startBoot
-    const minTime = 7500 // 5s de animación + 2.5s de reposo
+    const minTime = 6500 // 4.5s animación + 2s de reposo con puntos
     const remaining = Math.max(0, minTime - elapsed)
     setTimeout(() => {
       bootstrapping.value = false
@@ -685,7 +685,7 @@ onUnmounted(() => {
         <svg viewBox="0 0 500 150" class="hello-svg">
           <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" class="hello-text">
             <tspan class="c1">T</tspan><tspan class="c2">e</tspan><tspan class="c3">l</tspan><tspan class="c4">e</tspan><tspan class="c5">g</tspan><tspan class="c6">r</tspan><tspan class="c7">a</tspan><tspan class="c8">m</tspan><tspan class="c9">D</tspan><tspan class="c10">L</tspan>
-            <tspan class="dots" dx="20" dy="12">
+            <tspan class="dots" dx="20" dy="8">
               <tspan class="dot1">●</tspan><tspan class="dot2">●</tspan><tspan class="dot3">●</tspan>
             </tspan>
           </text>
@@ -873,6 +873,14 @@ onUnmounted(() => {
 </template>
 
 <style>
+@font-face {
+  font-family: 'LoaderFont';
+  src: url('/fonts/loader.ttf') format('truetype'),
+       url('/fonts/loader.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 .boot-screen {
   position: fixed;
   inset: 0;
@@ -895,8 +903,9 @@ onUnmounted(() => {
   overflow: visible;
 }
 .hello-text {
-  font-family: 'Yellowtail', cursive;
-  font-size: 82px;
+  font-family: 'LoaderFont', cursive;
+  font-weight: 700;
+  font-size: 86px;
   filter: drop-shadow(0 0 25px var(--user-glow));
 }
 
@@ -907,22 +916,24 @@ onUnmounted(() => {
   stroke-width: 1.2;
   stroke-dasharray: 400;
   stroke-dashoffset: 400;
-  animation: writeAndFill 2s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
+  animation: writeAndFill 1.8s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
 }
 
-/* Retrasos escalonados para ver el detalle de escritura letra a letra */
+/* Retrasos escalonados equilibrados para Dancing Script */
 .c1 { animation-delay: 0.1s; }
-.c2 { animation-delay: 0.6s; }
-.c3 { animation-delay: 1.1s; }
-.c4 { animation-delay: 1.6s; }
-.c5 { animation-delay: 2.1s; }
-.c6 { animation-delay: 2.6s; }
-.c7 { animation-delay: 3.1s; }
-.c8 { animation-delay: 3.6s; }
-.c9 { animation-delay: 4.1s; }
-.c10 { animation-delay: 4.6s; }
+.c2 { animation-delay: 0.5s; }
+.c3 { animation-delay: 0.9s; }
+.c4 { animation-delay: 1.3s; }
+.c5 { animation-delay: 1.7s; }
+.c6 { animation-delay: 2.1s; }
+.c7 { animation-delay: 2.5s; }
+.c8 { animation-delay: 2.9s; }
+.c9 { animation-delay: 3.3s; }
+.c10 { animation-delay: 3.7s; }
 
 .dots {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
   font-size: 24px;
   stroke: none !important;
   stroke-width: 0 !important;
@@ -933,12 +944,11 @@ onUnmounted(() => {
   opacity: 0;
   fill: var(--user-primary) !important;
   animation: dotFade 1.5s infinite;
-  padding: 0 5px;
 }
 
-.dot1 { animation-delay: 5.0s; }
-.dot2 { animation-delay: 5.2s; }
-.dot3 { animation-delay: 5.4s; }
+.dot1 { animation-delay: 4.2s; }
+.dot2 { animation-delay: 4.4s; }
+.dot3 { animation-delay: 4.6s; }
 
 @keyframes dotFade {
   0%, 100% { opacity: 0; }
