@@ -983,7 +983,7 @@ func (e *Engine) resolveItemMetadata(itemID string) {
 }
 
 func (e *Engine) executeDownloadWithRetry(ctx context.Context, itemID string) error {
-	const maxAttempts = 6
+	const maxAttempts = 2
 	var err error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		err = e.executeDownload(ctx, itemID)
