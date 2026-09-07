@@ -208,7 +208,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 	}
 
 	go func() {
-		u.setProgress("Iniciando...", 0, 0, 0)
+		u.setProgress("starting", 0, 0, 0)
 
 		tempDir, err := os.MkdirTemp("", "tgdown_update")
 		if err != nil {
@@ -219,7 +219,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 
 		// 1. Descarga con progreso manual
 		archivePath := filepath.Join(tempDir, rel.release.AssetName)
-		u.setProgress("Descargando actualización...", 0, int64(rel.release.AssetByteSize), 5)
+		u.setProgress("downloading", 0, int64(rel.release.AssetByteSize), 0)
 
 		if err := u.downloadWithProgress(rel.release.AssetURL, archivePath); err != nil {
 			u.setProgress("error: descarga fallida: "+err.Error(), 0, 0, 0)
@@ -227,7 +227,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 
 		// 2. Extracción
-		u.setProgress("Extrayendo archivos...", 0, 0, 85)
+		u.setProgress("extracting", 0, 0, 100)
 		extractPath := filepath.Join(tempDir, "extracted")
 		_ = os.MkdirAll(extractPath, 0755)
 
@@ -255,7 +255,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 		}
 
 		// 4. Aplicar actualización atómica (reemplazo seguro)
-		u.setProgress("Instalando...", 0, 0, 95)
+		u.setProgress("finishing", 0, 0, 100)
 		exePath, err := os.Executable()
 		if err != nil {
 			u.setProgress("error: no se pudo obtener ruta del ejecutable", 0, 0, 0)
@@ -278,7 +278,7 @@ func (u *AppUpdater) InstallUpdate(rel *ReleaseInfo) error {
 			return
 		}
 
-		u.setProgress("¡Actualizado! Reiniciando...", 0, 0, 100)
+		u.setProgress("finishing", 0, 0, 100)
 		time.Sleep(2 * time.Second)
 
 		u.restartApp(exePath)
@@ -317,9 +317,9 @@ func (u *AppUpdater) downloadWithProgress(url, dest string) error {
 			downloaded += int64(n)
 			pct := 0
 			if total > 0 {
-				pct = 5 + int(float64(downloaded)/float64(total)*80) // 5% a 85%
+				pct = int(float64(downloaded) / float64(total) * 100) // 0% a 100%
 			}
-			u.setProgress("Descargando...", downloaded, total, pct)
+			u.setProgress("downloading", downloaded, total, pct)
 		}
 		if err == io.EOF {
 			break
