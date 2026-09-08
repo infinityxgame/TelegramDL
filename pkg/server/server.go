@@ -506,6 +506,12 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 			st = s.clientMgr.GetAuthStatus(r.Context())
 		}
 	}
+	s.mu.RLock()
+	if st.User != nil && s.config.ColorID != nil {
+		st.User.ColorID = s.config.ColorID
+	}
+	s.mu.RUnlock()
+
 	s.jsonResponse(w, http.StatusOK, st)
 }
 

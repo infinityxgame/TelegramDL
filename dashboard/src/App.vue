@@ -77,6 +77,15 @@ const applyTheme = (colorId) => {
   root.style.setProperty('--user-glow', theme.glow)
   root.style.setProperty('--user-text-dim', theme.textDim)
   root.style.setProperty('--user-gradient', theme.gradient)
+
+  // Persistir el color en el objeto de usuario para que index.html lo use en el arranque
+  try {
+    const user = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
+    if (user) {
+      user.color_id = colorId
+      localStorage.setItem('tgdl_user', JSON.stringify(user))
+    }
+  } catch (e) {}
 }
 
 const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
