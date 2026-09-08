@@ -58,9 +58,9 @@ func hasArgument(target string) bool {
 func printUsage() {
 	fmt.Println("TelegramDL")
 	fmt.Println("Uso:")
-	fmt.Println("  TGDown.exe              Abrir la interfaz de escritorio")
-	fmt.Println("  TGDown.exe --server     Ejecutar el servidor sin abrir ventana")
-	fmt.Println("  TGDown.exe --update     Buscar e instalar la última actualización")
+	fmt.Println("  TelegramDL.exe              Abrir la interfaz de escritorio")
+	fmt.Println("  TelegramDL.exe --server     Ejecutar el servidor sin abrir ventana")
+	fmt.Println("  TelegramDL.exe --update     Buscar e instalar la última actualización")
 }
 
 func runDesktopMode() {
