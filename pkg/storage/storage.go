@@ -76,6 +76,7 @@ func (s *Storage) initSchema() error {
 
 	_, _ = s.db.Exec("PRAGMA journal_mode=WAL;")
 	_, _ = s.db.Exec("PRAGMA synchronous=NORMAL;")
+	_, _ = s.db.Exec("PRAGMA foreign_keys = ON;")
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS app_config (
@@ -670,10 +671,19 @@ func (s *Storage) ClearFinishedDownloads() (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res, err := s.db.Exec("DELETE FROM downloads WHERE status IN ('completed', 'skipped', 'failed', 'cancelled')")
+	// 1. Borrar registros de descargas terminadas del historial
+	res, err := s.db.Exec("DELETE FROM downloads WHERE status IN ('completed', 'skipped', 'failed', 'cancelled', 'duplicate')")
 	if err != nil {
 		return 0, err
 	}
 	rows, _ := res.RowsAffected()
+
+	// 2. Borrar CUALQUIER chunk que no tenga una descarga asociada (limpieza de huérfanos)
+	// Esto soluciona casos donde las descargas se borraron pero los chunks quedaron atrás.
+	_, _ = s.db.Exec("DELETE FROM download_chunks WHERE download_id NOT IN (SELECT id FROM downloads)")
+
+	// 3. Ejecutar VACUUM para liberar el espacio en el archivo de base de datos físicamente
+	_, _ = s.db.Exec("VACUUM")
+
 	return rows, nil
 }

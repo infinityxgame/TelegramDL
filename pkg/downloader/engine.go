@@ -380,8 +380,13 @@ func (e *Engine) ClearHistory() (int64, error) {
 	defer e.mu.Unlock()
 
 	for id, item := range e.downloads {
-		if item.Status == "completed" || item.Status == "failed" || item.Status == "cancelled" || item.Status == "skipped" {
+		if item.Status == "completed" || item.Status == "failed" || item.Status == "cancelled" || item.Status == "skipped" || item.Status == "duplicate" {
+			key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+			delete(e.chatMsgMap, key)
 			delete(e.downloads, id)
+			delete(e.forceDuplicate, id)
+			delete(e.messageCache, id)
+			delete(e.pendingChunks, id)
 		}
 	}
 
