@@ -381,6 +381,11 @@ func (e *Engine) ClearHistory() (int64, error) {
 
 	for id, item := range e.downloads {
 		if item.Status == "completed" || item.Status == "failed" || item.Status == "cancelled" || item.Status == "skipped" || item.Status == "duplicate" {
+			// Eliminar archivos temporales de descargas no terminadas o canceladas
+			if item.FilePath != "" {
+				_ = os.Remove(item.FilePath + ".temp")
+			}
+
 			key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
 			delete(e.chatMsgMap, key)
 			delete(e.downloads, id)
