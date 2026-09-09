@@ -54,10 +54,10 @@ func downloadMissingParts(
 	worker := func() {
 		defer wg.Done()
 		for offset := range jobs {
+			// Telegram requiere que el límite sea múltiplo de 4096 (4KB).
+			// Para el último fragmento, pedimos el tamaño de parte completo;
+			// Telegram simplemente devolverá los bytes restantes del archivo.
 			limit := int(downloadPartSize)
-			if remaining := totalBytes - offset; remaining < int64(limit) {
-				limit = int(remaining)
-			}
 
 			var data []byte
 			var err error

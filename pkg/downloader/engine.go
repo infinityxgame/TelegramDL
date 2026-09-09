@@ -1215,6 +1215,10 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		builder := dl.Download(rawClient, mediaInfo.Location).WithThreads(threads)
 		_, err = builder.Parallel(ctx, writer)
 	}
+
+	// Asegurar que todos los fragmentos se persistan antes de finalizar
+	e.persistSeenChunks(itemID)
+
 	if err != nil {
 		return err
 	}
@@ -1222,21 +1226,37 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("error al cerrar archivo temporal: %w", err)
 	}
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		// Fallback por si el sistema mantiene abierto el temporal.
+
+	// Intentar renombrar con reintentos y mayor tiempo de espera para Windows
+	var renameErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		renameErr = os.Rename(tempPath, finalPath)
+		if renameErr == nil {
+			break
+		}
+		// Si el error es porque el destino ya existe, y somos nosotros mismos
+		// (p.ej. por una reanudación de algo ya completado), intentamos borrarlo.
+		if os.IsExist(renameErr) {
+			_ = os.Remove(finalPath)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	if renameErr != nil {
+		// Fallback por si el sistema mantiene bloqueado el temporal (copia manual)
 		if copyErr := copyFile(tempPath, finalPath); copyErr != nil {
-			return fmt.Errorf("error al finalizar archivo: rename: %v; copia: %w", err, copyErr)
+			return fmt.Errorf("error al finalizar archivo: rename: %v; copia: %w", renameErr, copyErr)
 		}
-		if removeErr := os.Remove(tempPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			return fmt.Errorf("archivo descargado pero no se pudo limpiar el temporal: %w", removeErr)
-		}
+		// Si la copia funcionó, intentamos limpiar el temporal sin fallar si no se puede.
+		_ = os.Remove(tempPath)
 	}
 
 	if e.storage != nil {
 		if err := e.storage.DeleteChunks(itemID); err != nil {
-			return fmt.Errorf("error al limpiar fragmentos: %w", err)
+			log.Printf("[DOWNLOAD] Advertencia: no se pudieron limpiar los fragmentos de %s: %v", itemID, err)
 		}
 	}
+	return nil
 	return nil
 }
 
