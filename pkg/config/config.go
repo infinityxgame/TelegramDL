@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	AppVersion = "2.3.3"
+	AppVersion = "2.3.4"
 	GithubRepo = "infinityxgame/tgdown"
 )
 
