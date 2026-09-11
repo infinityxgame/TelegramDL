@@ -63,7 +63,28 @@ func printUsage() {
 	fmt.Println("  TelegramDL.exe --update     Buscar e instalar la última actualización")
 }
 
+// waitInstanceLock reintenta unos segundos antes de rendirse: tras una
+// actualización, el proceso anterior lanza el nuevo ejecutable y tarda un
+// instante en liberar el bloqueo al salir.
+func waitInstanceLock(timeout time.Duration) (func(), bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		release, ok := tryAcquireInstanceLock()
+		if ok || time.Now().After(deadline) {
+			return release, ok
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
 func runDesktopMode() {
+	release, ok := waitInstanceLock(8 * time.Second)
+	if !ok {
+		notifyAlreadyRunning()
+		return
+	}
+	defer release()
+
 	app := NewApp(assets)
 
 	err := wails.Run(&options.App{
@@ -111,6 +132,13 @@ func runDesktopMode() {
 }
 
 func runServerMode() int {
+	release, ok := waitInstanceLock(8 * time.Second)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "Error: ya hay una instancia de TelegramDL en ejecución.")
+		return 1
+	}
+	defer release()
+
 	app := NewApp(assets)
 	if app.server == nil {
 		fmt.Fprintln(os.Stderr, "Error: no se pudo inicializar el servidor")

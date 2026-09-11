@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -142,12 +143,18 @@ func (e *Engine) launchDownloadJob(itemID string) {
 	e.jobsWG.Add(1)
 	go func() {
 		defer e.jobsWG.Done()
-		defer func() {
-			e.mu.Lock()
-			delete(e.jobsInFlight, itemID)
-			e.mu.Unlock()
-		}()
-		e.startDownloadJob(itemID)
+		relaunch := e.startDownloadJob(itemID)
+
+		e.mu.Lock()
+		delete(e.jobsInFlight, itemID)
+		e.mu.Unlock()
+
+		// El relanzamiento va DESPUÉS de liberar jobsInFlight: hacerlo desde
+		// dentro del propio job lo descartaría silenciosamente y la tarea
+		// quedaría huérfana en cola, sin goroutine que la retome jamás.
+		if relaunch {
+			e.launchDownloadJob(itemID)
+		}
 	}()
 }
 
@@ -419,6 +426,20 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	}
 
 	filePath := item.FilePath
+	// Un duplicado nunca creó el archivo: su file_path apunta al original.
+	// Tampoco se borra si otra entrada del historial referencia la misma ruta.
+	fileOwned := item.Status != "duplicate" && filePath != ""
+	if fileOwned && deleteFile {
+		for otherID, other := range e.downloads {
+			if otherID != id && other.FilePath != "" && sameFilePath(other.FilePath, filePath) {
+				fileOwned = false
+				break
+			}
+		}
+	}
+
+	key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+	delete(e.chatMsgMap, key)
 	delete(e.downloads, id)
 	e.mu.Unlock()
 
@@ -428,11 +449,25 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	}
 
 	if deleteFile && filePath != "" {
-		_ = os.Remove(filePath)
-		_ = os.Remove(filePath + ".temp")
+		if fileOwned {
+			_ = os.Remove(filePath)
+			_ = os.Remove(filePath + ".temp")
+		} else {
+			log.Printf("[ENGINE] Entrada %s eliminada sin borrar %s: el archivo pertenece a otra descarga", id, filePath)
+		}
 	}
 
 	return nil
+}
+
+// sameFilePath compara rutas de archivo teniendo en cuenta que en Windows el
+// sistema de archivos no distingue mayúsculas de minúsculas.
+func sameFilePath(a, b string) bool {
+	ca, cb := filepath.Clean(a), filepath.Clean(b)
+	if ca == cb {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(ca, cb)
 }
 
 func (e *Engine) discardDownload(id string) {
@@ -790,7 +825,7 @@ func (e *Engine) onProgress(itemID string, bytesWritten int64, totalBytes int64,
 	}
 }
 
-func (e *Engine) startDownloadJob(itemID string) {
+func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 	// Pre-resolver metadatos (nombre, tamaño) antes de esperar el slot de descarga
 	go e.resolveItemMetadata(itemID)
 
@@ -801,17 +836,17 @@ func (e *Engine) startDownloadJob(itemID string) {
 		e.activeCond.Wait()
 		// Si mientras esperaba fue cancelada, pausada o ya no existe, salir
 		if it, exists := e.downloads[itemID]; !exists || (it.Status != "queued" && it.Status != "downloading") || e.pauseStates[itemID] {
-			e.mu.Unlock()
-			e.activeCond.Broadcast()
-			return
-		}
+				e.mu.Unlock()
+				e.activeCond.Broadcast()
+				return false
+			}
 	}
 
 	item, ok := e.downloads[itemID]
 	if !ok || item.Status == "cancelled" || item.Status == "paused" || e.stopping {
 		e.mu.Unlock()
 		e.activeCond.Broadcast() // Despertar al siguiente si este decide no iniciar
-		return
+		return false
 	}
 
 	e.runningJobs++
@@ -855,13 +890,17 @@ func (e *Engine) startDownloadJob(itemID string) {
 			it.Error = "descarga interrumpida inesperadamente"
 		}
 
-		isLimitCancel := e.cancelledForLimit[itemID]
-		delete(e.cancelledForLimit, itemID)
-		e.mu.Unlock()
-
-		if isLimitCancel {
-			e.launchDownloadJob(itemID)
+		// Una tarea detenida al reducir el límite de concurrencia debe volver a
+		// la cola con un job vivo. No puede relanzarse aquí: este job sigue
+		// marcado como 'en vuelo' (jobsInFlight) hasta que retorna, así que la
+		// decisión se devuelve al wrapper de launchDownloadJob.
+		if e.cancelledForLimit[itemID] {
+			delete(e.cancelledForLimit, itemID)
+			if it, ok := e.downloads[itemID]; ok && it.Status == "queued" && !e.stopping {
+				relaunch = true
+			}
 		}
+		e.mu.Unlock()
 	}()
 
 	err := e.executeDownloadWithRetry(ctx, itemID)
@@ -869,22 +908,22 @@ func (e *Engine) startDownloadJob(itemID string) {
 	if err != nil && strings.Contains(err.Error(), "mensaje no encontrado en Telegram") {
 		log.Printf("[DOWNLOAD] Omitiendo item %s porque el mensaje %d no existe", itemID, item.MessageID)
 		e.discardDownload(itemID)
-		return
+		return false
 	}
 	e.mu.Lock()
 
 	curItem, ok := e.downloads[itemID]
 	if !ok {
 		e.mu.Unlock()
-		return
+		return false
 	}
 
 	if errors.Is(err, context.Canceled) {
-		// Si el estado ya es 'queued', significa que fue reanudado mientras se cerraba
-		if curItem.Status == "queued" && !e.pauseStates[itemID] {
+		// Si el estado ya es 'queued', significa que fue reanudado mientras se
+		// cerraba: el wrapper lo relanzará al liberar este job.
+		if curItem.Status == "queued" && !e.pauseStates[itemID] && !e.stopping {
 			e.mu.Unlock()
-			e.launchDownloadJob(itemID)
-			return
+			return true
 		}
 
 		if e.stopping || e.cancelledForLimit[itemID] {
@@ -910,7 +949,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 				_ = e.storage.SaveDownload(cp)
 			}
 			e.notifyState(cp)
-			return
+			return false
 		}
 		curItem.Status = "failed"
 		curItem.Error = err.Error()
@@ -929,6 +968,7 @@ func (e *Engine) startDownloadJob(itemID string) {
 		_ = e.storage.SaveDownload(cp)
 	}
 	e.notifyState(cp)
+	return
 }
 
 func (e *Engine) resolveItemMetadata(itemID string) {
@@ -1227,17 +1267,15 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		return fmt.Errorf("error al cerrar archivo temporal: %w", err)
 	}
 
-	// Intentar renombrar con reintentos y mayor tiempo de espera para Windows
+	// Renombrar con reintentos: en Windows el antivirus o un reproductor pueden
+	// retener el archivo un instante. Nunca se borra el destino: os.Rename ya
+	// sobrescribe cuando es posible, y si todo falla se conserva el archivo
+	// existente en disco (y el .temp, para poder reintentar).
 	var renameErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		renameErr = os.Rename(tempPath, finalPath)
 		if renameErr == nil {
 			break
-		}
-		// Si el error es porque el destino ya existe, y somos nosotros mismos
-		// (p.ej. por una reanudación de algo ya completado), intentamos borrarlo.
-		if os.IsExist(renameErr) {
-			_ = os.Remove(finalPath)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -1256,7 +1294,6 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 			log.Printf("[DOWNLOAD] Advertencia: no se pudieron limpiar los fragmentos de %s: %v", itemID, err)
 		}
 	}
-	return nil
 	return nil
 }
 

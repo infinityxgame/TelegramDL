@@ -814,10 +814,12 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 
 	// Subpath es el ID de la descarga (ej. DELETE /api/downloads/{id})
 	if r.Method == http.MethodDelete {
-		delFile := true
+		// Por defecto NO se borra el archivo: solo se quita la entrada del
+		// historial. El cliente debe pedir el borrado físico explícitamente.
+		delFile := false
 		if q := r.URL.Query().Get("delete_file"); q != "" {
-			if strings.ToLower(q) == "false" || q == "0" {
-				delFile = false
+			if strings.ToLower(q) == "true" || q == "1" {
+				delFile = true
 			}
 		}
 
@@ -849,12 +851,12 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delFile := true
+	delFile := false
 	if body.DeleteFile != nil {
 		delFile = *body.DeleteFile
 	} else if q := r.URL.Query().Get("delete_file"); q != "" {
-		if strings.ToLower(q) == "false" || q == "0" {
-			delFile = false
+		if strings.ToLower(q) == "true" || q == "1" {
+			delFile = true
 		}
 	}
 

@@ -441,7 +441,7 @@ const deleteDownload = async item => {
     type: 'danger',
     action: async () => {
       try {
-        await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+        await api(`/api/downloads/${encodeURIComponent(item.id)}?delete_file=true`, { method: 'DELETE' })
         showMessage('Archivo borrado')
         await fetchDownloads()
       } catch (err) { showMessage(err.message, true) }
@@ -558,8 +558,11 @@ const promptDuplicateDownload = item => {
       }
     },
     cancelAction: async () => {
+      // Cancelar el aviso de duplicado solo descarta la entrada del historial:
+      // el archivo existente en disco (que pertenece a la descarga original)
+      // no se toca.
       try {
-        await api(`/api/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+        await api(`/api/downloads/${encodeURIComponent(item.id)}?delete_file=false`, { method: 'DELETE' })
         await fetchDownloads()
       } catch (err) {
         showMessage(err.message, true)
