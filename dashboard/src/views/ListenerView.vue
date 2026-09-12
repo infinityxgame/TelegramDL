@@ -2,6 +2,9 @@
 import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
 import { Download, FileText, Image, Inbox, MessageCircle, Music, Plus, Radio, Trash2, Video } from 'lucide-vue-next'
 import ConfirmModal from '../components/ConfirmModal.vue'
+import { useAuthToken } from '../composables/useAuthToken'
+
+const { authHeaders } = useAuthToken()
 
 const props = defineProps({
   notify: { type: Function, default: () => {} },
@@ -42,7 +45,7 @@ watch(() => props.initialItems, (newItems) => {
 }, { deep: true })
 
 const api = async (url, options = {}) => {
-  const response = await fetch(url, options)
+  const response = await fetch(url, { ...options, headers: { ...(options.headers || {}), ...authHeaders() } })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.detail || data.error || 'Error en el servidor')
   return data

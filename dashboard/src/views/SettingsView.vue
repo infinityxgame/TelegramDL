@@ -1,5 +1,6 @@
 <script setup>
-import { Settings2, Zap, Trash2, Save } from 'lucide-vue-next'
+import { ref, computed } from 'vue'
+import { Settings2, Zap, Trash2, Save, ShieldCheck, Copy, Eye, EyeOff, RefreshCw } from 'lucide-vue-next'
 import FolderPicker from '../components/FolderPicker.vue'
 
 const props = defineProps({
@@ -14,6 +15,10 @@ const props = defineProps({
   themeMap: {
     type: Object,
     required: true
+  },
+  apiToken: {
+    type: String,
+    default: ''
   }
 })
 
@@ -21,8 +26,24 @@ const emit = defineEmits([
   'save-settings',
   'clear-history',
   'reset-color',
-  'reset-loader-color'
+  'reset-loader-color',
+  'regenerate-token'
 ])
+
+const showToken = ref(false)
+const copyLabel = ref('Copiar')
+const maskedToken = computed(() => props.apiToken ? '•'.repeat(Math.min(props.apiToken.length, 40)) : '')
+
+const copyToken = async () => {
+  if (!props.apiToken) return
+  try {
+    await navigator.clipboard.writeText(props.apiToken)
+    copyLabel.value = '¡Copiado!'
+  } catch (e) {
+    copyLabel.value = 'No se pudo copiar'
+  }
+  setTimeout(() => { copyLabel.value = 'Copiar' }, 2000)
+}
 </script>
 
 <template>
@@ -171,6 +192,38 @@ const emit = defineEmits([
             <button type="button" class="reset-button-alt" @click="emit('reset-loader-color')">
               <Zap :size="14" /> Restablecer color del loader
             </button>
+          </div>
+
+          <!-- Acceso remoto -->
+          <div class="settings-group">
+            <span class="setting-label"><ShieldCheck :size="14" style="vertical-align: -2px; margin-right: 4px;" />Acceso remoto</span>
+            <small>
+              Con este token puedes controlar TelegramDL desde otro dispositivo (celular, otra PC).
+              No abras este puerto directamente a internet: combínalo con una VPN como
+              <a href="https://tailscale.com" target="_blank" rel="noopener">Tailscale</a>
+              o un túnel como Cloudflare Tunnel, y pega el token en la pantalla de login remoto.
+            </small>
+
+            <div class="speed-row" style="margin-top: 12px;">
+              <input
+                :value="showToken ? apiToken : maskedToken"
+                type="text"
+                readonly
+                style="font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em;"
+              />
+            </div>
+
+            <div class="settings-actions" style="margin-top: 10px; padding: 0;">
+              <button type="button" class="reset-button-alt" @click="showToken = !showToken">
+                <component :is="showToken ? EyeOff : Eye" :size="14" /> {{ showToken ? 'Ocultar' : 'Mostrar' }}
+              </button>
+              <button type="button" class="reset-button-alt" @click="copyToken">
+                <Copy :size="14" /> {{ copyLabel }}
+              </button>
+              <button type="button" class="reset-button-alt" @click="emit('regenerate-token')">
+                <RefreshCw :size="14" /> Regenerar token
+              </button>
+            </div>
           </div>
         </div>
 

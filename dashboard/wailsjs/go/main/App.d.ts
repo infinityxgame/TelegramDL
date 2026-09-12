@@ -3,8 +3,12 @@
 import {main} from '../models';
 import {http} from '../models';
 
+export function GetLocalToken():Promise<string>;
+
 export function GetServerInfo():Promise<main.ServerInfo>;
 
 export function Handler():Promise<http.Handler>;
+
+export function RegenerateLocalToken():Promise<string>;
 
 export function SelectDirectory():Promise<string>;

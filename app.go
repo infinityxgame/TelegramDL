@@ -156,3 +156,25 @@ func (a *App) PostponeUpdate(version string) {
 		a.updater.Postpone(version)
 	}
 }
+
+// GetLocalToken devuelve el token de acceso a la API HTTP local a través del
+// binding nativo de Wails (IPC interno, nunca por red). Es el mecanismo que
+// usa la propia app de escritorio para autenticar sus llamadas a /api/* sin
+// que el usuario tenga que escribir nada: solo un cliente remoto (navegador
+// en otro dispositivo) necesita introducirlo manualmente una vez.
+func (a *App) GetLocalToken() string {
+	if a.server == nil {
+		return ""
+	}
+	return a.server.APIToken()
+}
+
+// RegenerateLocalToken rota el token de acceso a la API. Cualquier
+// dispositivo remoto que use el token anterior deberá reconfigurarse con el
+// nuevo valor devuelto aquí.
+func (a *App) RegenerateLocalToken() string {
+	if a.server == nil {
+		return ""
+	}
+	return a.server.RegenerateToken()
+}

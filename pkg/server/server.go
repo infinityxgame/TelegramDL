@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -49,6 +50,7 @@ type Server struct {
 	exitCallback func()
 	broadcastCh  chan struct{}
 	onBroadcast  func(snap map[string]any)
+	apiToken     string
 }
 
 type wsClient struct {
@@ -97,6 +99,8 @@ func NewServer(
 		broadcastCh:  make(chan struct{}, 1),
 	}
 
+	s.apiToken = s.loadOrCreateToken()
+
 	s.registerRoutes(s.mux)
 
 	// Escuchar cambios de estado en el motor de descargas para emitir a los WebSockets
@@ -115,7 +119,7 @@ func NewServer(
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			s.corsMiddleware(s.mux).ServeHTTP(w, r)
+			s.corsMiddleware(s.authMiddleware(s.mux)).ServeHTTP(w, r)
 			return
 		}
 		// Para cualquier ruta de frontend, devolver 404 para que Wails AssetServer
@@ -125,7 +129,15 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) WebHandler() http.Handler {
-	return s.corsMiddleware(s.mux)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			s.corsMiddleware(s.authMiddleware(s.mux)).ServeHTTP(w, r)
+			return
+		}
+		// El panel estático (HTML/JS/CSS) se sirve siempre sin autenticación:
+		// la pantalla de login remoto necesita poder cargar antes de tener token.
+		s.mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Start(port int) error {
@@ -183,11 +195,48 @@ func (s *Server) Stop() {
 	}
 }
 
+// isAllowedOrigin restringe qué orígenes pueden leer las respuestas de la
+// API por CORS. En este proyecto el panel y la API siempre se sirven desde
+// el mismo origen (ventana de Wails o servidor --server en el mismo host y
+// puerto), así que en la práctica la mayoría de peticiones ni siquiera
+// llevan cabecera Origin. Esta lista solo cubre el servidor de desarrollo de
+// Vite (que corre en un puerto distinto al backend) y el propio host/puerto
+// configurado del servidor.
+func isAllowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	devOrigins := map[string]bool{
+		"http://localhost:8080": true,
+		"http://127.0.0.1:8080": true,
+	}
+	if devOrigins[origin] {
+		return true
+	}
+
+	host := config.GetServerHost()
+	port := strconv.Itoa(config.GetServerPort())
+	hosts := []string{"127.0.0.1", "localhost"}
+	if host != "" && host != "0.0.0.0" {
+		hosts = append(hosts, host)
+	}
+	for _, h := range hosts {
+		if origin == "http://"+h+":"+port || origin == "https://"+h+":"+port {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		origin := r.Header.Get("Origin")
+		if isAllowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -196,6 +245,90 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// authMiddleware exige un token de acceso válido (ver GenerateToken) en toda
+// la API. Sin esto, cualquier proceso o página web que alcance el puerto
+// del servidor podía leer las credenciales de Telegram, navegar el
+// filesystem completo o apagar la aplicación sin autenticarse.
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.checkAuth(r) {
+			s.errorResponse(w, http.StatusUnauthorized, "Token de acceso inválido o ausente")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) checkAuth(r *http.Request) bool {
+	s.mu.RLock()
+	token := s.apiToken
+	s.mu.RUnlock()
+	if token == "" {
+		// No debería ocurrir (loadOrCreateToken siempre genera uno), pero si
+		// pasara, negamos por defecto en vez de dejar la API abierta.
+		return false
+	}
+
+	provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if provided == "" {
+		// El navegador no puede fijar cabeceras personalizadas al abrir un
+		// WebSocket, así que ahí se acepta también como query param.
+		provided = r.URL.Query().Get("token")
+	}
+	if provided == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
+}
+
+// loadOrCreateToken recupera el token guardado en SQLite o genera uno nuevo
+// la primera vez que arranca la app (no requiere ninguna acción del
+// usuario).
+func (s *Server) loadOrCreateToken() string {
+	if s.storage != nil {
+		if tok, err := s.storage.GetAPIToken(); err == nil && tok != "" {
+			return tok
+		}
+	}
+
+	tok, err := config.GenerateToken()
+	if err != nil {
+		// Extremadamente improbable (fallo de crypto/rand), pero preferimos
+		// un token débil a dejar la API sin protección.
+		tok = uuid.New().String()
+	}
+	if s.storage != nil {
+		_ = s.storage.SaveAPIToken(tok)
+	}
+	return tok
+}
+
+// APIToken devuelve el token actual. Se expone al frontend de escritorio a
+// través de un binding nativo de Wails (App.GetLocalToken), nunca por HTTP
+// sin autenticar.
+func (s *Server) APIToken() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.apiToken
+}
+
+// RegenerateToken invalida el token anterior y genera uno nuevo. Cualquier
+// dispositivo remoto que estuviera usando el token viejo deberá
+// reconfigurarse con el nuevo valor.
+func (s *Server) RegenerateToken() string {
+	tok, err := config.GenerateToken()
+	if err != nil {
+		tok = uuid.New().String()
+	}
+	s.mu.Lock()
+	s.apiToken = tok
+	s.mu.Unlock()
+	if s.storage != nil {
+		_ = s.storage.SaveAPIToken(tok)
+	}
+	return tok
 }
 
 func (s *Server) jsonResponse(w http.ResponseWriter, status int, data any) {
@@ -239,6 +372,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/verify-code", s.handleAuthVerifyCode)
 	mux.HandleFunc("/api/auth/verify-2fa", s.handleAuthVerify2FA)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
+
+	// Token de acceso a la API (acceso remoto)
+	mux.HandleFunc("/api/auth/token", s.handleGetToken)
+	mux.HandleFunc("/api/auth/token/regenerate", s.handleRegenerateToken)
 
 	// Downloads (Soporta /api/downloads, /api/downloads/history, /api/downloads/open, /api/downloads/{id})
 	mux.HandleFunc("/api/downloads", s.handleDownloadsRoute)
@@ -621,6 +758,26 @@ func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.jsonResponse(w, http.StatusOK, s.clientMgr.GetAuthStatus(r.Context()))
+}
+
+// handleGetToken devuelve el token de acceso actual. Ya pasa por
+// authMiddleware (requiere conocer el token para poder consultarlo), así
+// que solo sirve para que un cliente ya autenticado confirme su valor
+// (por ejemplo, para mostrarlo en Ajustes).
+func (s *Server) handleGetToken(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, http.StatusOK, map[string]string{"token": s.APIToken()})
+}
+
+// handleRegenerateToken rota el token de acceso. Requiere el token vigente
+// (via authMiddleware); tras esto, cualquier otro dispositivo remoto deberá
+// reconfigurarse con el nuevo valor devuelto aquí.
+func (s *Server) handleRegenerateToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+	newToken := s.RegenerateToken()
+	s.jsonResponse(w, http.StatusOK, map[string]string{"token": newToken})
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {

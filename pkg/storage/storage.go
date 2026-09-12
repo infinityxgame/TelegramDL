@@ -210,6 +210,29 @@ func (s *Storage) SaveCredentials(apiID, apiHash string) error {
 	return s.setConfigKey("api_hash", apiHash)
 }
 
+// GetAPIToken devuelve el token de acceso a la API HTTP local, si existe.
+func (s *Storage) GetAPIToken() (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var token string
+	err := s.db.QueryRow("SELECT value FROM app_config WHERE key = 'api_token'").Scan(&token)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// SaveAPIToken persiste el token de acceso a la API HTTP local.
+func (s *Storage) SaveAPIToken(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.setConfigKey("api_token", token)
+}
+
 func findExistingFile(paths ...string) string {
 	for _, p := range paths {
 		if p == "" {

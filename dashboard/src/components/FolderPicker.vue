@@ -1,6 +1,9 @@
 <script setup>
 import { ref } from 'vue'
 import { ArrowLeft, Check, ChevronRight, Folder, HardDrive, X } from 'lucide-vue-next'
+import { useAuthToken } from '../composables/useAuthToken'
+
+const { authHeaders } = useAuthToken()
 
 defineProps({ modelValue: { type: String, default: '' } })
 const emit = defineEmits(['update:modelValue'])
@@ -14,7 +17,7 @@ const roots = ref([])
 const entries = ref([])
 
 const api = async (url) => {
-  const response = await fetch(url)
+  const response = await fetch(url, { headers: { ...authHeaders() } })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.detail || 'No se puede leer la carpeta')
   return data

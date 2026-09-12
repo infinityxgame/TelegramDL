@@ -1,6 +1,9 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { KeyRound, Phone, ShieldCheck, CheckCircle2, AlertCircle, ArrowRight, Loader2, RefreshCw, Info } from 'lucide-vue-next'
+import { useAuthToken } from '../composables/useAuthToken'
+
+const { authHeaders } = useAuthToken()
 
 const props = defineProps({
   authStatus: {
@@ -43,7 +46,7 @@ const apiCall = async (url, body) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body)
     })
     const data = await res.json()
@@ -112,7 +115,7 @@ const verify2FA = async () => {
 
 const resetFlow = async () => {
   try {
-    await fetch('/api/auth/logout', { method: 'POST' })
+    await fetch('/api/auth/logout', { method: 'POST', headers: { ...authHeaders() } })
   } catch (e) {}
   phoneNumber.value = ''
   code.value = ''

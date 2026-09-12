@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -264,6 +266,18 @@ func FormatBytes(size float64) string {
 		return fmt.Sprintf("%.0f B", size)
 	}
 	return fmt.Sprintf("%.2f %s", size, units[i])
+}
+
+// GenerateToken crea un secreto aleatorio criptográficamente seguro
+// (32 bytes, codificado en hexadecimal) usado como token de acceso a la
+// API HTTP local. Se genera una sola vez y se persiste; ver
+// storage.GetAPIToken / storage.SaveAPIToken.
+func GenerateToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("error generando token: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 func ParseInt64(val any) int64 {

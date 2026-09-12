@@ -5,6 +5,8 @@ import ListenerView from './views/ListenerView.vue'
 import SettingsView from './views/SettingsView.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
 import AuthWizard from './components/AuthWizard.vue'
+import RemoteLogin from './components/RemoteLogin.vue'
+import { useAuthToken } from './composables/useAuthToken'
 import {
   ArrowDownToLine,
   ArrowUpRight,
@@ -17,6 +19,10 @@ import {
   X,
   Zap
 } from 'lucide-vue-next'
+
+const { token, initToken, setToken, clearToken, authHeaders, isWailsRuntime } = useAuthToken()
+const needsRemoteLogin = ref(false)
+const remoteLoginError = ref('')
 
 const downloads = ref([])
 const listenerItems = ref([])
@@ -246,7 +252,17 @@ const handleCancel = () => {
 }
 
 const api = async (url, options = {}) => {
-  const response = await fetch(url, options)
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), ...authHeaders() }
+  })
+  if (response.status === 401) {
+    if (!isWailsRuntime()) {
+      clearToken()
+      needsRemoteLogin.value = true
+    }
+    throw new Error('No autorizado: token de acceso inválido o ausente')
+  }
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.detail || data.error || 'Error en el servidor')
   return data
@@ -332,6 +348,30 @@ const saveSettings = async () => {
     await syncSettings(data.settings)
     showMessage('Configuración guardada')
   } catch (err) { showMessage(err.message, true) } finally { saving.value = false; settingsSavePending.value = false }
+}
+
+const regenerateToken = () => {
+  openConfirm({
+    title: 'Regenerar token de acceso',
+    message: 'El token actual dejará de funcionar de inmediato. Cualquier otro dispositivo (celular, otra PC) que lo esté usando para acceso remoto necesitará que le pases el nuevo token.',
+    confirmText: 'Sí, regenerar',
+    type: 'danger',
+    action: async () => {
+      try {
+        let newToken = ''
+        if (isWailsRuntime() && window.go?.main?.App?.RegenerateLocalToken) {
+          newToken = await window.go.main.App.RegenerateLocalToken()
+        } else {
+          const data = await api('/api/auth/token/regenerate', { method: 'POST' })
+          newToken = data.token
+        }
+        setToken(newToken)
+        showMessage('Token regenerado')
+      } catch (err) {
+        showMessage(err.message, true)
+      }
+    }
+  })
 }
 
 const clearDownloadHistory = () => {
@@ -650,6 +690,9 @@ const connectWebSocket = async () => {
   } else {
     wsUrl = 'ws://127.0.0.1:8000/api/ws'
   }
+  if (token.value) {
+    wsUrl += `?token=${encodeURIComponent(token.value)}`
+  }
 
   try {
     socket = new WebSocket(wsUrl)
@@ -675,7 +718,7 @@ const connectWebSocket = async () => {
   }
 }
 
-onMounted(async () => {
+const startApp = async () => {
   disposed = false
 
   // Iniciar servicios y comprobación inmediata
@@ -701,6 +744,35 @@ onMounted(async () => {
     setTimeout(() => {
       bootstrapping.value = false
     }, remaining)
+  }
+}
+
+// Valida un token recién introducido en la pantalla de login remoto antes de
+// arrancar el resto de la app con él.
+const handleRemoteLogin = async (value) => {
+  remoteLoginError.value = ''
+  setToken(value)
+  try {
+    await api('/api/system/info')
+    needsRemoteLogin.value = false
+    bootstrapping.value = true
+    await startApp()
+  } catch (err) {
+    clearToken()
+    remoteLoginError.value = 'Token inválido. Verifica que lo copiaste completo desde Ajustes → Acceso remoto.'
+  }
+}
+
+onMounted(async () => {
+  // Resolver el token de acceso antes de llamar a cualquier endpoint /api/*:
+  // en la app de escritorio llega solo (binding nativo de Wails); en un
+  // navegador remoto, si no hay uno guardado, pedimos la pantalla de login.
+  await initToken()
+  if (isWailsRuntime() || token.value) {
+    await startApp()
+  } else {
+    bootstrapping.value = false
+    needsRemoteLogin.value = true
   }
 })
 
@@ -773,8 +845,11 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Login remoto: token de acceso a la API (solo en navegador/remoto sin token guardado) -->
+    <RemoteLogin v-if="needsRemoteLogin" :error="remoteLoginError" @submit="handleRemoteLogin" />
+
     <!-- Asistente de Autenticación -->
-    <AuthWizard v-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
+    <AuthWizard v-else-if="!authStatus.authenticated" :authStatus="authStatus" @auth-success="onAuthSuccess" />
 
     <!-- Estructura Principal de la Aplicación -->
     <div v-else class="app-shell">
@@ -894,10 +969,12 @@ onUnmounted(() => {
             :settings="settings"
             :saving="saving"
             :themeMap="themeMap"
+            :api-token="token"
             @save-settings="saveSettings"
             @clear-history="clearDownloadHistory"
             @reset-color="resetColor"
             @reset-loader-color="resetLoaderColor"
+            @regenerate-token="regenerateToken"
           />
         </div>
 
