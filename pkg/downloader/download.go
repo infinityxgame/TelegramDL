@@ -17,7 +17,6 @@ import (
 	"github.com/gotd/td/tg"
 
 	"tgdown/pkg/config"
-	"tgdown/pkg/storage"
 )
 
 func (e *Engine) resolveItemMetadata(itemID string) {

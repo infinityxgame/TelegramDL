@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"tgdown/pkg/config"
 	"tgdown/pkg/storage"
 )
 
