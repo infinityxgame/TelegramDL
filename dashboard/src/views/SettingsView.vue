@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Settings2, Zap, Trash2, Save, ShieldCheck, Copy, Eye, EyeOff, RefreshCw, Download } from 'lucide-vue-next'
+import { Settings2, Zap, Trash2, Save, Copy, Eye, EyeOff, RefreshCw, Download } from 'lucide-vue-next'
 import FolderPicker from '../components/FolderPicker.vue'
 
 const props = defineProps({
@@ -264,11 +264,11 @@ const exportHistory = (format) => {
 
           <!-- Acceso remoto -->
           <div class="settings-group">
-            <span class="setting-label"><ShieldCheck :size="14" style="vertical-align: -2px; margin-right: 4px;" />Acceso remoto</span>
+            <span class="setting-label">Acceso remoto</span>
             <small>
               Con este token puedes controlar TelegramDL desde otro dispositivo (celular, otra PC).
               No abras este puerto directamente a internet: combínalo con una VPN como
-              <a href="https://tailscale.com" target="_blank" rel="noopener">Tailscale</a>
+              <a class="inline-link" href="https://tailscale.com" target="_blank" rel="noopener">Tailscale</a>
               o un túnel como Cloudflare Tunnel, y pega el token en la pantalla de login remoto.
             </small>
 

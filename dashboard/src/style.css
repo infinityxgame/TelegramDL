@@ -74,6 +74,14 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
    inputs de la app, pero a ancho completo en vez del input angosto de
    .speed-row (pensado para el número del límite de velocidad, no para un
    token de 64 caracteres). */
+/* Enlaces dentro de textos de ayuda: el azul/morado por defecto del navegador
+   choca con las paletas de la app, asi que se pintan en rojo (tono fijo, no
+   depende del tema) y se subrayan solo al pasar el cursor. */
+.inline-link { color: #e5484d; text-decoration: none; font-weight: 600 }
+.inline-link:visited { color: #e5484d }
+.inline-link:hover { color: #ff6369; text-decoration: underline }
+.inline-link:focus-visible { outline: 2px solid #e5484d; outline-offset: 2px; border-radius: 3px }
+
 .token-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .token-row input { flex: 1; min-width: 0; width: auto; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; color: var(--user-text-dim); }
 .primary-button, .save-button { border: 0; border-radius: 10px; background: var(--user-gradient); color: var(--user-bg-base); font-weight: 700; padding: 0 18px; cursor: pointer; display: flex; align-items: center; gap: 18px }
