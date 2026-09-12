@@ -329,6 +329,20 @@ const fetchDownloads = async () => {
   } catch (err) { /* No mostramos error en poll constante */ }
 }
 
+// El WebSocket (o los eventos nativos de Wails) ya empujan el estado en
+// tiempo real; este polling es solo el respaldo para cuando esa conexión
+// está caída. Mientras esté sana, lo espaciamos mucho (chequeo de vida)
+// en vez de repetir cada segundo la misma información que ya llegó por
+// el canal push, que era el mayor costo de red/CPU en historiales grandes.
+const scheduleDownloadsPoll = () => {
+  if (disposed) return
+  fetchDownloads().finally(() => {
+    if (disposed) return
+    const delay = websocketConnected.value ? 15000 : 1000
+    timer = setTimeout(scheduleDownloadsPoll, delay)
+  })
+}
+
 const fetchSettings = async () => {
   try {
     const data = await api('/api/settings')
@@ -723,7 +737,7 @@ const startApp = async () => {
 
   // Iniciar servicios y comprobación inmediata
   connectWebSocket()
-  timer = setInterval(fetchDownloads, 1000)
+  scheduleDownloadsPoll()
 
   // Iniciamos el ciclo de actualizaciones de fondo inmediatamente para evitar esperas
   setTimeout(() => checkForUpdates(false), 1000)
@@ -778,7 +792,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disposed = true
-  clearInterval(timer)
+  clearTimeout(timer)
   clearInterval(updateCheckTimer)
   clearTimeout(saveTimer)
   clearTimeout(reconnectTimer)
