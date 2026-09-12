@@ -120,6 +120,16 @@ func TestSaveAndLoadDownloadRoundTrip(t *testing.T) {
 func TestChunksLifecycle(t *testing.T) {
 	st := newTestStorage(t)
 
+	// download_chunks tiene FOREIGN KEY(download_id) REFERENCES downloads(id),
+	// así que la descarga padre debe existir antes de insertar sus chunks.
+	if err := st.SaveDownload(DownloadItem{
+		ID:       "dl-1",
+		FileName: "video.mp4",
+		Status:   "downloading",
+	}); err != nil {
+		t.Fatalf("error creando la descarga padre: %v", err)
+	}
+
 	if err := st.AddChunks("dl-1", []int64{0, 1, 2, 1}); err != nil {
 		t.Fatalf("error agregando chunks: %v", err)
 	}

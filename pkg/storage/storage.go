@@ -43,7 +43,14 @@ type Storage struct {
 }
 
 func NewStorage(dbPath string) (*Storage, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	// Los PRAGMA por conexión van en el DSN, no en un db.Exec suelto:
+	// database/sql mantiene un pool y un "PRAGMA foreign_keys = ON" ejecutado
+	// con Exec solo afecta a la conexión que atendió esa llamada. Cualquier
+	// consulta posterior puede caer en otra conexión con las claves foráneas
+	// desactivadas, así que el ON DELETE CASCADE de download_chunks se aplicaba
+	// o no según qué conexión tocara.
+	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("error al abrir sqlite: %w", err)
 	}
@@ -74,9 +81,11 @@ func (s *Storage) initSchema() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// journal_mode queda grabado en el propio archivo, así que basta con
+	// fijarlo una vez. foreign_keys y busy_timeout se aplican por conexión y
+	// ya vienen en el DSN de NewStorage.
 	_, _ = s.db.Exec("PRAGMA journal_mode=WAL;")
 	_, _ = s.db.Exec("PRAGMA synchronous=NORMAL;")
-	_, _ = s.db.Exec("PRAGMA foreign_keys = ON;")
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS app_config (
@@ -676,7 +685,12 @@ func (s *Storage) AddChunks(downloadID string, indices []int64) error {
 	defer stmt.Close()
 
 	for _, idx := range indices {
-		_, _ = stmt.Exec(downloadID, idx)
+		// No se ignora el error: con foreign_keys activo, un chunk cuyo
+		// download_id no exista se rechaza, y tragarse ese error dejaba la
+		// tabla vacía sin avisar a nadie.
+		if _, err := stmt.Exec(downloadID, idx); err != nil {
+			return fmt.Errorf("error al guardar el chunk %d de %s: %w", idx, downloadID, err)
+		}
 	}
 
 	return tx.Commit()
