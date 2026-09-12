@@ -1223,13 +1223,16 @@ onUnmounted(() => {
 /* Estilos para Ajustes y Selector de Color */
 .content-grid-single { display: grid; grid-template-columns: 1fr; gap: 18px; animation: riseIn .55s ease both; }
 .settings-panel-full { padding: 30px; }
-.settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; }
+.settings-sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; margin-bottom: 20px; align-items: start; }
 .settings-group { display: flex; flex-direction: column; gap: 15px; }
 .settings-actions { display: flex; gap: 12px; margin-top: 22px; }
 .settings-actions .clear-history-button, .settings-actions .save-button { width: 100%; margin-top: 0; flex: 1; }
 .clear-history-button { width: 100%; margin-top: 22px; padding: 11px; border: 1px solid #6e3942; border-radius: 10px; background: rgba(125, 48, 61, .16); color: #ffadb5; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; }
 .clear-history-button:hover { background: rgba(125, 48, 61, .3); border-color: #a95663; }
-.color-group { padding-top: 5px; }
+/* La columna de colores es la mas alta del bloque; ocupando dos filas deja
+   que el ultimo grupo (Acceso remoto) suba al hueco de la fila 2 en vez de
+   quedar colgado debajo. Solo se nota donde no caben las 4 columnas. */
+.color-group { padding-top: 5px; grid-row: span 2; }
 .color-selector-container { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 20px; }
 .color-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .color-dot {
