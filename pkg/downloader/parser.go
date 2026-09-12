@@ -24,6 +24,32 @@ var (
 
 const MaxMessagesPerJob = 500
 
+// parseMsgRange interpreta los campos de inicio/fin de mensaje extraídos por
+// las expresiones regulares de arriba y valida que formen un rango razonable.
+// Centraliza una lógica que antes estaba duplicada en las tres ramas de
+// ParseURL (canal, bot y username).
+func parseMsgRange(startStr, endStr string) (startID, endID int, err error) {
+	startID, _ = strconv.Atoi(startStr)
+	endID = startID
+	if endStr != "" {
+		endID, _ = strconv.Atoi(endStr)
+	}
+	if endID < startID {
+		return 0, 0, errors.New("el mensaje final no puede ser menor que el inicial")
+	}
+	if endID-startID+1 > MaxMessagesPerJob {
+		return 0, 0, fmt.Errorf("el rango máximo es de %d mensajes", MaxMessagesPerJob)
+	}
+	return startID, endID, nil
+}
+
+func submatchOrEmpty(match []string, idx int) string {
+	if len(match) > idx {
+		return match[idx]
+	}
+	return ""
+}
+
 func ParseURL(url string) (*ParsedURL, error) {
 	clean := strings.TrimSpace(url)
 	if clean == "" {
@@ -41,16 +67,9 @@ func ParseURL(url string) (*ParsedURL, error) {
 	}
 
 	if match := channelRegex.FindStringSubmatch(clean); match != nil {
-		startID, _ := strconv.Atoi(match[2])
-		endID := startID
-		if len(match) > 3 && match[3] != "" {
-			endID, _ = strconv.Atoi(match[3])
-		}
-		if endID < startID {
-			return nil, errors.New("el mensaje final no puede ser menor que el inicial")
-		}
-		if endID-startID+1 > MaxMessagesPerJob {
-			return nil, fmt.Errorf("el rango máximo es de %d mensajes", MaxMessagesPerJob)
+		startID, endID, err := parseMsgRange(match[2], submatchOrEmpty(match, 3))
+		if err != nil {
+			return nil, err
 		}
 
 		// En MTProto de Telegram, los IDs de canales privados llevan prefijo -100
@@ -66,16 +85,9 @@ func ParseURL(url string) (*ParsedURL, error) {
 
 	if match := botRegex.FindStringSubmatch(clean); match != nil {
 		username := match[1]
-		startID, _ := strconv.Atoi(match[2])
-		endID := startID
-		if len(match) > 3 && match[3] != "" {
-			endID, _ = strconv.Atoi(match[3])
-		}
-		if endID < startID {
-			return nil, errors.New("el mensaje final no puede ser menor que el inicial")
-		}
-		if endID-startID+1 > MaxMessagesPerJob {
-			return nil, fmt.Errorf("el rango máximo es de %d mensajes", MaxMessagesPerJob)
+		startID, endID, err := parseMsgRange(match[2], submatchOrEmpty(match, 3))
+		if err != nil {
+			return nil, err
 		}
 
 		return &ParsedURL{
@@ -88,16 +100,9 @@ func ParseURL(url string) (*ParsedURL, error) {
 
 	if match := usernameRegex.FindStringSubmatch(clean); match != nil {
 		username := match[1]
-		startID, _ := strconv.Atoi(match[2])
-		endID := startID
-		if len(match) > 3 && match[3] != "" {
-			endID, _ = strconv.Atoi(match[3])
-		}
-		if endID < startID {
-			return nil, errors.New("el mensaje final no puede ser menor que el inicial")
-		}
-		if endID-startID+1 > MaxMessagesPerJob {
-			return nil, fmt.Errorf("el rango máximo es de %d mensajes", MaxMessagesPerJob)
+		startID, endID, err := parseMsgRange(match[2], submatchOrEmpty(match, 3))
+		if err != nil {
+			return nil, err
 		}
 
 		return &ParsedURL{

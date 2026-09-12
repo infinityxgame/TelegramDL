@@ -208,7 +208,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 func (e *Engine) persistenceLoop() {
 	for item := range e.persistCh {
 		if e.storage != nil {
-			_ = e.storage.SaveDownload(item)
+			if err := e.storage.SaveDownload(item); err != nil {
+				log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+			}
 		}
 		e.persistWG.Done()
 	}
@@ -238,7 +240,9 @@ func (e *Engine) persistSeenChunks(itemID string) {
 	e.mu.Unlock()
 
 	if len(chunks) > 0 {
-		_ = e.storage.AddChunks(itemID, chunks)
+		if err := e.storage.AddChunks(itemID, chunks); err != nil {
+			log.Printf("[DOWNLOADER] error guardando chunks en BD: %v", err)
+		}
 	}
 }
 
@@ -414,8 +418,12 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	if !ok {
 		e.mu.Unlock()
 		if e.storage != nil {
-			_ = e.storage.DeleteDownload(id)
-			_ = e.storage.DeleteChunks(id)
+			if err := e.storage.DeleteDownload(id); err != nil {
+				log.Printf("[DOWNLOADER] error eliminando descarga de BD: %v", err)
+			}
+			if err := e.storage.DeleteChunks(id); err != nil {
+				log.Printf("[DOWNLOADER] error eliminando chunks de BD: %v", err)
+			}
 		}
 		return nil
 	}
@@ -444,8 +452,12 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	e.mu.Unlock()
 
 	if e.storage != nil {
-		_ = e.storage.DeleteDownload(id)
-		_ = e.storage.DeleteChunks(id)
+		if err := e.storage.DeleteDownload(id); err != nil {
+			log.Printf("[DOWNLOADER] error eliminando descarga de BD: %v", err)
+		}
+		if err := e.storage.DeleteChunks(id); err != nil {
+			log.Printf("[DOWNLOADER] error eliminando chunks de BD: %v", err)
+		}
 	}
 
 	if deleteFile && filePath != "" {
@@ -483,8 +495,12 @@ func (e *Engine) discardDownload(id string) {
 	e.mu.Unlock()
 
 	if e.storage != nil {
-		_ = e.storage.DeleteDownload(id)
-		_ = e.storage.DeleteChunks(id)
+		if err := e.storage.DeleteDownload(id); err != nil {
+			log.Printf("[DOWNLOADER] error eliminando descarga de BD: %v", err)
+		}
+		if err := e.storage.DeleteChunks(id); err != nil {
+			log.Printf("[DOWNLOADER] error eliminando chunks de BD: %v", err)
+		}
 	}
 }
 
@@ -511,7 +527,9 @@ func (e *Engine) CancelDownload(id string) error {
 	e.activeCond.Broadcast() // Despertar tareas en espera para que vean el cambio
 	e.persistSeenChunks(id)
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 	return nil
@@ -559,7 +577,9 @@ func (e *Engine) PauseDownload(id string) error {
 	e.activeCond.Broadcast() // Despertar tareas en espera para que vean el cambio
 	e.persistSeenChunks(id)
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 
@@ -616,7 +636,9 @@ func (e *Engine) ResumeDownload(ctx context.Context, id string) error {
 	cp := *item
 	e.mu.Unlock()
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 
@@ -688,7 +710,9 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	cp := item
 	e.mu.Unlock()
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(item)
+		if err := e.storage.SaveDownload(item); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 
@@ -946,7 +970,9 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 			cp = *curItem
 			e.mu.Unlock()
 			if e.storage != nil {
-				_ = e.storage.SaveDownload(cp)
+				if err := e.storage.SaveDownload(cp); err != nil {
+					log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+				}
 			}
 			e.notifyState(cp)
 			return false
@@ -965,7 +991,9 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 	cp = *curItem
 	e.mu.Unlock()
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 	return
@@ -1027,7 +1055,9 @@ func (e *Engine) resolveItemMetadata(itemID string) {
 	e.mu.Unlock()
 
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 }
@@ -1150,7 +1180,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		cp := *item
 		e.mu.Unlock()
 		if e.storage != nil {
-			_ = e.storage.SaveDownload(cp)
+			if err := e.storage.SaveDownload(cp); err != nil {
+				log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+			}
 		}
 		e.notifyState(cp)
 		return errDownloadAlreadyExists
@@ -1168,7 +1200,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 	e.mu.Unlock()
 
 	if e.storage != nil {
-		_ = e.storage.SaveDownload(cp)
+		if err := e.storage.SaveDownload(cp); err != nil {
+			log.Printf("[DOWNLOADER] error guardando estado de descarga en BD: %v", err)
+		}
 	}
 	e.notifyState(cp)
 
@@ -1192,7 +1226,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		// ejecución; los offsets anteriores ya no son confiables.
 		resumeChunks = make(map[int64]struct{})
 		if e.storage != nil {
-			_ = e.storage.DeleteChunks(itemID)
+			if err := e.storage.DeleteChunks(itemID); err != nil {
+				log.Printf("[DOWNLOADER] error eliminando chunks de BD: %v", err)
+			}
 		}
 	}
 	if info, statErr := tempFile.Stat(); statErr != nil || mediaInfo.FileSize <= 0 || info.Size() != mediaInfo.FileSize {
@@ -1200,7 +1236,9 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		// offsets persistidos podrían pertenecer a otra descarga.
 		resumeChunks = make(map[int64]struct{})
 		if e.storage != nil {
-			_ = e.storage.DeleteChunks(itemID)
+			if err := e.storage.DeleteChunks(itemID); err != nil {
+				log.Printf("[DOWNLOADER] error eliminando chunks de BD: %v", err)
+			}
 		}
 	}
 

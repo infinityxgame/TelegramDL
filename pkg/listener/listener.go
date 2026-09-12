@@ -221,7 +221,11 @@ func (le *ListenerEngine) rememberChatName(peerID, rawChannelID int64, name stri
 	le.mu.Unlock()
 
 	if updated && le.storage != nil {
-		go func() { _ = le.storage.SaveConfig(cfg) }()
+		go func() {
+			if err := le.storage.SaveConfig(cfg); err != nil {
+				log.Printf("[LISTENER] error guardando configuración en BD: %v", err)
+			}
+		}()
 	}
 }
 
@@ -344,14 +348,18 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	if chatCfg.AutoDownload {
 		dlItem.Status = "queued"
 		if le.storage != nil {
-			_ = le.storage.SaveDownload(dlItem)
+			if err := le.storage.SaveDownload(dlItem); err != nil {
+				log.Printf("[LISTENER] error guardando estado de descarga en BD: %v", err)
+			}
 		}
 		if le.engine != nil {
 			le.engine.QueueItem(dlItem)
 		}
 	} else {
 		if le.storage != nil {
-			_ = le.storage.SaveDownload(dlItem)
+			if err := le.storage.SaveDownload(dlItem); err != nil {
+				log.Printf("[LISTENER] error guardando estado de descarga en BD: %v", err)
+			}
 		}
 		item := &ListenerItem{
 			ID:        itemID,
@@ -400,7 +408,9 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		}
 
 		if le.storage != nil {
-			_ = le.storage.SaveDownload(dlItem)
+			if err := le.storage.SaveDownload(dlItem); err != nil {
+				log.Printf("[LISTENER] error guardando estado de descarga en BD: %v", err)
+			}
 		}
 		if le.engine != nil {
 			le.engine.QueueItem(dlItem)
@@ -414,7 +424,9 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		if saved, err := le.storage.LoadDownloads(""); err == nil {
 			if dl, exists := saved[itemID]; exists {
 				dl.Status = "queued"
-				_ = le.storage.SaveDownload(dl)
+				if err := le.storage.SaveDownload(dl); err != nil {
+					log.Printf("[LISTENER] error guardando estado de descarga en BD: %v", err)
+				}
 				if le.engine != nil {
 					le.engine.QueueItem(dl)
 				}
@@ -435,8 +447,12 @@ func (le *ListenerEngine) RemoveItem(itemID string) {
 	le.mu.Unlock()
 
 	if le.storage != nil {
-		_ = le.storage.DeleteDownload(itemID)
-		_ = le.storage.DeleteChunks(itemID)
+		if err := le.storage.DeleteDownload(itemID); err != nil {
+			log.Printf("[LISTENER] error eliminando descarga de BD: %v", err)
+		}
+		if err := le.storage.DeleteChunks(itemID); err != nil {
+			log.Printf("[LISTENER] error eliminando chunks de BD: %v", err)
+		}
 	}
 	if le.engine != nil {
 		_ = le.engine.DeleteDownload(itemID, false)
@@ -458,8 +474,12 @@ func (le *ListenerEngine) ClearItems() {
 
 	for _, id := range ids {
 		if le.storage != nil {
-			_ = le.storage.DeleteDownload(id)
-			_ = le.storage.DeleteChunks(id)
+			if err := le.storage.DeleteDownload(id); err != nil {
+				log.Printf("[LISTENER] error eliminando descarga de BD: %v", err)
+			}
+			if err := le.storage.DeleteChunks(id); err != nil {
+				log.Printf("[LISTENER] error eliminando chunks de BD: %v", err)
+			}
 		}
 		if le.engine != nil {
 			_ = le.engine.DeleteDownload(id, false)

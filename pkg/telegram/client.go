@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,6 +62,24 @@ type ClientManager struct {
 	channelAccessHashes  map[int64]int64
 	userAccessHashes     map[int64]int64
 	onGenericMessage     func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
+}
+
+// maxAccessHashEntries acota el tamaño de los mapas de access hash de
+// canales/usuarios. Sin límite, una sesión de escucha (listener) de larga
+// duración que atraviesa muchos chats distintos podría hacerlos crecer sin
+// parar. Los hashes son recuperables bajo demanda, así que al llegar al
+// límite se descarta una entrada existente (orden no determinista, pero
+// barato) para dejar sitio a la nueva.
+const maxAccessHashEntries = 20000
+
+func boundedHashSet(m map[int64]int64, id int64, hash int64) {
+	if _, exists := m[id]; !exists && len(m) >= maxAccessHashEntries {
+		for k := range m {
+			delete(m, k)
+			break
+		}
+	}
+	m[id] = hash
 }
 
 func NewClientManager() *ClientManager {
@@ -173,6 +192,22 @@ func importPyrogramSession(targetJSONPath string) {
 	_ = loader.Save(context.Background(), &data)
 }
 
+// systemVersionLabel reporta el sistema operativo real en vez de un valor
+// fijo, para que la sesión activa que ve el usuario en Telegram (Ajustes >
+// Dispositivos) refleje la plataforma en la que realmente corre TGDown.
+func systemVersionLabel() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "Windows"
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	default:
+		return runtime.GOOS
+	}
+}
+
 func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entities tg.Entities, msg *tg.Message) error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -183,23 +218,23 @@ func (cm *ClientManager) cacheEntities(entities tg.Entities) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	for id, ch := range entities.Channels {
-		cm.channelAccessHashes[id] = ch.AccessHash
+		boundedHashSet(cm.channelAccessHashes, id, ch.AccessHash)
 	}
 	for id, u := range entities.Users {
-		cm.userAccessHashes[id] = u.AccessHash
+		boundedHashSet(cm.userAccessHashes, id, u.AccessHash)
 	}
 }
 
 func (cm *ClientManager) SetChannelAccessHash(channelID int64, accessHash int64) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.channelAccessHashes[channelID] = accessHash
+	boundedHashSet(cm.channelAccessHashes, channelID, accessHash)
 }
 
 func (cm *ClientManager) SetUserAccessHash(userID int64, accessHash int64) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.userAccessHashes[userID] = accessHash
+	boundedHashSet(cm.userAccessHashes, userID, accessHash)
 }
 
 func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
@@ -243,12 +278,12 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 		cm.mu.Lock()
 		for _, c := range chats {
 			if ch, ok := c.(*tg.Channel); ok {
-				cm.channelAccessHashes[ch.ID] = ch.AccessHash
+				boundedHashSet(cm.channelAccessHashes, ch.ID, ch.AccessHash)
 			}
 		}
 		for _, u := range users {
 			if usr, ok := u.(*tg.User); ok {
-				cm.userAccessHashes[usr.ID] = usr.AccessHash
+				boundedHashSet(cm.userAccessHashes, usr.ID, usr.AccessHash)
 			}
 		}
 		cm.mu.Unlock()
@@ -320,12 +355,12 @@ func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (
 
 	for _, c := range res.Chats {
 		if ch, ok := c.(*tg.Channel); ok {
-			cm.channelAccessHashes[ch.ID] = ch.AccessHash
+			boundedHashSet(cm.channelAccessHashes, ch.ID, ch.AccessHash)
 		}
 	}
 	for _, u := range res.Users {
 		if usr, ok := u.(*tg.User); ok {
-			cm.userAccessHashes[usr.ID] = usr.AccessHash
+			boundedHashSet(cm.userAccessHashes, usr.ID, usr.AccessHash)
 		}
 	}
 
@@ -481,7 +516,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		UpdateHandler: gaps,
 		Device: telegram.DeviceConfig{
 			DeviceModel:   "TGDown Desktop",
-			SystemVersion: "Windows 11",
+			SystemVersion: systemVersionLabel(),
 			AppVersion:    config.AppVersion,
 			LangCode:      "es",
 		},

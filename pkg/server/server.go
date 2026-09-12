@@ -300,7 +300,9 @@ func (s *Server) loadOrCreateToken() string {
 		tok = uuid.New().String()
 	}
 	if s.storage != nil {
-		_ = s.storage.SaveAPIToken(tok)
+		if err := s.storage.SaveAPIToken(tok); err != nil {
+			log.Printf("[SERVER] error guardando token de API en BD: %v", err)
+		}
 	}
 	return tok
 }
@@ -326,7 +328,9 @@ func (s *Server) RegenerateToken() string {
 	s.apiToken = tok
 	s.mu.Unlock()
 	if s.storage != nil {
-		_ = s.storage.SaveAPIToken(tok)
+		if err := s.storage.SaveAPIToken(tok); err != nil {
+			log.Printf("[SERVER] error guardando token de API en BD: %v", err)
+		}
 	}
 	return tok
 }
@@ -663,7 +667,9 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Guardar en la base de datos SQLite
-	_ = s.storage.SaveCredentials(body.APIID, body.APIHash)
+	if err := s.storage.SaveCredentials(body.APIID, body.APIHash); err != nil {
+		log.Printf("[SERVER] error guardando credenciales en BD: %v", err)
+	}
 
 	// Guardar también en archivo .env
 	if err := config.SaveEnvCredentials(body.APIID, body.APIHash); err != nil {
@@ -1145,7 +1151,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.config = cfg
 	s.mu.Unlock()
 
-	_ = s.storage.SaveConfig(cfg)
+	if err := s.storage.SaveConfig(cfg); err != nil {
+		log.Printf("[SERVER] error guardando configuración en BD: %v", err)
+	}
 	s.downloader.UpdateConfig(cfg)
 	s.listener.UpdateConfig(cfg)
 	s.broadcastState()
@@ -1181,7 +1189,9 @@ func (s *Server) handleSpeedLimit(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config
 	s.mu.Unlock()
 
-	_ = s.storage.SaveConfig(cfg)
+	if err := s.storage.SaveConfig(cfg); err != nil {
+		log.Printf("[SERVER] error guardando configuración en BD: %v", err)
+	}
 	s.downloader.UpdateConfig(cfg)
 	s.broadcastState()
 
@@ -1290,7 +1300,9 @@ func (s *Server) handleListenerSettings(w http.ResponseWriter, r *http.Request) 
 	s.mu.Unlock()
 
 	log.Printf("[SERVER] Configuración de escucha guardada: Activa=%v, %d chats configurados", cfg.ListenerEnabled, len(cfg.ListenerChats))
-	_ = s.storage.SaveConfig(cfg)
+	if err := s.storage.SaveConfig(cfg); err != nil {
+		log.Printf("[SERVER] error guardando configuración en BD: %v", err)
+	}
 	s.downloader.UpdateConfig(cfg)
 	s.listener.UpdateConfig(cfg)
 	s.broadcastState()
