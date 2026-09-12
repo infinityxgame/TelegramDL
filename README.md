@@ -126,6 +126,13 @@ TelegramDL/
 └── wails.json
 ```
 
+## Acceso remoto
+
+Toda la API (`/api/*`) exige un token de acceso (visible y regenerable en
+**Ajustes → Acceso remoto** dentro de la app). Para controlar TelegramDL
+desde otro dispositivo (celular, otra PC) sin exponer el puerto a internet,
+consulta [REMOTE_ACCESS.md](REMOTE_ACCESS.md).
+
 ## API local
 
 El servidor interno escucha por defecto en `127.0.0.1:8000`.
