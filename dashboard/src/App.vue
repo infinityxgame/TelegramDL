@@ -902,6 +902,7 @@ onUnmounted(() => {
             :saving="saving"
             :themeMap="themeMap"
             :api-token="token"
+            :downloads="downloads"
             @save-settings="saveSettings"
             @clear-history="clearDownloadHistory"
             @reset-color="resetColor"

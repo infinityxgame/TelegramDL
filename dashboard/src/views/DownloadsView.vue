@@ -168,6 +168,7 @@ const allActivePaused = computed(() => {
           <ArrowUpRight :size="18" />
         </button>
       </div>
+      <small class="form-hint">Para rangos de mensajes (ej: .../100-250), el máximo permitido es de 500 mensajes por tarea.</small>
     </section>
 
     <!-- Métricas y Estadísticas -->

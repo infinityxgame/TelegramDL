@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Settings2, Zap, Trash2, Save, ShieldCheck, Copy, Eye, EyeOff, RefreshCw } from 'lucide-vue-next'
+import { Settings2, Zap, Trash2, Save, ShieldCheck, Copy, Eye, EyeOff, RefreshCw, Download } from 'lucide-vue-next'
 import FolderPicker from '../components/FolderPicker.vue'
 
 const props = defineProps({
@@ -19,6 +19,10 @@ const props = defineProps({
   apiToken: {
     type: String,
     default: ''
+  },
+  downloads: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -43,6 +47,70 @@ const copyToken = async () => {
     copyLabel.value = 'No se pudo copiar'
   }
   setTimeout(() => { copyLabel.value = 'Copiar' }, 2000)
+}
+
+// Exportación del historial (descargas completadas/omitidas/falladas/canceladas,
+// el mismo conjunto que borra "Limpiar historial") a CSV o JSON. Es puramente
+// del lado del cliente: usa los datos que ya tiene la vista, sin endpoint
+// nuevo en el backend.
+const HISTORY_STATUSES = ['completed', 'skipped', 'failed', 'cancelled']
+const EXPORT_COLUMNS = [
+  { key: 'file_name', label: 'Archivo' },
+  { key: 'status', label: 'Estado' },
+  { key: 'kind', label: 'Tipo' },
+  { key: 'source', label: 'Origen' },
+  { key: 'total_str', label: 'Tamaño' },
+  { key: 'file_path', label: 'Ruta' },
+  { key: 'created_at', label: 'Creado' },
+  { key: 'updated_at', label: 'Actualizado' },
+  { key: 'error', label: 'Error' }
+]
+
+const formatExportTimestamp = (value) => {
+  if (!value) return ''
+  try {
+    return new Date(value * 1000).toISOString()
+  } catch (e) {
+    return ''
+  }
+}
+
+const exportRowValue = (item, key) => {
+  if (key === 'created_at' || key === 'updated_at') return formatExportTimestamp(item[key])
+  return item[key] ?? ''
+}
+
+const csvEscape = (value) => {
+  const str = String(value)
+  if (/[",\n]/.test(str)) {
+    return '"' + str.replace(/"/g, '""') + '"'
+  }
+  return str
+}
+
+const triggerBlobDownload = (content, filename, mime) => {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+const exportHistory = (format) => {
+  const items = (props.downloads || []).filter(item => HISTORY_STATUSES.includes(item.status))
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  if (format === 'json') {
+    const data = items.map(item => Object.fromEntries(EXPORT_COLUMNS.map(c => [c.key, exportRowValue(item, c.key)])))
+    triggerBlobDownload(JSON.stringify(data, null, 2), `tgdown-historial-${stamp}.json`, 'application/json')
+  } else {
+    const header = EXPORT_COLUMNS.map(c => csvEscape(c.label)).join(',')
+    const rows = items.map(item => EXPORT_COLUMNS.map(c => csvEscape(exportRowValue(item, c.key))).join(','))
+    triggerBlobDownload([header, ...rows].join('\r\n'), `tgdown-historial-${stamp}.csv`, 'text/csv;charset=utf-8')
+  }
 }
 </script>
 
@@ -228,6 +296,15 @@ const copyToken = async () => {
         </div>
 
         <!-- Acciones de Configuración -->
+        <div class="settings-actions" style="margin-bottom: 10px;">
+          <button type="button" class="reset-button-alt" @click="exportHistory('csv')">
+            <Download :size="14" /> Exportar CSV
+          </button>
+          <button type="button" class="reset-button-alt" @click="exportHistory('json')">
+            <Download :size="14" /> Exportar JSON
+          </button>
+        </div>
+
         <div class="settings-actions">
           <button
             class="clear-history-button"

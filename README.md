@@ -143,6 +143,12 @@ El servidor interno escucha por defecto en `127.0.0.1:8000`.
 - `GET /api/ws`: estado en tiempo real mediante WebSocket.
 - `GET /api/listener`: multimedia detectada por la escucha.
 
+## Contribuir
+
+¿Quieres reportar un bug o proponer un cambio? Consulta [CONTRIBUTING.md](CONTRIBUTING.md)
+para la guía de contribución (entorno de desarrollo, convenciones y checklist
+antes de abrir un pull request).
+
 ## Licencia
 
 Consulta [LICENSE](LICENSE) para conocer las condiciones de uso y distribución.

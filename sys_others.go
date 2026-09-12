@@ -5,7 +5,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"tgdown/pkg/config"
@@ -32,7 +34,37 @@ func tryAcquireInstanceLock() (func(), bool) {
 }
 
 func notifyAlreadyRunning() {
-	fmt.Println("TelegramDL ya se está ejecutando.")
+	const msg = "TelegramDL ya se está ejecutando. Revisa la ventana abierta o la bandeja del sistema."
+	// En Windows el aviso usa un MessageBox nativo (ver sys_windows.go), visible
+	// aunque el usuario haya abierto la app haciendo doble clic sin consola. Aquí
+	// intentamos un aviso equivalente con las herramientas de notificación/dialogo
+	// habituales de cada escritorio; si ninguna está disponible, caemos al mensaje
+	// por consola (útil al menos cuando se lanza desde una terminal).
+	if trySystemNotification(msg) {
+		return
+	}
+	fmt.Println(msg)
+}
+
+// trySystemNotification intenta mostrar un aviso nativo sin depender de que la
+// ventana de la app ya exista. Devuelve false si no encontró ninguna
+// herramienta utilizable, para que el llamador use el aviso de consola.
+func trySystemNotification(msg string) bool {
+	switch runtime.GOOS {
+	case "darwin":
+		script := fmt.Sprintf(`display dialog %q with title "TelegramDL" buttons {"OK"} default button "OK" with icon note`, msg)
+		return exec.Command("osascript", "-e", script).Run() == nil
+	case "linux":
+		if _, err := exec.LookPath("notify-send"); err == nil {
+			return exec.Command("notify-send", "TelegramDL", msg).Run() == nil
+		}
+		if _, err := exec.LookPath("zenity"); err == nil {
+			return exec.Command("zenity", "--info", "--title=TelegramDL", "--text="+msg).Run() == nil
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 func registerConsoleCtrlHandler(sigCh chan os.Signal) {}
