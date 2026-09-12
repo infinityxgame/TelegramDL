@@ -65,11 +65,17 @@ button, input, select { transition: background .2s ease, border-color .2s ease, 
 .hero-card p { margin: 0; color: var(--user-text-dim); font-size: 13px }
 
 .download-form { display: flex; gap: 10px; margin-top: 22px }
-.download-form input, .speed-row input, .speed-row select { background: var(--user-bg-base); border: 1px solid var(--user-border-light); color: #dbe7f5; border-radius: 10px; padding: 13px 15px; outline: none; font: inherit }
-.download-form input:focus, .speed-row input:focus, .speed-row select:focus { border-color: var(--user-primary); box-shadow: 0 0 0 3px var(--user-glow) }
+.download-form input, .speed-row input, .speed-row select, .token-row input { background: var(--user-bg-base); border: 1px solid var(--user-border-light); color: #dbe7f5; border-radius: 10px; padding: 13px 15px; outline: none; font: inherit }
+.download-form input:focus, .speed-row input:focus, .speed-row select:focus, .token-row input:focus { border-color: var(--user-primary); box-shadow: 0 0 0 3px var(--user-glow) }
 .download-form input::placeholder { color: #5f7890 }
 .download-form input { flex: 1 }
 .form-hint { display: block; margin-top: 8px; font-size: 11px; color: var(--user-text-dim); }
+/* Fila del token de acceso remoto (Ajustes): reusa la apariencia de los
+   inputs de la app, pero a ancho completo en vez del input angosto de
+   .speed-row (pensado para el número del límite de velocidad, no para un
+   token de 64 caracteres). */
+.token-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.token-row input { flex: 1; min-width: 0; width: auto; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; color: var(--user-text-dim); }
 .primary-button, .save-button { border: 0; border-radius: 10px; background: var(--user-gradient); color: var(--user-bg-base); font-weight: 700; padding: 0 18px; cursor: pointer; display: flex; align-items: center; gap: 18px }
 .primary-button:hover:not(:disabled), .save-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 9px 24px var(--user-glow) }
 .primary-button:active:not(:disabled), .save-button:active:not(:disabled) { transform: translateY(0) }

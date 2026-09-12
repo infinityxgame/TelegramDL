@@ -272,12 +272,11 @@ const exportHistory = (format) => {
               o un túnel como Cloudflare Tunnel, y pega el token en la pantalla de login remoto.
             </small>
 
-            <div class="speed-row" style="margin-top: 12px;">
+            <div class="token-row">
               <input
                 :value="showToken ? apiToken : maskedToken"
                 type="text"
                 readonly
-                style="font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em;"
               />
             </div>
 
