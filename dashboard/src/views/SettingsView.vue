@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Settings2, Zap, Trash2, Save, Copy, Eye, EyeOff, RefreshCw, Download } from 'lucide-vue-next'
+import { Settings2, Zap, Trash2, Save, Copy, Eye, EyeOff, RefreshCw, Download, Upload } from 'lucide-vue-next'
 import FolderPicker from '../components/FolderPicker.vue'
+import { useAuthToken } from '../composables/useAuthToken'
+
+const { authHeaders } = useAuthToken()
 
 const props = defineProps({
   settings: {
@@ -20,9 +23,9 @@ const props = defineProps({
     type: String,
     default: ''
   },
-  downloads: {
-    type: Array,
-    default: () => []
+  notify: {
+    type: Function,
+    default: () => {}
   }
 })
 
@@ -49,43 +52,40 @@ const copyToken = async () => {
   setTimeout(() => { copyLabel.value = 'Copiar' }, 2000)
 }
 
-// Exportación del historial (descargas completadas/omitidas/falladas/canceladas,
-// el mismo conjunto que borra "Limpiar historial") a CSV o JSON. Es puramente
-// del lado del cliente: usa los datos que ya tiene la vista, sin endpoint
-// nuevo en el backend.
-const HISTORY_STATUSES = ['completed', 'skipped', 'failed', 'cancelled']
-const EXPORT_COLUMNS = [
-  { key: 'file_name', label: 'Archivo' },
-  { key: 'status', label: 'Estado' },
-  { key: 'kind', label: 'Tipo' },
-  { key: 'source', label: 'Origen' },
-  { key: 'total_str', label: 'Tamaño' },
-  { key: 'file_path', label: 'Ruta' },
-  { key: 'created_at', label: 'Creado' },
-  { key: 'updated_at', label: 'Actualizado' },
-  { key: 'error', label: 'Error' }
-]
+// Exportar / importar la configuración de escucha (los chats del listener con
+// sus filtros). Trabaja contra /api/listener/settings, el mismo endpoint que
+// usa la vista de Escucha, así que no hace falta nada nuevo en el backend.
+const EXPORT_FORMAT = 'tgdown-listener'
+const EXPORT_VERSION = 1
+const importing = ref(false)
+const exporting = ref(false)
+const importInput = ref(null)
 
-const formatExportTimestamp = (value) => {
-  if (!value) return ''
-  try {
-    return new Date(value * 1000).toISOString()
-  } catch (e) {
-    return ''
-  }
+const listenerApi = async (options = {}) => {
+  const response = await fetch('/api/listener/settings', {
+    ...options,
+    headers: { ...(options.headers || {}), ...authHeaders() }
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.detail || data.error || 'Error en el servidor')
+  return data
 }
 
-const exportRowValue = (item, key) => {
-  if (key === 'created_at' || key === 'updated_at') return formatExportTimestamp(item[key])
-  return item[key] ?? ''
-}
-
-const csvEscape = (value) => {
-  const str = String(value)
-  if (/[",\n]/.test(str)) {
-    return '"' + str.replace(/"/g, '""') + '"'
+const normalizeChat = (raw) => {
+  if (!raw || typeof raw !== 'object') return null
+  const id = Number(raw.id ?? raw.chat_id)
+  if (!Number.isInteger(id) || id === 0) return null
+  const flag = (value) => value === undefined || value === null ? true : !!value
+  return {
+    id,
+    name: String(raw.name ?? id),
+    auto_download: !!raw.auto_download,
+    f_photos: flag(raw.f_photos),
+    f_videos: flag(raw.f_videos),
+    f_audios: flag(raw.f_audios),
+    f_docs: flag(raw.f_docs),
+    f_stickers: flag(raw.f_stickers)
   }
-  return str
 }
 
 const triggerBlobDownload = (content, filename, mime) => {
@@ -100,16 +100,93 @@ const triggerBlobDownload = (content, filename, mime) => {
   URL.revokeObjectURL(url)
 }
 
-const exportHistory = (format) => {
-  const items = (props.downloads || []).filter(item => HISTORY_STATUSES.includes(item.status))
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-  if (format === 'json') {
-    const data = items.map(item => Object.fromEntries(EXPORT_COLUMNS.map(c => [c.key, exportRowValue(item, c.key)])))
-    triggerBlobDownload(JSON.stringify(data, null, 2), `tgdown-historial-${stamp}.json`, 'application/json')
-  } else {
-    const header = EXPORT_COLUMNS.map(c => csvEscape(c.label)).join(',')
-    const rows = items.map(item => EXPORT_COLUMNS.map(c => csvEscape(exportRowValue(item, c.key))).join(','))
-    triggerBlobDownload([header, ...rows].join('\r\n'), `tgdown-historial-${stamp}.csv`, 'text/csv;charset=utf-8')
+const exportListener = async () => {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const data = await listenerApi()
+    const chats = (data.chats || []).map(normalizeChat).filter(Boolean)
+    if (!chats.length) {
+      props.notify('No hay chats configurados en Escucha para exportar', true)
+      return
+    }
+    const payload = {
+      format: EXPORT_FORMAT,
+      version: EXPORT_VERSION,
+      exported_at: new Date().toISOString(),
+      listener_enabled: !!data.enabled,
+      chats
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    triggerBlobDownload(JSON.stringify(payload, null, 2), `tgdown-escucha-${stamp}.json`, 'application/json')
+    props.notify(`Escucha exportada (${chats.length} chat${chats.length === 1 ? '' : 's'})`)
+  } catch (err) {
+    props.notify(err.message || 'No se pudo exportar la escucha', true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+const pickImportFile = () => {
+  if (importing.value) return
+  importInput.value?.click()
+}
+
+// El import es aditivo: conserva los chats que ya están configurados y añade o
+// actualiza los del archivo (gana el archivo si el mismo chat_id ya existía).
+const onImportFile = async (event) => {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || importing.value) return
+  importing.value = true
+  try {
+    const text = await file.text()
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch (e) {
+      throw new Error('El archivo no es un JSON válido')
+    }
+
+    const rawChats = Array.isArray(parsed) ? parsed : (parsed?.chats || parsed?.listener_chats)
+    if (!Array.isArray(rawChats)) {
+      throw new Error('El archivo no contiene una lista de chats de escucha')
+    }
+
+    const incoming = rawChats.map(normalizeChat).filter(Boolean)
+    if (!incoming.length) {
+      throw new Error('El archivo no tiene ningún chat válido')
+    }
+
+    const current = await listenerApi()
+    const merged = new Map()
+    for (const chat of (current.chats || []).map(normalizeChat).filter(Boolean)) {
+      merged.set(chat.id, chat)
+    }
+    let added = 0
+    let updated = 0
+    for (const chat of incoming) {
+      if (merged.has(chat.id)) updated++
+      else added++
+      merged.set(chat.id, chat)
+    }
+
+    const body = { enabled: !!current.enabled, chats: Array.from(merged.values()) }
+    if (typeof parsed?.listener_enabled === 'boolean') {
+      body.enabled = parsed.listener_enabled
+    }
+
+    await listenerApi({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+
+    props.notify(`Escucha importada: ${added} nuevo${added === 1 ? '' : 's'}, ${updated} actualizado${updated === 1 ? '' : 's'}`)
+  } catch (err) {
+    props.notify(err.message || 'No se pudo importar la escucha', true)
+  } finally {
+    importing.value = false
   }
 }
 </script>
@@ -296,12 +373,19 @@ const exportHistory = (format) => {
 
         <!-- Acciones de Configuración -->
         <div class="settings-actions" style="margin-bottom: 10px;">
-          <button type="button" class="reset-button-alt" @click="exportHistory('csv')">
-            <Download :size="14" /> Exportar CSV
+          <button type="button" class="reset-button-alt" :disabled="exporting" @click="exportListener">
+            <Download :size="14" /> {{ exporting ? 'Exportando…' : 'Exportar escucha' }}
           </button>
-          <button type="button" class="reset-button-alt" @click="exportHistory('json')">
-            <Download :size="14" /> Exportar JSON
+          <button type="button" class="reset-button-alt" :disabled="importing" @click="pickImportFile">
+            <Upload :size="14" /> {{ importing ? 'Importando…' : 'Importar escucha' }}
           </button>
+          <input
+            ref="importInput"
+            type="file"
+            accept="application/json,.json"
+            style="display: none"
+            @change="onImportFile"
+          />
         </div>
 
         <div class="settings-actions">
