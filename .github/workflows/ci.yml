@@ -27,16 +27,18 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      # El panel se compila antes que go vet: main.go hace
+      # //go:embed all:dashboard/dist y necesita esa carpeta con contenido.
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
       - name: go vet
         run: go vet ./...
 
       - name: go test
         run: go test ./...
-
-      - name: Install dashboard dependencies
-        working-directory: dashboard
-        run: npm ci
-
-      - name: Build dashboard
-        working-directory: dashboard
-        run: npm run build

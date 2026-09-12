@@ -1,0 +1,2 @@
+# Marcador para que //go:embed all:dashboard/dist siempre encuentre la carpeta.
+# El contenido real lo genera "npm run build".

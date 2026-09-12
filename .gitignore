@@ -15,8 +15,8 @@ dashboard/node_modules/
 /.venv
 /__pycache__
 .env
-/dashboard/dist
-/dashboard/package-lock.json
+/dashboard/dist/*
+!/dashboard/dist/.gitkeep
 /dist
 *.spec
 downloads.json
