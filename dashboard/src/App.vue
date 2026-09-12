@@ -7,6 +7,8 @@ import ConfirmModal from './components/ConfirmModal.vue'
 import AuthWizard from './components/AuthWizard.vue'
 import RemoteLogin from './components/RemoteLogin.vue'
 import { useAuthToken } from './composables/useAuthToken'
+import { useConfirmModal } from './composables/useConfirmModal'
+import { useUpdater } from './composables/useUpdater'
 import {
   ArrowDownToLine,
   ArrowUpRight,
@@ -35,7 +37,6 @@ const host = window.location.host
 const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
-const version = ref('')
 const disk = ref(null)
 
 const themeMap = {
@@ -155,12 +156,7 @@ let disposed = false
 let syncingSettings = false
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
-const updateInfo = ref(null)
-const isUpdating = ref(false)
-const isUpdateForced = ref(false)
-const updatePostponedVersion = ref(null)
 const bootstrapping = ref(true)
-const updateProgress = ref({ status: 'idle', downloaded: 0, total: 0, percentage: 0 })
 const resolvedFileNames = new Map()
 const duplicatePrompted = new Set()
 
@@ -219,37 +215,7 @@ const showMessage = (txt, isError = false) => {
   }
 }
 
-const modal = reactive({
-  show: false,
-  title: '',
-  message: '',
-  confirmText: '',
-  cancelText: 'Cancelar',
-  type: 'primary',
-  action: null,
-  cancelAction: null
-})
-
-const openConfirm = (config) => {
-  modal.title = config.title
-  modal.message = config.message
-  modal.confirmText = config.confirmText
-  modal.cancelText = config.cancelText !== undefined ? config.cancelText : 'Cancelar'
-  modal.type = config.type || 'primary'
-  modal.action = config.action
-  modal.cancelAction = config.cancelAction
-  modal.show = true
-}
-
-const handleConfirm = () => {
-  if (modal.action) modal.action()
-  modal.show = false
-}
-
-const handleCancel = () => {
-  if (modal.cancelAction) modal.cancelAction()
-  modal.show = false
-}
+const { modal, openConfirm, handleConfirm, handleCancel } = useConfirmModal()
 
 const api = async (url, options = {}) => {
   const response = await fetch(url, {
@@ -515,64 +481,16 @@ const openFile = async (item) => {
   }
 }
 
-const installUpdate = async () => {
-  try {
-    isUpdating.value = true
-    isUpdateForced.value = true
-    await api('/api/update/install', { method: 'POST' })
-
-    const pollProgress = async () => {
-      try {
-        const res = await api('/api/update/progress')
-        updateProgress.value = res
-        if (res.status.startsWith('error')) {
-          isUpdating.value = false
-          showMessage('Error: ' + res.status, true)
-          return
-        }
-        if (res.status !== 'finishing') {
-          setTimeout(pollProgress, 500)
-        }
-      } catch (e) {
-        setTimeout(pollProgress, 1000)
-      }
-    }
-    pollProgress()
-  } catch (err) {
-    isUpdating.value = false
-    showMessage('Error al iniciar la actualización: ' + err.message, true)
-  }
-}
-
-const checkForUpdates = async (force = false) => {
-  try {
-    const data = await api('/api/update/check')
-    version.value = data.current
-    if (data.update_available) {
-      updateInfo.value = data
-      if (force) {
-        isUpdateForced.value = true
-      } else if (!isUpdateForced.value && updatePostponedVersion.value !== data.latest) {
-        openConfirm({
-          title: 'Nueva versión disponible',
-          message: `Hay una actualización lista (${data.latest}). Se recomienda actualizar para obtener las mejoras.\n\nIMPORTANTE: No debe haber descargas activas durante el proceso para evitar que se corrompan. Si tienes tareas en curso, pospón la actualización y se aplicará automáticamente la próxima vez que inicies la aplicación.`,
-          confirmText: 'Actualizar ahora',
-          cancelText: 'Posponer',
-          type: 'primary',
-          action: () => {
-            isUpdateForced.value = true
-            installUpdate()
-          },
-          cancelAction: () => {
-            updatePostponedVersion.value = data.latest
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.error('Error al buscar actualizaciones:', err)
-  }
-}
+const {
+  version,
+  updateInfo,
+  isUpdating,
+  isUpdateForced,
+  updatePostponedVersion,
+  updateProgress,
+  installUpdate,
+  checkForUpdates,
+} = useUpdater({ api, showMessage, openConfirm })
 
 const speedText = computed(() => settings.speed_limit.value > 0 ? `${settings.speed_limit.value} ${settings.speed_limit.unit}/s` : 'Sin límite')
 const totalSpeed = computed(() => {
