@@ -64,8 +64,9 @@ type ListenerChat struct {
 	// de descargas. Se calcula la primera vez que llega un archivo y se guarda:
 	// así, si el canal se renombra, sus archivos siguen cayendo todos juntos.
 	// TopicFolder es lo mismo para el tema, y cuelga de Folder.
-	Folder      string `json:"folder,omitempty"`
-	TopicFolder string `json:"topic_folder,omitempty"`
+	Folder              string `json:"folder,omitempty"`
+	TopicFolder         string `json:"topic_folder,omitempty"`
+	ManualNameSelection bool   `json:"manual_name_selection"`
 }
 
 // CarpetaRelativa es la ruta, relativa a la carpeta de descargas, donde van los

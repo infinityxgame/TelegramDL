@@ -564,6 +564,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/listener/chat/", s.handleListenerResolveChatPath)
 	mux.HandleFunc("/api/listener/topics", s.handleListenerTopics)
 	mux.HandleFunc("/api/listener/topics/", s.handleListenerTopics)
+	mux.HandleFunc("/api/listener/update-filename", s.handleListenerUpdateFilename)
 
 	// Registro de actividad (vista de logs en vivo)
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -1747,6 +1748,37 @@ func (s *Server) handleListenerDeleteItemPath(w http.ResponseWriter, r *http.Req
 	if id != "" {
 		s.listener.RemoveItem(id)
 	}
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListenerUpdateFilename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+
+	var body struct {
+		ID       string `json:"id"`
+		FileName string `json:"file_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+
+	id := strings.TrimSpace(body.ID)
+	newFileName := strings.TrimSpace(body.FileName)
+	if id == "" || newFileName == "" {
+		s.errorResponse(w, http.StatusBadRequest, "ID y nombre de archivo requeridos")
+		return
+	}
+
+	// Actualizar el nombre del archivo en el listener
+	if err := s.listener.UpdateItemFileName(id, newFileName); err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

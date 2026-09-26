@@ -33,13 +33,15 @@ type ListenerItem struct {
 	// SubFolder es la carpeta de destino de este archivo, relativa a la carpeta
 	// de descargas. Viaja con el elemento para que descargarlo desde la bandeja
 	// acabe en el mismo sitio que si se hubiera bajado solo.
-	SubFolder string  `json:"sub_folder,omitempty"`
-	FileName  string  `json:"file_name"`
-	Kind      string  `json:"kind"`
-	TotalStr  string  `json:"total_str"`
-	Status    string  `json:"status"` // "available"
-	UpdatedAt float64 `json:"updated_at"`
-	CreatedAt float64 `json:"created_at"`
+	SubFolder        string  `json:"sub_folder,omitempty"`
+	FileName         string  `json:"file_name"`
+	CaptionFileName  string  `json:"caption_file_name,omitempty"`
+	OriginalFileName string  `json:"original_file_name,omitempty"`
+	Kind             string  `json:"kind"`
+	TotalStr         string  `json:"total_str"`
+	Status           string  `json:"status"` // "available"
+	UpdatedAt        float64 `json:"updated_at"`
+	CreatedAt        float64 `json:"created_at"`
 }
 
 type ListenerStateListener func(item ListenerItem)
@@ -91,18 +93,20 @@ func NewListenerEngine(cm *telegram.ClientManager, st *storage.Storage, eng *dow
 						}
 					}
 					le.items[id] = &ListenerItem{
-						ID:        d.ID,
-						MessageID: d.MessageID,
-						ChatID:    d.ChatID,
-						ChatName:  chatName,
-						GroupName: groupName,
-						SubFolder: d.SubFolder,
-						FileName:  d.FileName,
-						Kind:      d.Kind,
-						TotalStr:  d.TotalStr,
-						Status:    d.Status,
-						UpdatedAt: d.UpdatedAt,
-						CreatedAt: d.CreatedAt,
+						ID:               d.ID,
+						MessageID:        d.MessageID,
+						ChatID:           d.ChatID,
+						ChatName:         chatName,
+						GroupName:        groupName,
+						SubFolder:        d.SubFolder,
+						FileName:         d.FileName,
+						CaptionFileName:  d.CaptionFileName,
+						OriginalFileName: d.OriginalFileName,
+						Kind:             d.Kind,
+						TotalStr:         d.TotalStr,
+						Status:           d.Status,
+						UpdatedAt:        d.UpdatedAt,
+						CreatedAt:        d.CreatedAt,
 					}
 				}
 			}
@@ -740,20 +744,22 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 			}
 		}
 		item := &ListenerItem{
-			ID:        itemID,
-			MessageID: int64(msg.ID),
-			ChatID:    peerID,
-			ChatName:  chatName,
-			GroupName: chatCfg.GroupName(),
-			TopicID:   chatCfg.Topic(),
-			TopicName: chatCfg.TopicLabel(),
-			SubFolder: subCarpeta,
-			FileName:  mediaInfo.FileName,
-			Kind:      string(mediaInfo.Kind),
-			TotalStr:  config.FormatBytes(float64(mediaInfo.FileSize)),
-			Status:    "available",
-			UpdatedAt: now,
-			CreatedAt: now,
+			ID:               itemID,
+			MessageID:        int64(msg.ID),
+			ChatID:           peerID,
+			ChatName:         chatName,
+			GroupName:        chatCfg.GroupName(),
+			TopicID:          chatCfg.Topic(),
+			TopicName:        chatCfg.TopicLabel(),
+			SubFolder:        subCarpeta,
+			FileName:         mediaInfo.FileName,
+			CaptionFileName:  mediaInfo.CaptionFileName,
+			OriginalFileName: mediaInfo.OriginalFileName,
+			Kind:             string(mediaInfo.Kind),
+			TotalStr:         config.FormatBytes(float64(mediaInfo.FileSize)),
+			Status:           "available",
+			UpdatedAt:        now,
+			CreatedAt:        now,
 		}
 
 		le.mu.Lock()
@@ -783,18 +789,20 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 		})
 
 		dlItem := storage.DownloadItem{
-			ID:        item.ID,
-			JobID:     fmt.Sprintf("listener:%d", item.ChatID),
-			MessageID: item.MessageID,
-			ChatID:    item.ChatID,
-			FileName:  item.FileName,
-			Status:    "queued",
-			Kind:      item.Kind,
-			TotalStr:  item.TotalStr,
-			SubFolder: item.SubFolder,
-			Source:    "listener",
-			CreatedAt: float64(time.Now().Unix()),
-			UpdatedAt: float64(time.Now().Unix()),
+			ID:               item.ID,
+			JobID:            fmt.Sprintf("listener:%d", item.ChatID),
+			MessageID:        item.MessageID,
+			ChatID:           item.ChatID,
+			FileName:         item.FileName,
+			CaptionFileName:  item.CaptionFileName,
+			OriginalFileName: item.OriginalFileName,
+			Status:           "queued",
+			Kind:             item.Kind,
+			TotalStr:         item.TotalStr,
+			SubFolder:        item.SubFolder,
+			Source:           "listener",
+			CreatedAt:        float64(time.Now().Unix()),
+			UpdatedAt:        float64(time.Now().Unix()),
 		}
 
 		if le.storage != nil {
@@ -851,6 +859,28 @@ func (le *ListenerEngine) RemoveItem(itemID string) {
 	if ok && item != nil {
 		le.notifyState(*item)
 	}
+}
+
+func (le *ListenerEngine) UpdateItemFileName(itemID string, newFileName string) error {
+	le.mu.Lock()
+	item, ok := le.items[itemID]
+	if !ok {
+		le.mu.Unlock()
+		return fmt.Errorf("item no encontrado: %s", itemID)
+	}
+	item.FileName = newFileName
+	cp := *item
+	le.mu.Unlock()
+
+	// Actualizar en storage
+	if le.storage != nil {
+		if err := le.storage.UpdateDownloadFileName(itemID, newFileName); err != nil {
+			return fmt.Errorf("error actualizando nombre en BD: %w", err)
+		}
+	}
+
+	le.notifyState(cp)
+	return nil
 }
 
 func (le *ListenerEngine) ClearItems() {

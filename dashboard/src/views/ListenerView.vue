@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
-import { Download, FileText, Folder, Image, Inbox, MessageCircle, Music, Plus, Radio, Trash2, Video } from '../icons'
+import { Download, FileText, Folder, Image, Inbox, MessageCircle, Music, Plus, Radio, Trash2, Video, Settings2 } from '../icons'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import { useAuthToken } from '../composables/useAuthToken'
 
@@ -13,6 +13,9 @@ const props = defineProps({
   settings: { type: Object, default: () => ({ listener_enabled: true, listener_chats: [] }) }
 })
 
+// Estado local para el menú de selección de nombre por archivo
+const nameSelectionMenus = ref({})
+
 const enabled = ref(props.settings.listener_enabled)
 const chats = ref(props.settings.listener_chats || [])
 const newChatId = ref('')
@@ -22,6 +25,8 @@ const topicPicker = reactive({ visible: false, loading: false, chat: null, topic
 const items = ref(props.initialItems)
 const saving = ref(false)
 const error = ref('')
+// Rastrear cuándo se activó la selección manual de nombres por chat
+const manualActivationTimestamps = ref({})
 let timer
 let disposed = false
 
@@ -34,6 +39,7 @@ watch(() => props.settings.listener_chats, (newVal) => {
     chats.value = (newVal || []).map(chat => ({
       ...chat,
       auto_download: !!chat.auto_download,
+      manual_name_selection: !!chat.manual_name_selection,
       f_photos: chat.f_photos ?? true,
       f_videos: chat.f_videos ?? true,
       f_audios: chat.f_audios ?? true,
@@ -106,6 +112,8 @@ const load = async () => {
     enabled.value = settings.enabled
     chats.value = (settings.chats || []).map(chat => ({
       ...chat,
+      auto_download: !!chat.auto_download,
+      manual_name_selection: !!chat.manual_name_selection,
       f_photos: chat.f_photos ?? true,
       f_videos: chat.f_videos ?? true,
       f_audios: chat.f_audios ?? true,
@@ -130,6 +138,7 @@ const save = async () => {
       chats.value = data.chats.map(chat => ({
         ...chat,
         auto_download: !!chat.auto_download,
+        manual_name_selection: !!chat.manual_name_selection,
         f_photos: chat.f_photos ?? true,
         f_videos: chat.f_videos ?? true,
         f_audios: chat.f_audios ?? true,
@@ -372,6 +381,50 @@ const getChatName = item => {
   return item.chat_name || item.chat_id
 }
 
+const hasManualNameSelection = item => {
+  const found = chats.value.find(c => String(c.id) === String(item.chat_id) && Number(c.topic_id || 0) === Number(item.topic_id || 0))
+    || chats.value.find(c => String(c.id) === String(item.chat_id))
+  if (!found || !found.manual_name_selection) return false
+  
+  // Solo mostrar selector para archivos nuevos después de activar el switch
+  const chatKey = found.topic_id ? `${found.id}:${found.topic_id}` : String(found.id)
+  const activationTime = manualActivationTimestamps.value[chatKey]
+  if (!activationTime) return false
+  
+  // El archivo debe ser más reciente que la activación del switch
+  return item.created_at >= activationTime
+}
+
+const toggleNameMenu = (itemId) => {
+  nameSelectionMenus.value[itemId] = !nameSelectionMenus.value[itemId]
+}
+
+const selectFileName = async (item, selectedName) => {
+  try {
+    await api('/api/listener/update-filename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, file_name: selectedName })
+    })
+    item.file_name = selectedName
+    nameSelectionMenus.value[item.id] = false
+    props.notify('Nombre de archivo actualizado')
+  } catch (err) {
+    props.notify(err.message, true)
+  }
+}
+
+// Rastrear activación del switch de selección manual
+const handleManualNameToggle = (chat) => {
+  const chatKey = chat.topic_id ? `${chat.id}:${chat.topic_id}` : String(chat.id)
+  if (chat.manual_name_selection) {
+    manualActivationTimestamps.value[chatKey] = Date.now() / 1000 // timestamp en segundos
+  } else {
+    delete manualActivationTimestamps.value[chatKey]
+  }
+  save()
+}
+
 onMounted(async () => {
   disposed = false;
   await load();
@@ -416,6 +469,11 @@ onUnmounted(() => {
               <input type="checkbox" v-model="chat.auto_download" :disabled="saving" @change="save">
               <span></span>
               <b>Auto</b>
+            </label>
+            <label class="auto-toggle switch" :class="{ disabled: saving }" title="Activar selección manual de nombres">
+              <input type="checkbox" v-model="chat.manual_name_selection" :disabled="saving" @change="handleManualNameToggle(chat)">
+              <span></span>
+              <b>Nombre</b>
             </label>
             <button :disabled="saving" @click="removeChat(chat)" aria-label="Eliminar chat"><Trash2 :size="14" /></button>
           </div>
@@ -466,6 +524,23 @@ onUnmounted(() => {
           <div class="row-side">
             <span class="listener-status">{{ statusText(item.status) }}</span>
             <div class="row-actions">
+              <button v-if="hasManualNameSelection(item) && item.status === 'available'" class="name-select-button" @click="toggleNameMenu(item.id)">
+                <Settings2 :size="13" /> Nombre
+              </button>
+              <div v-if="hasManualNameSelection(item) && nameSelectionMenus[item.id]" class="name-dropdown">
+                <div v-if="item.caption_file_name && item.caption_file_name !== item.file_name" 
+                     class="name-option" 
+                     @click="selectFileName(item, item.caption_file_name)">
+                  <span class="name-preview">{{ item.caption_file_name }}</span>
+                  <small>(Caption)</small>
+                </div>
+                <div v-if="item.original_file_name && item.original_file_name !== item.file_name" 
+                     class="name-option" 
+                     @click="selectFileName(item, item.original_file_name)">
+                  <span class="name-preview">{{ item.original_file_name }}</span>
+                  <small>(Original)</small>
+                </div>
+              </div>
               <button v-if="item.status === 'available'" class="download-small" @click="download(item)">
                 <Download :size="13" /> Descargar
               </button>
@@ -505,7 +580,7 @@ onUnmounted(() => {
 .filter-tag.f-stickers.active{background:#f472b6;box-shadow:0 4px 12px rgba(244,114,182,0.3)}
 .chat-chip strong{flex:1;color:#d6e4f1;font-weight:500}
 .chat-chip button{border:0;background:transparent;color:#e58b91;font-size:20px;cursor:pointer}
-.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.bulk-actions{display:flex;gap:6px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;overflow:hidden}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
+.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.bulk-actions{display:flex;gap:6px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;overflow:hidden}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
 .listener-error{margin-top:10px;color:#e58b91;font-size:11px}
 .topic-picker{margin-top:12px;padding:13px;border:1px solid var(--user-border-light);border-radius:12px;background:var(--user-bg-base);display:flex;flex-direction:column;gap:10px}
 .topic-picker-head{display:flex;flex-direction:column;gap:3px}
@@ -522,5 +597,5 @@ onUnmounted(() => {
 .media-photo{color:#38bdf8;background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.3)}
 .media-video{color:#c084fc;background:rgba(192,132,252,.12);border-color:rgba(192,132,252,.3)}
 .media-song{color:#4ade80;background:rgba(74,222,128,.12);border-color:rgba(74,222,128,.3)}
-.media-file{color:#94a3b8;background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.3)}
+.media-file{color:#94a3b8;background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.3)}.name-select-button{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 10px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s;font-weight:600}.name-select-button:hover{background:var(--user-surface-light);border-color:var(--user-accent);color:var(--user-accent);transform:translateY(-1px)}.name-dropdown{position:absolute;right:0;top:calc(100% + 8px);background:var(--user-surface);border:2px solid var(--user-primary);border-radius:10px;padding:8px;min-width:220px;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:fadeIn .2s ease-out}.name-dropdown::before{content:'';position:absolute;top:-6px;right:20px;width:12px;height:12px;background:var(--user-surface);border-left:2px solid var(--user-primary);border-top:2px solid var(--user-primary);transform:rotate(45deg)}.name-option{padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:all .2s;border:1px solid transparent}.name-option:hover{background:var(--user-icon-bg);border-color:var(--user-primary);transform:translateX(-2px)}.name-option .name-preview{font-size:12px;color:#d6e4f1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.name-option small{font-size:10px;color:var(--user-accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px}@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 </style>
