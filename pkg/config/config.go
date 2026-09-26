@@ -155,13 +155,17 @@ type Config struct {
 	DownloadFolder         string `json:"download_folder"`
 	// OrganizeByChat reparte lo que baja la escucha en una subcarpeta por chat.
 	// Apagado, todo cae en la carpeta de descargas, como antes.
-	OrganizeByChat  bool           `json:"organize_by_chat"`
-	ColorID         *int           `json:"color_id"`
-	LoaderColorID   *int           `json:"loader_color_id"`
-	SpeedLimit      SpeedLimit     `json:"speed_limit"`
-	ListenerEnabled bool           `json:"listener_enabled"`
-	ListenerChats   []ListenerChat `json:"listener_chats"`
-	ListenerChatIDs []int64        `json:"listener_chat_ids"`
+	OrganizeByChat   bool           `json:"organize_by_chat"`
+	// ShutdownWhenDone es el interruptor «Apagar al terminar»: con él armado, al
+	// quedarse la cola de descargas vacía el servidor espera unos segundos y
+	// apaga el equipo. Se guarda como cualquier otro ajuste.
+	ShutdownWhenDone bool           `json:"shutdown_when_done"`
+	ColorID          *int           `json:"color_id"`
+	LoaderColorID    *int           `json:"loader_color_id"`
+	SpeedLimit       SpeedLimit     `json:"speed_limit"`
+	ListenerEnabled  bool           `json:"listener_enabled"`
+	ListenerChats    []ListenerChat `json:"listener_chats"`
+	ListenerChatIDs  []int64        `json:"listener_chat_ids"`
 }
 
 var (

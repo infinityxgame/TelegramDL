@@ -71,3 +71,16 @@ From either the UI or the REST API, you can control any task at any time:
 ## :material-speedometer: Speed Throttling
 
 You can set a global speed limit (in KB/s or MB/s) from the status bar or the **Settings** view. The engine adjusts chunk dispatching dynamically to prevent network congestion.
+
+---
+
+## :material-power: Automatic Shutdown When the Queue Finishes
+
+The **«Apagar al terminar»** (Power off when done) switch in the sidebar (between **Settings** and your user) arms PC shutdown:
+
+- Once the download queue becomes empty after having activity, the server waits a **15-second** grace period and powers off the machine.
+- Queueing any download during the countdown **cancels the shutdown** automatically; turning the switch off or closing the application cancels it too.
+- While a shutdown is scheduled, the sidebar shows a **live countdown**.
+- The setting is persisted in SQLite like any other, so it stays armed across application restarts.
+
+On Windows it shuts down via `shutdown /s /t 0` without forcing applications to close: a program with unsaved work may hold the shutdown.

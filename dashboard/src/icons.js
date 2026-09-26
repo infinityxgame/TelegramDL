@@ -42,6 +42,7 @@ import {
   Message02Icon,
   MusicNote01Icon,
   PauseIcon,
+  PowerIcon,
   SmartPhone01Icon,
   PlayIcon,
   PlusSignIcon,
@@ -111,6 +112,7 @@ export const Pause = icono(PauseIcon) // pausar
 export const Phone = icono(SmartPhone01Icon) // número de teléfono
 export const Play = icono(PlayIcon) // reanudar
 export const Plus = icono(PlusSignIcon) // añadir chat
+export const Power = icono(PowerIcon) // apagar el equipo al terminar la cola
 export const Radio = icono(RadioTowerIcon) // entrada "Escucha" del menú
 export const RefreshCw = icono(Refresh01Icon) // regenerar o recargar
 export const RotateCcw = icono(ArrowReloadHorizontalIcon) // reintentar una descarga

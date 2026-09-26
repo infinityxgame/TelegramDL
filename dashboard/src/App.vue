@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   LogOut,
   Menu,
+  Power,
   Radio,
   ScrollText,
   Settings2,
@@ -106,7 +107,8 @@ const settings = reactive({
   color_id: 5,
   loader_color_id: 5,
   download_folder: '',
-  organize_by_chat: true
+  organize_by_chat: true,
+  shutdown_when_done: false
 })
 
 const resetColor = () => {
@@ -681,6 +683,51 @@ const maybeNotifyQueueFinished = (currentDownloads) => {
   }
 }
 
+// ── Apagado del equipo al terminar la cola ──
+// El ajuste viaja en settings.shutdown_when_done y lo guarda el watch de
+// siempre. shutdownPendingAt es la marca unix del servidor en la que saltará
+// el apagado programado (0 si no hay ninguno). La cuenta atrás usa el reloj
+// del servidor: al server_time del último snapshot se le suma lo que ha pasado
+// desde entonces según el reloj local, igualados en el instante de llegada.
+// El pulso de 1 s es lo que hace avanzar el texto también en la app de
+// escritorio, donde los snapshots solo llegan cuando algo cambia.
+const shutdownPendingAt = ref(0)
+const shutdownServerBase = ref(0)
+const shutdownLocalBase = ref(0)
+const nowTick = ref(0)
+let countdownPulse
+
+const serverTimeNow = () =>
+  shutdownServerBase.value + (Date.now() / 1000 - shutdownLocalBase.value)
+
+const shutdownCountdown = computed(() => {
+  if (!shutdownPendingAt.value || !shutdownServerBase.value || nowTick.value < 0)
+    return 0
+  return Math.max(0, Math.ceil(shutdownPendingAt.value - serverTimeNow()))
+})
+
+const onShutdownToggle = (event) => {
+  // El checkbox se revierte siempre: el estado es el que manda y solo cambia
+  // al desarmar o al confirmar el modal; si no, quedaría marcado en la vista
+  // aunque el usuario cancelara.
+  const quiereActivar = event.target.checked
+  event.target.checked = settings.shutdown_when_done
+  if (!quiereActivar) {
+    settings.shutdown_when_done = false
+    return
+  }
+  openConfirm({
+    title: 'Apagar el PC al terminar',
+    message:
+      'Cuando la cola de descargas termine, el equipo se apagará automáticamente en 15 segundos. Puedes cancelarlo en cualquier momento con este mismo interruptor.',
+    confirmText: 'Sí, activar',
+    type: 'primary',
+    action: async () => {
+      settings.shutdown_when_done = true
+    }
+  })
+}
+
 watch(
   () => disk.value,
   (newDisk) => {
@@ -729,6 +776,13 @@ const handleStateUpdate = (data) => {
   }
   if (data.disk) {
     disk.value = data.disk
+  }
+  if (typeof data.server_time === 'number') {
+    shutdownServerBase.value = data.server_time
+    shutdownLocalBase.value = Date.now() / 1000
+  }
+  if (typeof data.shutdown_pending_at === 'number') {
+    shutdownPendingAt.value = data.shutdown_pending_at
   }
   if (data.settings && !settingsSavePending.value && !saving.value)
     syncSettings(data.settings)
@@ -833,6 +887,12 @@ const handleRemoteLogin = async (value) => {
 }
 
 onMounted(async () => {
+  // Pulso que hace avanzar la cuenta atrás del apagado programado aunque no
+  // lleguen snapshots nuevos (en la ventana de escritorio son solo por evento).
+  countdownPulse = setInterval(() => {
+    nowTick.value++
+  }, 1000)
+
   // Resolver el token de acceso antes de llamar a cualquier endpoint /api/*:
   // en la app de escritorio llega solo (binding nativo de Wails); en un
   // navegador remoto, si no hay uno guardado, pedimos la pantalla de login.
@@ -860,6 +920,7 @@ onUnmounted(() => {
   clearInterval(updateCheckTimer)
   clearTimeout(saveTimer)
   clearTimeout(reconnectTimer)
+  clearInterval(countdownPulse)
   socket?.close()
 })
 </script>
@@ -1064,6 +1125,42 @@ onUnmounted(() => {
               <Settings2 :size="16" /> Ajustes
             </button>
           </nav>
+
+          <div
+            class="sidebar-shutdown"
+            :class="{
+              armed: settings.shutdown_when_done,
+              pending: shutdownCountdown > 0
+            }"
+          >
+            <div class="shutdown-info">
+              <Power :size="15" />
+              <div class="shutdown-text">
+                <span class="shutdown-label">Apagar al terminar</span>
+                <small v-if="shutdownCountdown > 0">
+                  Apagando en {{ shutdownCountdown }} s…
+                </small>
+                <small v-else-if="settings.shutdown_when_done">
+                  Activo: al acabar la cola
+                </small>
+              </div>
+            </div>
+            <label
+              class="switch"
+              :title="
+                settings.shutdown_when_done
+                  ? 'Cancelar el apagado automático'
+                  : 'Apagar el PC cuando termine la cola de descargas'
+              "
+            >
+              <input
+                type="checkbox"
+                :checked="settings.shutdown_when_done"
+                @change="onShutdownToggle"
+              />
+              <span></span>
+            </label>
+          </div>
 
           <div v-if="authStatus.user" class="sidebar-user-badge">
             <div class="user-info">
@@ -1706,6 +1803,65 @@ onUnmounted(() => {
   margin-bottom: 14px;
   font-size: 12px;
   color: #dbe7f5;
+}
+/* Interruptor «Apagar al terminar»: misma caja que la insignia del usuario.
+   Armado toma el color de acento; con cuenta atrás pasa a ámbar y parpadea el
+   detalle, que es lo urgente de ver. */
+.sidebar-shutdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--user-bg-base);
+  border: 1px solid var(--user-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #dbe7f5;
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.sidebar-shutdown .shutdown-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--user-text-dim);
+  transition: color 0.25s;
+}
+.sidebar-shutdown .shutdown-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.sidebar-shutdown .shutdown-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sidebar-shutdown .shutdown-text small {
+  font-size: 10px;
+  color: var(--user-text-dim);
+  white-space: nowrap;
+}
+.sidebar-shutdown.armed {
+  border-color: var(--user-primary);
+}
+.sidebar-shutdown.armed .shutdown-info {
+  color: var(--user-primary);
+}
+.sidebar-shutdown.pending {
+  border-color: #d97706;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.35);
+}
+.sidebar-shutdown.pending .shutdown-info {
+  color: #f59e0b;
+}
+.sidebar-shutdown.pending .shutdown-text small {
+  color: #fbbf24;
+  animation: pulseWarning 1s infinite;
 }
 .sidebar-user-badge .user-info {
   display: flex;

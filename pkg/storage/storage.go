@@ -528,6 +528,9 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 	if val, ok := kv["organize_by_chat"]; ok {
 		cfg.OrganizeByChat = val == "1" || val == "true"
 	}
+	if val, ok := kv["shutdown_when_done"]; ok {
+		cfg.ShutdownWhenDone = val == "1" || val == "true"
+	}
 	if val, ok := kv["download_folder"]; ok && val != "" {
 		cfg.DownloadFolder = val
 	}
@@ -648,6 +651,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"download_folder":          cfg.DownloadFolder,
 		"listener_enabled":         strconv.FormatBool(cfg.ListenerEnabled),
 		"organize_by_chat":         strconv.FormatBool(cfg.OrganizeByChat),
+		"shutdown_when_done":       strconv.FormatBool(cfg.ShutdownWhenDone),
 		"speed_value":              fmt.Sprintf("%f", cfg.SpeedLimit.Value),
 		"speed_unit":               cfg.SpeedLimit.Unit,
 	}

@@ -71,3 +71,16 @@ Desde la interfaz o a través de la API REST, puedes controlar cualquier tarea e
 ## :material-speedometer: Límite de Velocidad (Throttling)
 
 Puedes establecer un límite de velocidad global (en KB/s o MB/s) desde la barra inferior o desde **Ajustes**. El motor ajustará el caudal de recepción de los fragmentos en tiempo real para no saturar tu conexión doméstica o de trabajo.
+
+---
+
+## :material-power: Apagado Automático al Terminar la Cola
+
+El interruptor **«Apagar al terminar»** de la barra lateral (entre **Ajustes** y tu usuario) arma el apagado del equipo:
+
+- Cuando la cola de descargas se queda vacía tras haber tenido actividad, el servidor espera **15 segundos** de cortesía y apaga el PC.
+- Encolar cualquier descarga durante la cuenta atrás **cancela el apagado** automáticamente; también se cancela al desactivar el interruptor o al cerrar la aplicación.
+- Mientras el apagado está programado, la barra lateral muestra la **cuenta atrás en tiempo real**.
+- El ajuste se guarda en SQLite como cualquier otro, así que sigue armado si cierras y vuelves a abrir la aplicación.
+
+En Windows se apaga con `shutdown /s /t 0` sin forzar el cierre de aplicaciones: si otro programa tiene trabajo sin guardar, puede frenar el apagado.
