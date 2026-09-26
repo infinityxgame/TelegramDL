@@ -453,10 +453,6 @@ const selectBulkFileName = async (type) => {
   }
 }
 
-// Rastrear activación del switch de selección manual
-const handleManualNameToggle = (chat) => {
-  save()
-}
 
 const handleClickOutside = (e) => {
   if (!e.target.closest('.name-select-wrapper') && !e.target.closest('.bulk-name-wrapper')) {
@@ -514,7 +510,7 @@ onUnmounted(() => {
               <b>Auto</b>
             </label>
             <label class="auto-toggle switch" :class="{ disabled: saving }" title="Activar selección manual de nombres">
-              <input type="checkbox" v-model="chat.manual_name_selection" :disabled="saving" @change="handleManualNameToggle(chat)">
+              <input type="checkbox" v-model="chat.manual_name_selection" :disabled="saving" @change="save">
               <span></span>
               <b>Nombre</b>
             </label>
