@@ -50,6 +50,31 @@ Los archivos se registran en la pestaña **"Multimedia Detectada"** con estado d
 
 ---
 
+## Sistema de Selección y Renombrado de Archivos
+
+TelegramDL permite personalizar el nombre final de los archivos detectados antes de agregarlos a la cola de descargas.
+
+### 1. Conmutador "Nombre" por Chat Vigilado
+En la sección de **Chats Vigilados**, cada origen cuenta con un interruptor **Nombre**:
+- **Activado**: La aplicación habilita la selección de nombres para todos los archivos detectados que provengan de ese chat.
+- **Desactivado**: Los archivos mantendrán su nombre por defecto sin mostrar controles de renombrado.
+
+### 2. Fuentes de Nombre Disponibles
+- **Caption**: Extrae y aplica el texto explicativo o pie de mensaje adjunto al archivo en Telegram.
+- **Original**: Utiliza el nombre de archivo interno embebido en la estructura del mensaje original.
+
+### 3. Renombrado Individual por Archivo
+En la lista de **Multimedia Detectada**, cada elemento perteneciente a un chat con la opción **Nombre** activa dispone de un botón **Nombre**:
+- Al hacer clic, despliega un menú flotante para elegir entre el nombre de **Caption** o el nombre **Original**.
+- Al seleccionar una opción, el archivo actualiza su nombre de inmediato antes de iniciar la descarga.
+
+### 4. Renombrado Masivo (Botón "Nombre" en la Bandeja de Entrada)
+Ubicado en la cabecera de la Bandeja de Entrada, a la izquierda del botón **Todo**:
+- Despliega las opciones **Usar Caption** y **Usar Original**.
+- **Regla de Filtrado**: Al elegir una opción, se renombrarán de forma masiva todos los archivos pendientes en la lista **únicamente si pertenecen a chats que tienen activa la opción "Nombre"**. Los archivos de chats sin esta opción activa no sufren ninguna modificación.
+
+---
+
 ## Soporte para Temas y Foros (Topics)
 
 TelegramDL incluye soporte para supergrupos con temas organizados:

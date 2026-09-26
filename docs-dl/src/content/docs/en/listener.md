@@ -50,6 +50,31 @@ Files are staged under the **"Detected Media"** tab with status `available`. You
 
 ---
 
+## File Renaming System
+
+TelegramDL allows you to customize the final file names of detected media before enqueuing them for download.
+
+### 1. Per-Chat "Nombre" (Name) Switch
+In the **Monitored Chats** list, each chat entry features a **Nombre** toggle switch:
+- **Enabled**: Unlocks manual renaming options for all detected files originating from that chat.
+- **Disabled**: Files retain their default name without displaying renaming controls.
+
+### 2. Available Name Sources
+- **Caption**: Uses the accompanying text caption or message attached to the file in Telegram.
+- **Original**: Uses the internal filename embedded in the Telegram media structure when uploaded.
+
+### 3. Per-File Renaming
+Under **Detected Media**, any item coming from a chat with the **Nombre** option enabled displays a **Nombre** button next to the Download button:
+- Clicking it opens a dropdown menu to choose between **Caption** or **Original** file names.
+- Selecting an option immediately renames the file prior to downloading.
+
+### 4. Bulk Renaming ("Nombre" Button in Inbox Header)
+Located in the header of the Inbox feed, directly to the left of the **"Todo"** (All) button:
+- Offers options to **Use Caption** and **Use Original**.
+- **Filtering Rule**: Selecting an option bulk-renames all pending files across the list **exclusively for files originating from chats with the "Nombre" switch enabled**. Files from chats without this option enabled remain completely untouched.
+
+---
+
 ## Forum Topics Support
 
 TelegramDL natively supports forum supergroups with topics:
