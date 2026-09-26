@@ -133,7 +133,7 @@ func NewServer(
 	// Escuchar cambios de estado en el motor de descargas para emitir a los WebSockets
 	dl.OnStateChange(func(item storage.DownloadItem) {
 		s.triggerBroadcast()
-		s.vigilarApagadoAlTerminar(item)
+		s.watchShutdownWhenDone(item)
 	})
 
 	// Escuchar cambios de estado en el motor de escucha para emitir a los WebSockets
@@ -1551,18 +1551,18 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	// Desarmar el interruptor con la cuenta atrás en marcha cancela el apagado
 	// aquí mismo: si se dejara al temporizador, el panel seguiría mostrando la
 	// cuenta atrás hasta que este venciera, aunque ya no fuera a apagar nada.
-	apagadoCancelado := false
+	shutdownCancelled := false
 	if previousCfg.ShutdownWhenDone && !cfg.ShutdownWhenDone && s.shutdownTimer != nil {
 		s.shutdownTimer.Stop()
 		s.shutdownTimer = nil
 		s.shutdownDeadline = time.Time{}
-		apagadoCancelado = true
+		shutdownCancelled = true
 	}
 
 	s.config = cfg
 	s.mu.Unlock()
 
-	if apagadoCancelado {
+	if shutdownCancelled {
 		logbus.Info(logbus.CatSystem, "Apagado automático cancelado", "El interruptor «Apagar al terminar» se desactivó")
 	}
 
@@ -2256,52 +2256,52 @@ func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
 // y antes sí lo tuvo, se programa el apagado con shutdownDelay de cortesía.
 // ---------------------------------------------------------------------------
 
-// vigilarApagadoAlTerminar se llama con cada cambio de estado del motor. El
+// watchShutdownWhenDone se llama con cada cambio de estado del motor. El
 // camino barato (actividad) solo toca una marca; el de estado terminal es el
 // único que mira la cola entera, así un tick de progreso nunca recorre la
 // lista de descargas.
-func (s *Server) vigilarApagadoAlTerminar(item storage.DownloadItem) {
+func (s *Server) watchShutdownWhenDone(item storage.DownloadItem) {
 	switch item.Status {
 	case "queued", "downloading":
 		s.mu.Lock()
 		s.hadActiveDownloads = true
-		cancelado := s.shutdownTimer != nil
-		if cancelado {
+		cancelled := s.shutdownTimer != nil
+		if cancelled {
 			s.shutdownTimer.Stop()
 			s.shutdownTimer = nil
 			s.shutdownDeadline = time.Time{}
 		}
 		s.mu.Unlock()
-		if cancelado {
+		if cancelled {
 			logbus.Info(logbus.CatSystem, "Apagado automático cancelado", "La cola de descargas volvió a tener actividad")
 		}
 	case "completed", "failed", "cancelled", "skipped":
-		s.evalApagadoAlTerminar()
+		s.maybeScheduleShutdown()
 	}
 }
 
-// evalApagadoAlTerminar decide si toca programar el apagado. Hace falta que el
+// maybeScheduleShutdown decide si toca programar el apagado. Hace falta que el
 // interruptor esté armado y que la cola se haya quedado vacía tras haber tenido
 // actividad: sin esa memoria, encender el PC con el interruptor puesto lo
 // apagaría a los pocos segundos sin haber descargado nada.
-func (s *Server) evalApagadoAlTerminar() {
+func (s *Server) maybeScheduleShutdown() {
 	s.mu.RLock()
-	armado := s.config.ShutdownWhenDone
+	armed := s.config.ShutdownWhenDone
 	s.mu.RUnlock()
-	if !armado {
+	if !armed {
 		return
 	}
 
-	activa := false
+	active := false
 	for _, d := range s.downloader.GetDownloads() {
 		if d.Status == "queued" || d.Status == "downloading" {
-			activa = true
+			active = true
 			break
 		}
 	}
 
 	s.mu.Lock()
-	if activa {
+	if active {
 		s.hadActiveDownloads = true
 		s.mu.Unlock()
 		return
@@ -2312,7 +2312,7 @@ func (s *Server) evalApagadoAlTerminar() {
 	}
 	s.hadActiveDownloads = false
 	s.shutdownDeadline = time.Now().Add(shutdownDelay)
-	s.shutdownTimer = time.AfterFunc(shutdownDelay, s.apagarEquipoProgramado)
+	s.shutdownTimer = time.AfterFunc(shutdownDelay, s.executeScheduledShutdown)
 	s.mu.Unlock()
 
 	logbus.Warn(logbus.CatSystem,
@@ -2321,19 +2321,19 @@ func (s *Server) evalApagadoAlTerminar() {
 	s.triggerBroadcast()
 }
 
-// apagarEquipoProgramado es la cuenta atrás vencida. El interruptor y la cola
+// executeScheduledShutdown es la cuenta atrás vencida. El interruptor y la cola
 // se vuelven a comprobar aquí porque pudieron cambiar durante la espera: si el
 // usuario desarmó el interruptor o encoló algo en el último momento, no se
 // apaga nada.
-func (s *Server) apagarEquipoProgramado() {
+func (s *Server) executeScheduledShutdown() {
 	s.mu.Lock()
 	s.shutdownTimer = nil
 	s.shutdownDeadline = time.Time{}
-	armado := s.config.ShutdownWhenDone
+	armed := s.config.ShutdownWhenDone
 	s.mu.Unlock()
 	s.triggerBroadcast()
 
-	if !armado {
+	if !armed {
 		return
 	}
 	for _, d := range s.downloader.GetDownloads() {
@@ -2343,7 +2343,7 @@ func (s *Server) apagarEquipoProgramado() {
 	}
 
 	logbus.Warn(logbus.CatSystem, "Apagando el equipo", "La cola de descargas terminó con el apagado automático armado")
-	if err := apagarEquipo(); err != nil {
+	if err := shutdownSystem(); err != nil {
 		logbus.Error(logbus.CatSystem, "No se pudo apagar el equipo", err.Error())
 	}
 }

@@ -528,9 +528,8 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 	if val, ok := kv["organize_by_chat"]; ok {
 		cfg.OrganizeByChat = val == "1" || val == "true"
 	}
-	if val, ok := kv["shutdown_when_done"]; ok {
-		cfg.ShutdownWhenDone = val == "1" || val == "true"
-	}
+	// shutdown_when_done no se carga a propósito: el apagado automático es un
+	// ajuste de sesión, siempre arranca desactivado (ver config.Config).
 	if val, ok := kv["download_folder"]; ok && val != "" {
 		cfg.DownloadFolder = val
 	}
@@ -651,10 +650,13 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"download_folder":          cfg.DownloadFolder,
 		"listener_enabled":         strconv.FormatBool(cfg.ListenerEnabled),
 		"organize_by_chat":         strconv.FormatBool(cfg.OrganizeByChat),
-		"shutdown_when_done":       strconv.FormatBool(cfg.ShutdownWhenDone),
 		"speed_value":              fmt.Sprintf("%f", cfg.SpeedLimit.Value),
 		"speed_unit":               cfg.SpeedLimit.Unit,
 	}
+
+	// shutdown_when_done queda fuera a propósito: no debe sobrevivir a un
+	// reinicio, o un apagado armado ayer se ejecutaría mañana sin que el
+	// usuario lo haya pedido en esta sesión.
 
 	if cfg.ColorID != nil {
 		pairs["color_id"] = strconv.Itoa(*cfg.ColorID)

@@ -15,7 +15,7 @@ import (
 	"runtime"
 )
 
-func apagarEquipo() error {
+func shutdownSystem() error {
 	if runtime.GOOS == "darwin" {
 		return exec.Command("osascript", "-e", `tell application "System Events" to shut down`).Start()
 	}

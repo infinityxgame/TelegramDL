@@ -158,7 +158,10 @@ type Config struct {
 	OrganizeByChat   bool           `json:"organize_by_chat"`
 	// ShutdownWhenDone es el interruptor «Apagar al terminar»: con él armado, al
 	// quedarse la cola de descargas vacía el servidor espera unos segundos y
-	// apaga el equipo. Se guarda como cualquier otro ajuste.
+	// apaga el equipo. Es un ajuste de sesión: no se persiste en SQLite, así que
+	// cada arranque de la aplicación lo encuentra desactivado y hay que armarlo
+	// a propósito; si se guardara, un apagado pedido ayer podría ejecutarse
+	// mañana en un momento en que el usuario no lo quiere.
 	ShutdownWhenDone bool           `json:"shutdown_when_done"`
 	ColorID          *int           `json:"color_id"`
 	LoaderColorID    *int           `json:"loader_color_id"`

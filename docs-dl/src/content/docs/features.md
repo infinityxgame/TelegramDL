@@ -83,6 +83,6 @@ El interruptor **«Apagar al terminar»** de la barra lateral (entre **Ajustes**
 - Cuando la cola de descargas se queda vacía tras haber tenido actividad, el servidor espera **15 segundos** de cortesía y apaga el PC.
 - Encolar cualquier descarga durante la cuenta atrás **cancela el apagado** automáticamente; también se cancela al desactivar el interruptor o al cerrar la aplicación.
 - Mientras el apagado está programado, la barra lateral muestra la **cuenta atrás en tiempo real**.
-- El ajuste se guarda en SQLite como cualquier otro, así que sigue armado si cierras y vuelves a abrir la aplicación.
+- El ajuste **no se guarda**: es solo de la sesión, así que cada vez que abras la aplicación tendrás que activarlo de nuevo. Así no hay riesgo de que el PC se apague un día cualquiera porque lo dejaste puesto en otra sesión.
 
 En Windows se apaga con `shutdown /s /t 0` sin forzar el cierre de aplicaciones: si otro programa tiene trabajo sin guardar, puede frenar el apagado.

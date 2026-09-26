@@ -719,7 +719,7 @@ const onShutdownToggle = (event) => {
   openConfirm({
     title: 'Apagar el PC al terminar',
     message:
-      'Cuando la cola de descargas termine, el equipo se apagará automáticamente en 15 segundos. Puedes cancelarlo en cualquier momento con este mismo interruptor.',
+      'Cuando la cola de descargas termine, el equipo se apagará automáticamente en 15 segundos. Puedes cancelarlo en cualquier momento con este mismo interruptor. El ajuste solo dura esta sesión: al cerrar la aplicación se desactiva solo.',
     confirmText: 'Sí, activar',
     type: 'primary',
     action: async () => {

@@ -12,6 +12,6 @@ package server
 
 import "os/exec"
 
-func apagarEquipo() error {
+func shutdownSystem() error {
 	return exec.Command("shutdown", "/s", "/t", "0").Start()
 }

@@ -81,6 +81,6 @@ The **«Apagar al terminar»** (Power off when done) switch in the sidebar (betw
 - Once the download queue becomes empty after having activity, the server waits a **15-second** grace period and powers off the machine.
 - Queueing any download during the countdown **cancels the shutdown** automatically; turning the switch off or closing the application cancels it too.
 - While a shutdown is scheduled, the sidebar shows a **live countdown**.
-- The setting is persisted in SQLite like any other, so it stays armed across application restarts.
+- The setting is **not persisted**: it is session-only, so every time you open the application it starts off and must be armed again. This avoids an unexpected shutdown one day just because it was left on in another session.
 
 On Windows it shuts down via `shutdown /s /t 0` without forcing applications to close: a program with unsaved work may hold the shutdown.
