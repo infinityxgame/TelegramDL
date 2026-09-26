@@ -16,6 +16,7 @@ const props = defineProps({
 
 // Estado local para el menú de selección de nombre por archivo
 const nameSelectionMenus = ref({})
+const bulkNameMenuOpen = ref(false)
 
 const enabled = ref(props.settings.listener_enabled)
 const chats = ref(props.settings.listener_chats || [])
@@ -32,6 +33,7 @@ let disposed = false
 watch(() => props.active, (newActive) => {
   if (!newActive) {
     nameSelectionMenus.value = {}
+    bulkNameMenuOpen.value = false
   }
 })
 
@@ -396,6 +398,10 @@ const toggleNameMenu = (itemId) => {
   nameSelectionMenus.value[itemId] = !nameSelectionMenus.value[itemId]
 }
 
+const toggleBulkNameMenu = () => {
+  bulkNameMenuOpen.value = !bulkNameMenuOpen.value
+}
+
 const selectFileName = async (item, selectedName) => {
   try {
     await api('/api/listener/update-filename', {
@@ -411,14 +417,51 @@ const selectFileName = async (item, selectedName) => {
   }
 }
 
+const selectBulkFileName = async (type) => {
+  bulkNameMenuOpen.value = false
+
+  const eligibleItems = items.value.filter(item => {
+    if (!hasManualNameSelection(item)) return false
+    if (item.status !== 'available') return false
+    const targetName = type === 'caption' ? item.caption_file_name : item.original_file_name
+    return targetName && targetName !== item.file_name
+  })
+
+  if (!eligibleItems.length) {
+    props.notify('No hay archivos pendientes aplicables para cambiar nombre')
+    return
+  }
+
+  let updatedCount = 0
+  for (const item of eligibleItems) {
+    const targetName = type === 'caption' ? item.caption_file_name : item.original_file_name
+    try {
+      await api('/api/listener/update-filename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, file_name: targetName })
+      })
+      item.file_name = targetName
+      updatedCount++
+    } catch (err) {
+      console.error(`Error actualizando nombre para ${item.id}:`, err)
+    }
+  }
+
+  if (updatedCount > 0) {
+    props.notify(`${updatedCount} nombres de archivos actualizados a ${type === 'caption' ? 'Caption' : 'Original'}`)
+  }
+}
+
 // Rastrear activación del switch de selección manual
 const handleManualNameToggle = (chat) => {
   save()
 }
 
 const handleClickOutside = (e) => {
-  if (!e.target.closest('.name-select-wrapper')) {
+  if (!e.target.closest('.name-select-wrapper') && !e.target.closest('.bulk-name-wrapper')) {
     nameSelectionMenus.value = {}
+    bulkNameMenuOpen.value = false
   }
 }
 
@@ -499,6 +542,21 @@ onUnmounted(() => {
             </div>
             <span class="count-pill">{{ availableCount }} nuevas</span>
             <div v-if="items.length" class="bulk-actions">
+              <div class="bulk-name-wrapper">
+                <button class="bulk-name-button" title="Cambiar nombre masivo" @click.stop="toggleBulkNameMenu">
+                  <Settings2 :size="14" /> Nombre
+                </button>
+                <div v-if="bulkNameMenuOpen" class="name-dropdown bulk-name-dropdown">
+                  <div class="name-option" @click="selectBulkFileName('caption')">
+                    <span class="name-preview">Usar Caption</span>
+                    <small>(Solo chats con selección activa)</small>
+                  </div>
+                  <div class="name-option" @click="selectBulkFileName('original')">
+                    <span class="name-preview">Usar Original</span>
+                    <small>(Solo chats con selección activa)</small>
+                  </div>
+                </div>
+              </div>
               <button class="bulk-download" title="Descargar todo lo disponible" @click="downloadAll">
                 <Download :size="14" /> Todo
               </button>
@@ -582,7 +640,7 @@ onUnmounted(() => {
 .filter-tag.f-stickers.active{background:#f472b6;box-shadow:0 4px 12px rgba(244,114,182,0.3)}
 .chat-chip strong{flex:1;color:#d6e4f1;font-weight:500}
 .chat-chip button{border:0;background:transparent;color:#e58b91;font-size:20px;cursor:pointer}
-.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.bulk-actions{display:flex;gap:6px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;position:relative}.listener-item.menu-open{z-index:50}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
+.save-hint{display:block;color:var(--user-text-dim);font-size:10px;margin-top:13px}.panel-heading{display:flex;justify-content:space-between;align-items:flex-start}.header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.bulk-actions{display:flex;gap:6px;position:relative}.bulk-name-wrapper{position:relative;display:inline-flex}.bulk-name-button{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s;font-weight:600}.bulk-name-button:hover{background:var(--user-surface-light);border-color:var(--user-accent);color:var(--user-accent)}.bulk-name-dropdown{right:0;top:calc(100% + 8px);min-width:220px;max-width:320px}.bulk-download,.bulk-delete{border:1px solid var(--user-border-light);background:var(--user-bg-base);color:#dbe7f5;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .2s}.bulk-download:hover{background:var(--user-icon-bg);border-color:var(--user-primary);color:var(--user-accent)}.bulk-delete:hover{background:#251415;border-color:#4a2b2d;color:#e58b91}.listener-item{display:flex;align-items:center;gap:12px;border-top:1px solid var(--user-border);padding:13px 0;position:relative}.listener-item.menu-open{z-index:50}.file-info{flex:1;min-width:0;overflow:hidden}.file-info strong,.file-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:auto;flex-shrink:0}.row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative}.listener-status{font-size:10px;color:var(--user-text-dim)}.download-small{border:1px solid var(--user-primary);background:var(--user-icon-bg);color:var(--user-primary);border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px}.download-small:hover{background:var(--user-surface-light)}.delete-small{border:1px solid #4a2b2d;background:#251415;color:#e58b91;border-radius:7px;padding:6px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}.delete-small:hover{background:#3a1d1f}@media(max-width:900px){.listener-grid{grid-template-columns:1fr}}@media(max-width:580px){.listener-hero{align-items:flex-start;flex-direction:column;padding:22px}.listener-add{flex-direction:column}.listener-add .save-button{height:38px}.listener-item .row-side{min-width:75px}}
 .listener-error{margin-top:10px;color:#e58b91;font-size:11px}
 .topic-picker{margin-top:12px;padding:13px;border:1px solid var(--user-border-light);border-radius:12px;background:var(--user-bg-base);display:flex;flex-direction:column;gap:10px}
 .topic-picker-head{display:flex;flex-direction:column;gap:3px}
