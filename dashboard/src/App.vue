@@ -1137,6 +1137,7 @@ onUnmounted(() => {
 
           <ListenerView
             v-show="activeView === 'listener'"
+            :active="activeView === 'listener'"
             :notify="showMessage"
             :disk="disk"
             :initialItems="listenerItems"
