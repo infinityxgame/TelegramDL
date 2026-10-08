@@ -21,15 +21,22 @@ import {
 } from '../icons'
 import FolderPicker from '../components/FolderPicker.vue'
 import { useAuthToken } from '../composables/useAuthToken'
+import { useExternalLink } from '../composables/useExternalLink'
 import { useI18n } from '../i18n'
 import AppAccordion from '../components/AppAccordion.vue'
 
 const { authHeaders } = useAuthToken()
+const { openExternal } = useExternalLink()
 const { t, locale, availableLocales, splitOn } = useI18n()
 
 // La descripción del acceso remoto menciona Tailscale con enlace; se parte por
 // el marcador {vpn} para mantener el <a> entre las dos mitades traducidas.
 const remoteDescParts = computed(() => splitOn('settings.remoteDesc', 'vpn'))
+// La descripción de notificaciones menciona @BotFather con enlace; se parte por
+// el marcador {botfather} para mantener el <a> entre las dos mitades traducidas.
+const notifDescParts = computed(() =>
+  splitOn('settings.notificationsDesc', 'botfather')
+)
 
 const props = defineProps({
   settings: {
@@ -703,7 +710,8 @@ const sendTestNotification = async () => {
                   class="inline-link"
                   href="https://tailscale.com"
                   target="_blank"
-                  rel="noopener"
+                  rel="noopener noreferrer"
+                  @click="openExternal('https://tailscale.com', $event)"
                   >Tailscale</a
                 >{{ remoteDescParts[1] }}
               </small>
@@ -768,7 +776,17 @@ const sendTestNotification = async () => {
               >
                 <div>
                   <strong>{{ t('settings.notificationsEnabled') }}</strong>
-                  <small>{{ t('settings.notificationsDesc') }}</small>
+                  <small>
+                    {{ notifDescParts[0]
+                    }}<a
+                      class="inline-link"
+                      href="https://t.me/BotFather"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click="openExternal('https://t.me/BotFather', $event)"
+                      >@BotFather</a
+                    >{{ notifDescParts[1] }}
+                  </small>
                 </div>
                 <label class="switch">
                   <input

@@ -134,6 +134,11 @@ var messagesEN = map[string]string{
 	"notifier.queueComplete":      "📊 <b>Download Summary — TelegramDL</b>\n\n✅ <b>Completed:</b> %d\n❌ <b>Failed:</b> %d",
 	"notifier.queueCompleteError": "\n\n⚠️ <b>Failed items / links:</b>\n%s",
 	"notifier.downloadFailed":     "🚨 <b>Download Failed</b>\n\n📄 <b>File:</b> <code>%s</code>\n⚠️ <b>Error:</b> <i>%s</i>",
+	"notifier.botStart":           "🚀 <b>TelegramDL Bot</b>\n\nSend me any Telegram link (example: <code>https://t.me/c/123456/789</code> or ranges <code>https://t.me/c/123456/10-20</code>) to add it to the download queue.",
+	"notifier.botInvalidLink":     "⚠️ <b>Unrecognized link.</b>\nSend a valid Telegram link (e.g., <code>https://t.me/c/123456/789</code>).",
+	"notifier.botAddedQueue":      "📥 <b>Download(s) added to queue:</b>\n%s",
+	"notifier.botErrorsHeader":    "\n\n⚠️ <b>Errors:</b>\n%s",
+	"notifier.botProcessError":    "❌ <b>Error processing link(s):</b>\n%s",
 
 	// Message resolution on Telegram ([DOWNLOAD FETCH] tag)
 	"fetch.noAccessHashCache":    "Channel %d has no cached accessHash. Querying dialogs...",

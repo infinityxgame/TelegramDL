@@ -2754,14 +2754,14 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			n := notifier.NewNotifier(token, authorizedChatID, replyThreadID)
 
 			if text == "/start" || text == "/help" {
-				replyText := "🚀 <b>TelegramDL Bot</b>\n\nEnvíame cualquier enlace de Telegram (ejemplo: <code>https://t.me/c/123456/789</code> o rangos <code>https://t.me/c/123456/10-20</code>) para añadirlo a la cola de descargas."
+				replyText := i18n.T("notifier.botStart")
 				n.SendMessage(ctx, replyText)
 				continue
 			}
 
 			candidates := extractTelegramLinks(text)
 			if len(candidates) == 0 {
-				replyText := "⚠️ <b>Enlace no reconocido.</b>\nEnvía un enlace válido de Telegram (ej: <code>https://t.me/c/123456/789</code>)."
+				replyText := i18n.T("notifier.botInvalidLink")
 				n.SendMessage(ctx, replyText)
 				continue
 			}
@@ -2784,13 +2784,13 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				for i, l := range added {
 					addedLinks[i] = "• <code>" + html.EscapeString(l) + "</code>"
 				}
-				replyText := fmt.Sprintf("📥 <b>Descarga(s) añadida(s) a la cola:</b>\n%s", strings.Join(addedLinks, "\n"))
+				replyText := i18n.T("notifier.botAddedQueue", strings.Join(addedLinks, "\n"))
 				if len(failedErrs) > 0 {
-					replyText += fmt.Sprintf("\n\n⚠️ <b>Errores:</b>\n%s", strings.Join(failedErrs, "\n"))
+					replyText += i18n.T("notifier.botErrorsHeader", strings.Join(failedErrs, "\n"))
 				}
 				n.SendMessage(ctx, replyText)
 			} else if len(failedErrs) > 0 {
-				replyText := fmt.Sprintf("❌ <b>Error al procesar enlace(s):</b>\n%s", strings.Join(failedErrs, "\n"))
+				replyText := i18n.T("notifier.botProcessError", strings.Join(failedErrs, "\n"))
 				n.SendMessage(ctx, replyText)
 			}
 		}

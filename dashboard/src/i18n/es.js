@@ -375,11 +375,11 @@ export default {
     spaceCriticalTitle: '¡Alerta de Espacio Crítico!',
     spaceCriticalText:
       'Debido a cambios externos en tu disco, ya no hay espacio suficiente para completar las descargas en cola. \n\nNecesitas liberar al menos {needed} o cancelar algunas tareas para evitar errores.',
-    notificationsTitle: 'Notificaciones Telegram',
+    notificationsTitle: 'Notificaciones por Telegram y Descarga',
     notificationsSub: 'Recibe alertas mediante un bot propio',
     notificationsEnabled: 'Activar notificaciones',
     notificationsDesc:
-      'Crea un bot con @BotFather, pega el token aquí y envíale /start para conectarlo.',
+      'Crea un bot con {botfather}, pega el token aquí y envíale /start para conectarlo.',
     botToken: 'Token del bot',
     botTokenPlaceholder: 'Ej: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz',
     detectChat: 'Detectar chat',

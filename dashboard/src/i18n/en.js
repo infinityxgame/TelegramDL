@@ -371,11 +371,11 @@ export default {
     spaceCriticalTitle: 'Critical Space Alert!',
     spaceCriticalText:
       'Due to external changes to your disk, there is no longer enough space to complete the queued downloads.\n\nYou need to free at least {needed} or cancel some tasks to avoid errors.',
-    notificationsTitle: 'Telegram Notifications',
+    notificationsTitle: 'Telegram & Download Notifications',
     notificationsSub: 'Receive alerts via your own bot',
     notificationsEnabled: 'Enable notifications',
     notificationsDesc:
-      'Create a bot with @BotFather, paste the token here and send /start to connect it.',
+      'Create a bot with {botfather}, paste the token here and send /start to connect it.',
     botToken: 'Bot token',
     botTokenPlaceholder: 'E.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz',
     detectChat: 'Detect chat',
