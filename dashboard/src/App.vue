@@ -2048,8 +2048,13 @@ onUnmounted(() => {
     box-shadow 0.25s,
     color 0.25s;
 }
+/* El hover se tiene que notar: icono al color de acento y fondo tenue, como
+   las entradas del menú. El botón encendido ya va en acento, así que ahí es
+   el fondo el que marca que el cursor está encima. */
 .sidebar-toggle:hover {
   border-color: var(--user-primary);
+  background: var(--user-surface-light);
+  color: var(--user-primary);
 }
 .sidebar-toggle.armed {
   border-color: var(--user-primary);

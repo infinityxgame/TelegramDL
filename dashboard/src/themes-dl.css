@@ -2333,6 +2333,13 @@ html.tema-silent-cherry .accordion-icon {
 html.tema-silent-cherry .sidebar-toggle.armed {
   color: var(--claro-alerta);
 }
+/* Y el hover: el icono pasa al rosa oscuro (el pastel del acento no se ve) y
+   el fondo toma el mismo tinte rosa que las entradas del menú. */
+html.tema-silent-cherry .sidebar-toggle:hover {
+  border-color: var(--claro-alerta);
+  background: color-mix(in srgb, var(--sc-sakura), transparent 78%);
+  color: var(--claro-alerta);
+}
 
 /* -----------------------------------------------------------------------------
    osX (color 20)   ·   tema oscuro
