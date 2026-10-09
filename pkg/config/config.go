@@ -188,10 +188,11 @@ type Config struct {
 	NotificationChatID int64 `json:"notification_chat_id"`
 	// NotificationTopicID es el ID del tema del grupo (opcional, para grupos con temas).
 	NotificationTopicID *int64 `json:"notification_topic_id,omitempty"`
-	// NotifyOnComplete envía notificación cuando la cola de descargas termina.
-	NotifyOnComplete bool `json:"notify_on_complete"`
-	// NotifyOnError envía notificación cuando una descarga falla.
-	NotifyOnError bool `json:"notify_on_error"`
+	// BotNotifications enciende a la vez los dos avisos que envía el bot: el
+	// resumen al terminar la cola y la alerta de cada descarga fallida. La
+	// controla el botón del panel lateral; con ella apagada el bot deja de
+	// avisar pero sigue aceptando enlaces para añadir a la cola.
+	BotNotifications bool `json:"bot_notifications"`
 }
 
 var (

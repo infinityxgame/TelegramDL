@@ -50,6 +50,7 @@ import {
   Pulse01Icon,
   RadioTowerIcon,
   Refresh01Icon,
+  Robot01Icon,
   ArrowReloadHorizontalIcon,
   FloppyDiskIcon,
   Search01Icon,
@@ -87,6 +88,7 @@ export const ArrowLeft = icono(ArrowLeft02Icon) // volver en el explorador de ca
 export const ArrowRight = icono(ArrowRight02Icon) // continuar en el asistente de acceso
 export const ArrowUpRight = icono(ArrowUpRight01Icon) // abrir algo fuera de la app
 export const Bell = icono(Notification01Icon) // notificación sonora al terminar descargas
+export const Bot = icono(Robot01Icon) // avisos que envía el bot de Telegram
 export const Check = icono(Tick02Icon) // confirmar la carpeta elegida
 export const CheckCircle2 = icono(CheckmarkCircle02Icon) // aviso de operación correcta
 export const ChevronRight = icono(ArrowRight01Icon) // entrar en una carpeta o chat

@@ -927,43 +927,10 @@ const sendTestNotification = async () => {
                   </small>
                 </div>
 
-                <!-- Toggles en 2 columnas -->
-                <div class="notif-toggles-grid">
-                  <!-- Notificar al terminar la cola -->
-                  <div class="notif-toggle-card">
-                    <div>
-                      <strong>{{ t('settings.notifyOnComplete') }}</strong>
-                      <small>{{ t('settings.notifyOnCompleteSub') }}</small>
-                    </div>
-                    <label class="switch">
-                      <input
-                        type="checkbox"
-                        :checked="settings.notify_on_complete"
-                        @change="
-                          patch({ notify_on_complete: $event.target.checked })
-                        "
-                      />
-                      <span></span>
-                    </label>
-                  </div>
-
-                  <!-- Notificar errores -->
-                  <div class="notif-toggle-card">
-                    <div>
-                      <strong>{{ t('settings.notifyOnError') }}</strong>
-                      <small>{{ t('settings.notifyOnErrorSub') }}</small>
-                    </div>
-                    <label class="switch">
-                      <input
-                        type="checkbox"
-                        :checked="settings.notify_on_error"
-                        @change="
-                          patch({ notify_on_error: $event.target.checked })
-                        "
-                      />
-                      <span></span>
-                    </label>
-                  </div>
+                <!-- Los avisos automáticos (cola terminada y errores) ya no se
+                     configuran aquí: comparten el botón del panel lateral. -->
+                <div class="notif-hint">
+                  {{ t('settings.notifySidebarHint') }}
                 </div>
               </template>
             </div>

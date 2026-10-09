@@ -289,8 +289,9 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 		curItem.Error = err.Error()
 		curItem.Speed = "0 B/s"
 
-		// Enviar notificación de error si está configurado
-		if e.config.NotifyOnError {
+		// Notificación de error: depende del mismo interruptor (bot del panel
+		// lateral) que el resumen de cola, no de uno propio.
+		if e.config.BotNotifications {
 			e.sendNotification(i18n.T("notifier.downloadFailed", html.EscapeString(curItem.FileName), html.EscapeString(err.Error())))
 		}
 	} else {

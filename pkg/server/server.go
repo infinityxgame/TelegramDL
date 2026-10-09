@@ -1611,14 +1611,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.NotificationTopicID = &topicID
 		}
 	}
-	if v, ok := raw["notify_on_complete"]; ok && v != nil {
+	if v, ok := raw["bot_notifications"]; ok && v != nil {
 		if b, ok := v.(bool); ok {
-			cfg.NotifyOnComplete = b
-		}
-	}
-	if v, ok := raw["notify_on_error"]; ok && v != nil {
-		if b, ok := v.(bool); ok {
-			cfg.NotifyOnError = b
+			cfg.BotNotifications = b
 		}
 	}
 
@@ -2492,9 +2487,9 @@ func (s *Server) watchShutdownWhenDone(item storage.DownloadItem) {
 func (s *Server) maybeScheduleShutdown() {
 	s.mu.RLock()
 	armed := s.config.ShutdownWhenDone
-	notifyOnComplete := s.config.NotifyOnComplete
+	botNotifications := s.config.BotNotifications
 	s.mu.RUnlock()
-	if !armed && !notifyOnComplete {
+	if !armed && !botNotifications {
 		return
 	}
 
@@ -2552,7 +2547,7 @@ func (s *Server) maybeScheduleShutdown() {
 	s.hadActiveDownloads = false
 
 	// Enviar notificación de resumen si está configurado
-	if notifyOnComplete && (completed > 0 || failed > 0) {
+	if botNotifications && (completed > 0 || failed > 0) {
 		s.mu.Unlock()
 		message := i18n.T("notifier.queueComplete", completed, failed)
 		if failed > 0 && len(failedItems) > 0 {

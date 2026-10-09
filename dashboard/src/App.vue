@@ -30,6 +30,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   Bell,
+  Bot,
   CheckCircle2,
   LogOut,
   Menu,
@@ -115,6 +116,7 @@ const settings = reactive({
   download_folder: '',
   organize_by_chat: true,
   sound_notification: true,
+  bot_notifications: false,
   shutdown_when_done: false,
   language: ''
 })
@@ -228,10 +230,12 @@ const parseSpeed = (speedStr) => {
 const syncSettings = async (nextSettings) => {
   if (!nextSettings) return
   syncingSettings = true
-  // Si el usuario está cambiando manualmente el sonido, no sobrescribirlo
-  if (userChangingSound) {
+  // Si el usuario acaba de tocar un botón de notificación del sidebar, no
+  // sobrescribirlo con el snapshot que llegue por websocket: podría ser el
+  // anterior a que el autoguardado suba el valor nuevo.
+  if (userChangingSidebar) {
     // eslint-disable-next-line no-unused-vars
-    const { sound_notification, ...rest } = nextSettings
+    const { sound_notification, bot_notifications, ...rest } = nextSettings
     Object.assign(settings, rest)
   } else {
     Object.assign(settings, nextSettings)
@@ -244,7 +248,7 @@ const syncSettings = async (nextSettings) => {
 }
 
 // Bandera para evitar que syncSettings sobrescriba cambios manuales del usuario
-let userChangingSound = false
+let userChangingSidebar = false
 
 const showMessage = (txt, isError = false) => {
   if (isError) {
@@ -732,6 +736,18 @@ const maybeNotifyQueueFinished = (currentDownloads) => {
   }
 }
 
+// ── Botones de notificación del sidebar ──
+// Cada botón invierte su ajuste; la bandera userChangingSidebar evita que un
+// snapshot del websocket devuelta el valor a lo que había justo antes del
+// autoguardado (ver syncSettings).
+const toggleSidebarSetting = (key) => {
+  userChangingSidebar = true
+  settings[key] = !settings[key]
+  setTimeout(() => {
+    userChangingSidebar = false
+  }, 1000)
+}
+
 // ── Apagado del equipo al terminar la cola ──
 // El ajuste viaja en settings.shutdown_when_done y lo guarda el watch de
 // siempre. shutdownPendingAt es la marca unix del servidor en la que saltará
@@ -1190,53 +1206,56 @@ onUnmounted(() => {
             </button>
           </nav>
 
-          <div
-            class="sidebar-shutdown"
-            :class="{
-              armed: settings.sound_notification
-            }"
+          <!-- Notificaciones: dos botones táctiles (sonido del programa y avisos
+               del bot). El sidebar no da para texto más switch en cada tarjeta,
+               así que la tarjeta entera es el botón y el color de acento marca
+               si está encendido. -->
+          <button
+            type="button"
+            class="sidebar-toggle"
+            :class="{ armed: settings.sound_notification }"
+            :title="
+              settings.sound_notification
+                ? t('sidebar.soundTipOn')
+                : t('sidebar.soundTipOff')
+            "
+            @click="toggleSidebarSetting('sound_notification')"
           >
-            <div class="shutdown-row">
-              <div class="shutdown-info">
-                <Bell :size="15" />
-                <div class="shutdown-text">
-                  <span class="shutdown-label">{{
-                    t('sidebar.soundLabel')
-                  }}</span>
-                </div>
-              </div>
-              <label
-                class="switch"
-                :title="
-                  settings.sound_notification
-                    ? t('sidebar.soundTipEnabled')
-                    : t('sidebar.soundTipDisabled')
-                "
-              >
-                <input
-                  type="checkbox"
-                  :checked="settings.sound_notification"
-                  @change="
-                    (e) => {
-                      userChangingSound = true
-                      settings.sound_notification = e.target.checked
-                      setTimeout(() => {
-                        userChangingSound = false
-                      }, 1000)
-                    }
-                  "
-                />
-                <span></span>
-              </label>
-            </div>
-            <small class="shutdown-sub">
-              {{
+            <Bell :size="15" />
+            <span class="sidebar-toggle-text">
+              <span class="sidebar-toggle-label">{{
+                t('sidebar.soundLabel')
+              }}</span>
+              <small class="sidebar-toggle-state">{{
                 settings.sound_notification
-                  ? t('sidebar.soundEnabled')
-                  : t('sidebar.soundDisabled')
-              }}
-            </small>
-          </div>
+                  ? t('sidebar.soundOn')
+                  : t('sidebar.soundOff')
+              }}</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="sidebar-toggle"
+            :class="{ armed: settings.bot_notifications }"
+            :title="
+              settings.bot_notifications
+                ? t('sidebar.botTipOn')
+                : t('sidebar.botTipOff')
+            "
+            @click="toggleSidebarSetting('bot_notifications')"
+          >
+            <Bot :size="15" />
+            <span class="sidebar-toggle-text">
+              <span class="sidebar-toggle-label">{{
+                t('sidebar.botLabel')
+              }}</span>
+              <small class="sidebar-toggle-state">{{
+                settings.bot_notifications
+                  ? t('sidebar.botOn')
+                  : t('sidebar.botOff')
+              }}</small>
+            </span>
+          </button>
 
           <div
             class="sidebar-shutdown"
@@ -2000,6 +2019,50 @@ onUnmounted(() => {
 .sidebar-shutdown.pending .shutdown-sub {
   color: #fbbf24;
   animation: pulseWarning 1s infinite;
+}
+/* Botones de notificación: la tarjeta entera es el interruptor (el sidebar no
+   da para texto + switch en las dos). Apagada queda tenue; encendida toma el
+   color de acento, como la tarjeta de apagado armada. */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--user-bg-base);
+  border: 1px solid var(--user-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  font: 600 12px 'DM Sans';
+  color: var(--user-text-dim);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s,
+    color 0.25s;
+}
+.sidebar-toggle:hover {
+  border-color: var(--user-primary);
+}
+.sidebar-toggle.armed {
+  border-color: var(--user-primary);
+  color: var(--user-primary);
+}
+.sidebar-toggle-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar-toggle-label {
+  line-height: 1.25;
+  white-space: normal;
+}
+.sidebar-toggle-state {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--user-text-dim);
+  line-height: 1.3;
 }
 .sidebar-user-badge .user-info {
   display: flex;

@@ -581,11 +581,14 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 			cfg.NotificationTopicID = &n
 		}
 	}
-	if val, ok := kv["notify_on_complete"]; ok {
-		cfg.NotifyOnComplete = val == "1" || val == "true"
-	}
-	if val, ok := kv["notify_on_error"]; ok {
-		cfg.NotifyOnError = val == "1" || val == "true"
+	if val, ok := kv["bot_notifications"]; ok {
+		cfg.BotNotifications = val == "1" || val == "true"
+	} else if val, ok := kv["notify_on_complete"]; ok {
+		// Instalaciones anteriores a la unificación guardaban dos interruptores
+		// (notify_on_complete / notify_on_error). Al no existir todavía la clave
+		// nueva, se hereda el estado del primero para no perder las
+		// notificaciones que el usuario ya tenía configuradas.
+		cfg.BotNotifications = val == "1" || val == "true"
 	}
 
 	// Cargar listener_chats
@@ -701,8 +704,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"notification_bot_enabled": strconv.FormatBool(cfg.NotificationBotEnabled),
 		"notification_bot_token":   cfg.NotificationBotToken,
 		"notification_chat_id":     strconv.FormatInt(cfg.NotificationChatID, 10),
-		"notify_on_complete":       strconv.FormatBool(cfg.NotifyOnComplete),
-		"notify_on_error":          strconv.FormatBool(cfg.NotifyOnError),
+		"bot_notifications":        strconv.FormatBool(cfg.BotNotifications),
 	}
 
 	if cfg.NotificationTopicID != nil {

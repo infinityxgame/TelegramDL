@@ -24,11 +24,16 @@ export default {
 
   sidebar: {
     tagline: 'Centro de descargas personal',
-    soundLabel: 'Notificación',
-    soundTipEnabled: 'Desactivar sonido al terminar descargas',
-    soundTipDisabled: 'Activar sonido al terminar descargas',
-    soundEnabled: 'Activado',
-    soundDisabled: 'Desactivado',
+    soundLabel: 'Sonido de la app',
+    soundTipOn: 'Silenciar el sonido al terminar las descargas',
+    soundTipOff: 'Reactivar el sonido al terminar las descargas',
+    soundOn: 'Activado',
+    soundOff: 'Desactivado',
+    botLabel: 'Avisos del bot',
+    botTipOn: 'Silenciar los avisos del bot de Telegram',
+    botTipOff: 'Reactivar los avisos del bot de Telegram',
+    botOn: 'Activado',
+    botOff: 'Desactivado',
     shutdownLabel: 'Apagar al terminar',
     shutdownTipArmed: 'Cancelar el apagado automático',
     shutdownTipIdle: 'Apagar el PC cuando termine la cola de descargas',
@@ -392,11 +397,8 @@ export default {
     topicIDHint:
       'Solo para grupos con temas. Déjalo vacío para el tema principal.',
     sendTest: 'Enviar prueba',
-    notifyOnComplete: 'Notificar al terminar la cola',
-    notifyOnCompleteSub:
-      'Envía un resumen cuando todas las descargas terminen.',
-    notifyOnError: 'Notificar errores',
-    notifyOnErrorSub: 'Envía una alerta cuando una descarga falle.',
+    notifySidebarHint:
+      'Los avisos de cola terminada y de errores se encienden y apagan con el botón «Avisos del bot» del panel lateral.',
     detectingChat: 'Detectando...',
     sendingTest: 'Enviando...',
     testSent: 'Mensaje de prueba enviado',
