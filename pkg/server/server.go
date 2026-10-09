@@ -834,6 +834,11 @@ func (s *Server) buildStateSnapshot() map[string]any {
 		}
 	}
 
+	// Cifras de la sesión en curso: lo bajado desde que la aplicación está en
+	// marcha. El historial restaurado no entra, así el panel no hereda las
+	// descargas de sesiones anteriores tras un reinicio.
+	sessionStats := s.downloader.GetSessionStats()
+
 	snap := map[string]any{
 		"type":         "state",
 		"downloads":    downloads,
@@ -847,6 +852,11 @@ func (s *Server) buildStateSnapshot() map[string]any {
 		"logs_seq":     logbus.LastID(),
 		"update":       updateInfo,
 		"server_time":  float64(time.Now().Unix()),
+		"session_stats": map[string]any{
+			"completed": sessionStats.Completed,
+			"failed":    sessionStats.Failed,
+			"skipped":   sessionStats.Skipped,
+		},
 	}
 
 	// Marca de tiempo (unix) en la que saltará el apagado programado del
@@ -2498,44 +2508,19 @@ func (s *Server) maybeScheduleShutdown() {
 		return
 	}
 
+	// Las cifras del resumen son las de la sesión en curso (desde el arranque
+	// de la aplicación): el historial restaurado de SQLite no cuenta, o un
+	// reinicio heredaría las descargas de hace días y el aviso diría que se
+	// bajaron archivos que no se han bajado ahora.
+	stats := s.downloader.GetSessionStats()
+	completed := stats.Completed
+	failed := stats.Failed
+
 	active := false
-	completed := 0
-	failed := 0
-	failedItems := []string{}
 	for _, d := range s.downloader.GetDownloads() {
 		if d.Status == "queued" || d.Status == "downloading" {
 			active = true
 			break
-		}
-		if d.Status == "completed" {
-			completed++
-		}
-		if d.Status == "failed" {
-			failed++
-			link := ""
-			if strings.HasPrefix(d.Source, "http://") || strings.HasPrefix(d.Source, "https://") {
-				link = d.Source
-			} else if d.MessageID > 0 && d.ChatID != 0 {
-				chatIDStr := strconv.FormatInt(d.ChatID, 10)
-				if strings.HasPrefix(chatIDStr, "-100") {
-					chatIDStr = strings.TrimPrefix(chatIDStr, "-100")
-				} else if strings.HasPrefix(chatIDStr, "-") {
-					chatIDStr = strings.TrimPrefix(chatIDStr, "-")
-				}
-				link = fmt.Sprintf("https://t.me/c/%s/%d", chatIDStr, d.MessageID)
-			}
-
-			fileName := html.EscapeString(d.FileName)
-			if link != "" {
-				escapedLink := html.EscapeString(link)
-				if fileName != "" && fileName != link {
-					failedItems = append(failedItems, fmt.Sprintf("• <b>%s</b>\n  <code>%s</code>", fileName, escapedLink))
-				} else {
-					failedItems = append(failedItems, fmt.Sprintf("• <code>%s</code>", escapedLink))
-				}
-			} else if fileName != "" {
-				failedItems = append(failedItems, fmt.Sprintf("• <b>%s</b>", fileName))
-			}
 		}
 	}
 
@@ -2553,6 +2538,7 @@ func (s *Server) maybeScheduleShutdown() {
 
 	// Enviar notificación de resumen si está configurado
 	if botNotifications && (completed > 0 || failed > 0) {
+		failedItems := s.sessionFailedItems(stats)
 		s.mu.Unlock()
 		message := i18n.T("notifier.queueComplete", completed, failed)
 		if failed > 0 && len(failedItems) > 0 {
@@ -2575,6 +2561,52 @@ func (s *Server) maybeScheduleShutdown() {
 	} else {
 		s.mu.Unlock()
 	}
+}
+
+// sessionFailedItems construye el detalle (nombre y enlace) de las descargas
+// fallidas en esta sesión para el resumen del bot. Solo entran las de ahora:
+// las fallidas que trae el historial ya se avisaron en su día.
+func (s *Server) sessionFailedItems(stats downloader.SessionStats) []string {
+	if len(stats.FailedIDs) == 0 {
+		return nil
+	}
+	byID := make(map[string]storage.DownloadItem)
+	for _, d := range s.downloader.GetDownloads() {
+		byID[d.ID] = d
+	}
+
+	items := make([]string, 0, len(stats.FailedIDs))
+	for _, id := range stats.FailedIDs {
+		d, ok := byID[id]
+		if !ok {
+			continue
+		}
+		link := ""
+		if strings.HasPrefix(d.Source, "http://") || strings.HasPrefix(d.Source, "https://") {
+			link = d.Source
+		} else if d.MessageID > 0 && d.ChatID != 0 {
+			chatIDStr := strconv.FormatInt(d.ChatID, 10)
+			if strings.HasPrefix(chatIDStr, "-100") {
+				chatIDStr = strings.TrimPrefix(chatIDStr, "-100")
+			} else if strings.HasPrefix(chatIDStr, "-") {
+				chatIDStr = strings.TrimPrefix(chatIDStr, "-")
+			}
+			link = fmt.Sprintf("https://t.me/c/%s/%d", chatIDStr, d.MessageID)
+		}
+
+		fileName := html.EscapeString(d.FileName)
+		if link != "" {
+			escapedLink := html.EscapeString(link)
+			if fileName != "" && fileName != link {
+				items = append(items, fmt.Sprintf("• <b>%s</b>\n  <code>%s</code>", fileName, escapedLink))
+			} else {
+				items = append(items, fmt.Sprintf("• <code>%s</code>", escapedLink))
+			}
+		} else if fileName != "" {
+			items = append(items, fmt.Sprintf("• <b>%s</b>", fileName))
+		}
+	}
+	return items
 }
 
 // executeScheduledShutdown es la cuenta atrás vencida. El interruptor y la cola

@@ -61,6 +61,10 @@ const hasTelegramCredentials = ref(false)
 
 const downloads = ref([])
 const listenerItems = ref([])
+// Cifras de la sesión en curso: lo bajado desde que la aplicación está en
+// marcha. Llegan en cada snapshot del servidor, que no cuenta el historial
+// restaurado, así que tras un reinicio empiezan en cero de verdad.
+const sessionStats = reactive({ completed: 0, failed: 0, skipped: 0 })
 // Último ID del registro conocido por el servidor. Cambia en cada snapshot y
 // es la señal que usa la vista de logs para pedir solo lo nuevo.
 const logsSeq = ref(0)
@@ -857,6 +861,12 @@ const handleStateUpdate = (data) => {
   if (typeof data.shutdown_pending_at === 'number') {
     shutdownPendingAt.value = data.shutdown_pending_at
   }
+  if (data.session_stats) {
+    const { completed, failed, skipped } = data.session_stats
+    sessionStats.completed = Number(completed) || 0
+    sessionStats.failed = Number(failed) || 0
+    sessionStats.skipped = Number(skipped) || 0
+  }
   if (data.settings && !settingsSavePending.value && !saving.value)
     syncSettings(data.settings)
 }
@@ -1353,6 +1363,8 @@ onUnmounted(() => {
             :disk="disk"
             :settings="settings"
             :loading="loading"
+            :session-completed="sessionStats.completed"
+            :session-skipped="sessionStats.skipped"
             @start-download="startDownload"
             @pause-download="(id) => setDownloadPause(id, true)"
             @resume-download="(id) => setDownloadPause(id, false)"

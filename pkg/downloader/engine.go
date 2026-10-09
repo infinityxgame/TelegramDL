@@ -82,6 +82,17 @@ type Engine struct {
 	chatMsgMap         map[string]string
 	queuedIDs          map[string]bool
 
+	// Contadores de la sesión en curso: solo cuentan lo que ocurre desde que
+	// se arranca la aplicación, así que el «COMPLETADAS en esta sesión» del
+	// panel y el resumen del bot son reales. El historial restaurado de
+	// SQLite no entra aquí y cada arranque vuelve a empezar de cero.
+	sessionCompleted int
+	sessionFailed    int
+	sessionSkipped   int
+	// IDs de las descargas fallidas en esta sesión, para que el resumen del
+	// bot detalle solo las de ahora y no las heredadas del historial.
+	sessionFailedIDs []string
+
 	// Throttling
 	throttleMu   sync.Mutex
 	bytesSince   int64
@@ -291,6 +302,34 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 	})
 
 	return res
+}
+
+// SessionStats es la foto de lo que ha pasado en esta sesión, entendida como
+// el tiempo que la aplicación lleva arrancada. Vive solo en memoria: el
+// historial guardado en SQLite no cuenta, así que cada arranque empieza de
+// cero y las cifras que se muestran («COMPLETADAS en esta sesión», el resumen
+// del bot) son las de verdad.
+type SessionStats struct {
+	Completed int `json:"completed"`
+	Failed    int `json:"failed"`
+	// Skipped son las omisiones por archivo ya existente (estado "duplicate").
+	Skipped int `json:"skipped"`
+	// FailedIDs identifica las fallidas de esta sesión para que el resumen del
+	// bot pueda detallarlas; no se expone en el snapshot, se consume interno.
+	FailedIDs []string `json:"-"`
+}
+
+func (e *Engine) GetSessionStats() SessionStats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	failedIDs := make([]string, len(e.sessionFailedIDs))
+	copy(failedIDs, e.sessionFailedIDs)
+	return SessionStats{
+		Completed: e.sessionCompleted,
+		Failed:    e.sessionFailed,
+		Skipped:   e.sessionSkipped,
+		FailedIDs: failedIDs,
+	}
 }
 
 func statusPriority(status string) int {

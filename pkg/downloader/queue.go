@@ -205,6 +205,8 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 		if it, ok := e.downloads[itemID]; ok && it.Status == "downloading" {
 			it.Status = "failed"
 			it.Error = "descarga interrumpida inesperadamente"
+			e.sessionFailed++
+			e.sessionFailedIDs = append(e.sessionFailedIDs, itemID)
 		}
 
 		// Una tarea detenida al reducir el límite de concurrencia debe volver a
@@ -275,6 +277,7 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 			curItem.Progress = 100.0
 			curItem.Speed = "0 B/s"
 			curItem.UpdatedAt = float64(time.Now().Unix())
+			e.sessionSkipped++
 			cp = *curItem
 			e.mu.Unlock()
 			if e.storage != nil {
@@ -288,6 +291,8 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 		curItem.Status = "failed"
 		curItem.Error = err.Error()
 		curItem.Speed = "0 B/s"
+		e.sessionFailed++
+		e.sessionFailedIDs = append(e.sessionFailedIDs, itemID)
 
 		// Notificación de error: depende del mismo interruptor (bot del panel
 		// lateral) que el resumen de cola, no de uno propio.
@@ -299,6 +304,7 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 		curItem.Error = ""
 		curItem.Progress = 100.0
 		curItem.Speed = "0 B/s"
+		e.sessionCompleted++
 	}
 
 	curItem.UpdatedAt = float64(time.Now().Unix())

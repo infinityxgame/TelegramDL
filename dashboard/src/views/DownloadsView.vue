@@ -39,6 +39,17 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  // Descargas completadas y omitidas (por archivo ya existente) en esta
+  // sesión: las manda el servidor, que solo cuenta desde su arranque, así que
+  // no incluyen el historial restaurado.
+  sessionCompleted: {
+    type: Number,
+    default: 0
+  },
+  sessionSkipped: {
+    type: Number,
+    default: 0
   }
 })
 
@@ -190,14 +201,6 @@ const irAPagina = (pagina) => {
   paginaHistorial.value = Math.min(totalPaginas.value, Math.max(1, pagina))
 }
 
-const completedCount = computed(
-  () => props.downloads.filter((item) => item.status === 'completed').length
-)
-
-const skippedCount = computed(
-  () => props.downloads.filter((item) => item.status === 'skipped').length
-)
-
 // El estado llega del backend; si apareciera uno sin traducción (p. ej.
 // 'duplicate', que solo sirve para disparar el aviso y nunca se pinta) se
 // muestra el valor crudo en vez de la clave.
@@ -280,7 +283,7 @@ const allActivePaused = computed(() => {
         <span class="stat-icon green"><CheckCircle2 :size="19" /></span>
         <div>
           <span class="stat-label">{{ t('downloads.statCompleted') }}</span>
-          <strong>{{ completedCount }}</strong>
+          <strong>{{ sessionCompleted }}</strong>
           <small>{{ t('downloads.statCompletedSub') }}</small>
         </div>
       </div>
@@ -288,7 +291,7 @@ const allActivePaused = computed(() => {
         <span class="stat-icon gray"><FileCheck :size="19" /></span>
         <div>
           <span class="stat-label">{{ t('downloads.statSkipped') }}</span>
-          <strong>{{ skippedCount }}</strong>
+          <strong>{{ sessionSkipped }}</strong>
           <small>{{ t('downloads.statSkippedSub') }}</small>
         </div>
       </div>
