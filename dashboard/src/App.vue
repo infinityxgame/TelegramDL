@@ -738,7 +738,7 @@ const maybeNotifyQueueFinished = (currentDownloads) => {
 
 // ── Botones de notificación del sidebar ──
 // Cada botón invierte su ajuste; la bandera userChangingSidebar evita que un
-// snapshot del websocket devuelta el valor a lo que había justo antes del
+// snapshot del websocket devuelva el valor a lo que había justo antes del
 // autoguardado (ver syncSettings).
 const toggleSidebarSetting = (key) => {
   userChangingSidebar = true
@@ -747,6 +747,11 @@ const toggleSidebarSetting = (key) => {
     userChangingSidebar = false
   }, 1000)
 }
+
+// Los botones llevan solo el icono, así que el tooltip del hover es el único
+// sitio donde se leen el nombre del interruptor y su estado.
+const sidebarToggleTip = (label, on) =>
+  `${label} · ${on ? t('sidebar.stateOn') : t('sidebar.stateOff')}`
 
 // ── Apagado del equipo al terminar la cola ──
 // El ajuste viaja en settings.shutdown_when_done y lo guarda el watch de
@@ -1206,56 +1211,43 @@ onUnmounted(() => {
             </button>
           </nav>
 
-          <!-- Notificaciones: dos botones táctiles (sonido del programa y avisos
-               del bot). El sidebar no da para texto más switch en cada tarjeta,
-               así que la tarjeta entera es el botón y el color de acento marca
-               si está encendido. -->
-          <button
-            type="button"
-            class="sidebar-toggle"
-            :class="{ armed: settings.sound_notification }"
-            :title="
-              settings.sound_notification
-                ? t('sidebar.soundTipOn')
-                : t('sidebar.soundTipOff')
-            "
-            @click="toggleSidebarSetting('sound_notification')"
-          >
-            <Bell :size="15" />
-            <span class="sidebar-toggle-text">
-              <span class="sidebar-toggle-label">{{
-                t('sidebar.soundLabel')
-              }}</span>
-              <small class="sidebar-toggle-state">{{
-                settings.sound_notification
-                  ? t('sidebar.soundOn')
-                  : t('sidebar.soundOff')
-              }}</small>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="sidebar-toggle"
-            :class="{ armed: settings.bot_notifications }"
-            :title="
-              settings.bot_notifications
-                ? t('sidebar.botTipOn')
-                : t('sidebar.botTipOff')
-            "
-            @click="toggleSidebarSetting('bot_notifications')"
-          >
-            <Bot :size="15" />
-            <span class="sidebar-toggle-text">
-              <span class="sidebar-toggle-label">{{
-                t('sidebar.botLabel')
-              }}</span>
-              <small class="sidebar-toggle-state">{{
-                settings.bot_notifications
-                  ? t('sidebar.botOn')
-                  : t('sidebar.botOff')
-              }}</small>
-            </span>
-          </button>
+          <!-- Notificaciones: dos botones de solo icono, uno junto al otro (el
+               sidebar no da para texto). El hover explica qué es cada uno y en
+               qué estado está, y el color de acento marca el encendido. -->
+          <div class="sidebar-notifications">
+            <button
+              type="button"
+              class="sidebar-toggle"
+              :class="{ armed: settings.sound_notification }"
+              :title="
+                sidebarToggleTip(
+                  t('sidebar.soundLabel'),
+                  settings.sound_notification
+                )
+              "
+              :aria-label="t('sidebar.soundLabel')"
+              :aria-pressed="settings.sound_notification"
+              @click="toggleSidebarSetting('sound_notification')"
+            >
+              <Bell :size="16" />
+            </button>
+            <button
+              type="button"
+              class="sidebar-toggle"
+              :class="{ armed: settings.bot_notifications }"
+              :title="
+                sidebarToggleTip(
+                  t('sidebar.botLabel'),
+                  settings.bot_notifications
+                )
+              "
+              :aria-label="t('sidebar.botLabel')"
+              :aria-pressed="settings.bot_notifications"
+              @click="toggleSidebarSetting('bot_notifications')"
+            >
+              <Bot :size="16" />
+            </button>
+          </div>
 
           <div
             class="sidebar-shutdown"
@@ -2020,23 +2012,25 @@ onUnmounted(() => {
   color: #fbbf24;
   animation: pulseWarning 1s infinite;
 }
-/* Botones de notificación: la tarjeta entera es el interruptor (el sidebar no
-   da para texto + switch en las dos). Apagada queda tenue; encendida toma el
-   color de acento, como la tarjeta de apagado armada. */
+/* Botones de notificación: solo icono y uno junto al otro, porque el hueco no
+   da para más. Apagado queda tenue; encendido toma el color de acento, como la
+   tarjeta de apagado armada. El tooltip (title) dice qué es y si está activo. */
+.sidebar-notifications {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
 .sidebar-toggle {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  justify-content: center;
+  padding: 9px 0;
   background: var(--user-bg-base);
   border: 1px solid var(--user-border);
   border-radius: 10px;
-  padding: 8px 10px;
-  margin-bottom: 14px;
-  font: 600 12px 'DM Sans';
   color: var(--user-text-dim);
   cursor: pointer;
-  text-align: left;
   transition:
     border-color 0.25s,
     box-shadow 0.25s,
@@ -2049,20 +2043,10 @@ onUnmounted(() => {
   border-color: var(--user-primary);
   color: var(--user-primary);
 }
-.sidebar-toggle-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.sidebar-toggle-label {
-  line-height: 1.25;
-  white-space: normal;
-}
-.sidebar-toggle-state {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--user-text-dim);
-  line-height: 1.3;
+.sidebar-toggle:focus-visible {
+  outline: none;
+  border-color: var(--user-primary);
+  box-shadow: 0 0 0 3px var(--user-glow);
 }
 .sidebar-user-badge .user-info {
   display: flex;

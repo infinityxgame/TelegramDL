@@ -1520,6 +1520,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.OrganizeByChat = b
 		}
 	}
+	if v, ok := raw["sound_notification"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.SoundNotification = b
+		}
+	}
 	if v, ok := raw["shutdown_when_done"]; ok && v != nil {
 		if b, ok := v.(bool); ok {
 			cfg.ShutdownWhenDone = b
