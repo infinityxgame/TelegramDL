@@ -80,9 +80,12 @@ func (e *Engine) QueueItem(item storage.DownloadItem) string {
 	item.Status = "queued"
 	e.queuedIDs[item.ID] = true
 	delete(e.forceDuplicate, item.ID)
-	// Usar mayor precisión para evitar colisiones en CreatedAt durante bucles rápidos (rangos)
-	item.CreatedAt = float64(time.Now().UnixNano()) / 1e9
-	item.UpdatedAt = item.CreatedAt
+	// Preservar CreatedAt si ya viene fijado (por ejemplo, al reordenar la escucha)
+	nowNano := float64(time.Now().UnixNano()) / 1e9
+	if item.CreatedAt <= 0 {
+		item.CreatedAt = nowNano
+	}
+	item.UpdatedAt = nowNano
 
 	e.downloads[item.ID] = &item
 	e.chatMsgMap[key] = item.ID
@@ -357,15 +360,15 @@ func (e *Engine) isNextInQueue(itemID string) bool {
 }
 
 func (e *Engine) shouldGoBefore(a, b *storage.DownloadItem) bool {
-	// 1. Mismo JobID (rango): priorizar MessageID
+	// 1. Tiempo de creación (si son distintos, la fecha/orden explícito manda)
+	if a.CreatedAt != b.CreatedAt {
+		return a.CreatedAt < b.CreatedAt
+	}
+	// 2. Mismo JobID (rango con la misma fecha de creación): priorizar MessageID
 	if a.JobID != "" && a.JobID == b.JobID {
 		if a.MessageID != b.MessageID {
 			return a.MessageID < b.MessageID
 		}
-	}
-	// 2. Tiempo de creación
-	if a.CreatedAt != b.CreatedAt {
-		return a.CreatedAt < b.CreatedAt
 	}
 	// 3. Tie-breaker final: MessageID
 	return a.MessageID < b.MessageID

@@ -955,6 +955,14 @@ func (s *Storage) UpdateDownloadFileName(id string, newFileName string) error {
 	return err
 }
 
+func (s *Storage) UpdateDownloadCreatedAt(id string, createdAt float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("UPDATE downloads SET created_at=? WHERE id=?", createdAt, id)
+	return err
+}
+
 func (s *Storage) Chunks(downloadID string) (map[int64]bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

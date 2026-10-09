@@ -6,6 +6,7 @@ import {
   Folder,
   Image,
   Inbox,
+  Menu,
   MessageCircle,
   Music,
   Plus,
@@ -96,11 +97,69 @@ watch(
 watch(
   () => props.initialItems,
   async (newItems) => {
+    if (draggedIndex.value !== null) return
     items.value = newItems
     await applyAutomaticNamesAll()
   },
   { deep: true }
 )
+
+const draggedIndex = ref(null)
+const dragOverIndex = ref(null)
+
+const onDragStart = (index, event) => {
+  draggedIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+const onDragOver = (index, event) => {
+  event.preventDefault()
+  if (draggedIndex.value === null) return
+  dragOverIndex.value = index
+}
+
+const onDragLeave = (index) => {
+  if (dragOverIndex.value === index) {
+    dragOverIndex.value = null
+  }
+}
+
+const onDrop = async (targetIndex) => {
+  const sourceIndex = draggedIndex.value
+  draggedIndex.value = null
+  dragOverIndex.value = null
+
+  if (
+    sourceIndex === null ||
+    sourceIndex === undefined ||
+    sourceIndex === targetIndex
+  ) {
+    return
+  }
+
+  const updatedItems = [...items.value]
+  const [movedItem] = updatedItems.splice(sourceIndex, 1)
+  updatedItems.splice(targetIndex, 0, movedItem)
+  items.value = updatedItems
+
+  try {
+    await api('/api/listener/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: items.value.map((i) => i.id) })
+    })
+  } catch (err) {
+    console.error('Error guardando orden:', err)
+  }
+}
+
+const onDragEnd = () => {
+  draggedIndex.value = null
+  dragOverIndex.value = null
+}
 
 // Una entrada de escucha se identifica por el grupo Y el tema: el mismo grupo
 // puede aparecer varias veces, una por cada tema vigilado.
@@ -173,7 +232,7 @@ const api = async (url, options = {}) => {
 }
 
 const load = async () => {
-  if (saving.value || disposed) return
+  if (saving.value || disposed || draggedIndex.value !== null) return
   try {
     const [settings, detected] = await Promise.all([
       api('/api/listener/settings'),
@@ -993,7 +1052,27 @@ onUnmounted(() => {
           <p>{{ t('listener.emptyTitle') }}</p>
           <small>{{ t('listener.emptySub') }}</small>
         </div>
-        <div v-for="item in items" :key="item.id" class="listener-item">
+        <div
+          v-for="(item, index) in items"
+          :key="item.id"
+          class="listener-item"
+          :class="{
+            'is-dragging': draggedIndex === index,
+            'is-drag-over': dragOverIndex === index
+          }"
+          @dragover="onDragOver(index, $event)"
+          @dragleave="onDragLeave(index)"
+          @drop="onDrop(index)"
+        >
+          <div
+            class="drag-handle"
+            draggable="true"
+            :title="t('listener.reorderTip')"
+            @dragstart="onDragStart(index, $event)"
+            @dragend="onDragEnd"
+          >
+            <Menu :size="14" />
+          </div>
           <div
             class="file-symbol"
             :class="mediaMeta(getMediaKind(item)).class"
@@ -1324,9 +1403,47 @@ onUnmounted(() => {
   border-top: 1px solid var(--user-border);
   padding: 13px 0;
   position: relative;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
 }
 .listener-item.menu-open {
   z-index: 50;
+}
+.listener-item.is-dragging {
+  opacity: 0.35;
+}
+.listener-item.is-drag-over {
+  border-top: 2px solid var(--user-primary);
+  background: rgba(56, 189, 248, 0.05);
+}
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--user-text-dim);
+  cursor: grab;
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease;
+  user-select: none;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+.listener-item:hover .drag-handle {
+  opacity: 1;
+}
+.drag-handle:hover {
+  color: var(--user-accent);
+  background: var(--user-surface-light);
+}
+.drag-handle:active {
+  cursor: grabbing;
 }
 .file-info {
   flex: 1;

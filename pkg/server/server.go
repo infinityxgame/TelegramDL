@@ -607,6 +607,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/listener/topics", s.handleListenerTopics)
 	mux.HandleFunc("/api/listener/topics/", s.handleListenerTopics)
 	mux.HandleFunc("/api/listener/update-filename", s.handleListenerUpdateFilename)
+	mux.HandleFunc("/api/listener/reorder", s.handleListenerReorder)
 
 	// Registro de actividad (vista de logs en vivo)
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -1966,6 +1967,22 @@ func (s *Server) handleListenerClear(w http.ResponseWriter, r *http.Request) {
 	removed := len(s.listener.GetItems())
 	s.listener.ClearItems()
 	logbus.Warn(logbus.CatListener, i18n.T("listener.trayCleared", removed), "")
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleListenerReorder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, "Método no permitido")
+		return
+	}
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+	s.listener.ReorderItems(body.IDs)
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

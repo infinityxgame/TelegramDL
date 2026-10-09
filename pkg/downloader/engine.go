@@ -282,14 +282,14 @@ func (e *Engine) GetDownloads() []storage.DownloadItem {
 		}
 		// Para activos/en cola (prioridad >= 2), orden de creación ascendente
 		if sI >= 2 {
-			// Para rangos (mismo JobID), priorizar MessageID para asegurar el orden
+			if res[i].CreatedAt != res[j].CreatedAt {
+				return res[i].CreatedAt < res[j].CreatedAt
+			}
+			// Para rangos (mismo JobID con la misma fecha), priorizar MessageID
 			if res[i].JobID != "" && res[i].JobID == res[j].JobID {
 				if res[i].MessageID != res[j].MessageID {
 					return res[i].MessageID < res[j].MessageID
 				}
-			}
-			if res[i].CreatedAt != res[j].CreatedAt {
-				return res[i].CreatedAt < res[j].CreatedAt
 			}
 			return res[i].MessageID < res[j].MessageID
 		} else {

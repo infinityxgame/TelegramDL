@@ -180,6 +180,7 @@ export default {
     downloadAll: 'Todo',
     clearListTip: 'Limpiar lista completa',
     clearList: 'Limpiar',
+    reorderTip: 'Arrastrar para reordenar',
     emptyChats: 'No hay chats configurados.',
     emptyTitle: 'Aún no se detectó multimedia',
     emptySub: 'Deja esta vista abierta o vuelve cuando llegue un archivo.',

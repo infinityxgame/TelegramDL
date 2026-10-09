@@ -178,6 +178,7 @@ export default {
     downloadAll: 'All',
     clearListTip: 'Clear the whole list',
     clearList: 'Clear',
+    reorderTip: 'Drag to reorder',
     emptyChats: 'No chats configured.',
     emptyTitle: 'No media detected yet',
     emptySub: 'Leave this view open or come back when a file arrives.',

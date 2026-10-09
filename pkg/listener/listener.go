@@ -809,6 +809,12 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 			TopicName: item.TopicName,
 		})
 
+		now := float64(time.Now().UnixNano()) / 1e9
+		created := item.CreatedAt
+		if created <= 0 {
+			created = now
+		}
+
 		dlItem := storage.DownloadItem{
 			ID:               item.ID,
 			JobID:            fmt.Sprintf("listener:%d", item.ChatID),
@@ -823,8 +829,8 @@ func (le *ListenerEngine) DownloadItem(itemID string) error {
 			TotalBytes:       item.TotalBytes,
 			SubFolder:        item.SubFolder,
 			Source:           "listener",
-			CreatedAt:        float64(time.Now().Unix()),
-			UpdatedAt:        float64(time.Now().Unix()),
+			CreatedAt:        created,
+			UpdatedAt:        now,
 		}
 
 		if le.storage != nil {
@@ -932,6 +938,41 @@ func (le *ListenerEngine) ClearItems() {
 		}
 	}
 	le.notifyState(ListenerItem{})
+}
+
+func (le *ListenerEngine) ReorderItems(ids []string) {
+	le.mu.Lock()
+	defer le.mu.Unlock()
+
+	if len(ids) == 0 {
+		return
+	}
+
+	var minCreated float64 = 0
+	first := true
+	for _, id := range ids {
+		if item, ok := le.items[id]; ok {
+			if first || item.CreatedAt < minCreated {
+				minCreated = item.CreatedAt
+				first = false
+			}
+		}
+	}
+	if minCreated <= 0 {
+		minCreated = float64(time.Now().Unix()) - float64(len(ids)*10)
+	}
+
+	now := float64(time.Now().Unix())
+	for i, id := range ids {
+		if item, ok := le.items[id]; ok {
+			newCreated := minCreated + float64(i)*0.01
+			item.CreatedAt = newCreated
+			item.UpdatedAt = now
+			if le.storage != nil {
+				_ = le.storage.UpdateDownloadCreatedAt(id, newCreated)
+			}
+		}
+	}
 }
 
 type ResolvedChatInfo struct {
