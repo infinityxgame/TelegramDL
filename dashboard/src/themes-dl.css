@@ -1605,6 +1605,8 @@ html.tema-claro .hero-card h2,
 html.tema-claro .stat-card strong,
 html.tema-claro .panel-heading h2,
 html.tema-claro .setting-label,
+html.tema-claro .accordion-header,
+html.tema-claro .notif-label,
 html.tema-claro .sidebar-user-badge,
 html.tema-claro .retry-button:hover,
 html.tema-claro .download-form input,
@@ -2317,10 +2319,18 @@ html.tema-silent-cherry .update-required-overlay {
 }
 
 /* --- Ajustes --- */
-html.tema-silent-cherry .ajuste-cabecera {
-  color: var(--claro-tinta);
+/* El icono de cada apartado va en el rosa pastel del acento y sobre el papel
+   claro apenas se lee: pasa al rosa oscuro del tema, el mismo de los enlaces
+   y del apagado armado. El texto de la cabecera (blanco azulado fijo) lo
+   corrige el bloque común de fondo claro. */
+html.tema-silent-cherry .accordion-icon {
+  color: var(--claro-alerta);
 }
-html.tema-silent-cherry .ajuste-icono {
+
+/* Campana y bot del sidebar encendidos: el rosa pastel del acento no se lee
+   sobre el papel claro del sidebar, así que el icono activo va en el rosa
+   oscuro, igual que la tarjeta de apagado armada. */
+html.tema-silent-cherry .sidebar-toggle.armed {
   color: var(--claro-alerta);
 }
 
