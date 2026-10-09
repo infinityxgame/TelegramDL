@@ -1,13 +1,29 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ChevronRight } from '../icons'
 
-defineProps({
+const props = defineProps({
   title: { type: String, required: true },
-  description: { type: String, default: '' }
+  description: { type: String, default: '' },
+  // Con v-model el acordeón entra en modo controlado: quien lo usa decide
+  // cuándo está abierto (Ajustes lo usa para que al abrir uno se cierren los
+  // demás). Sin v-model, cada acordeón recuerda su propio estado. El
+  // `default: undefined` desactiva la conversión automática de Boolean y es
+  // lo que permite distinguir "no lo pasaron" de "false".
+  modelValue: { type: Boolean, default: undefined }
 })
 
-const isOpen = ref(false)
+const emit = defineEmits(['update:modelValue'])
+
+const isOpenLocal = ref(false)
+const isOpen = computed(() =>
+  props.modelValue === undefined ? isOpenLocal.value : props.modelValue
+)
+
+const toggle = () => {
+  if (props.modelValue === undefined) isOpenLocal.value = !isOpenLocal.value
+  emit('update:modelValue', !isOpen.value)
+}
 </script>
 
 <template>
@@ -16,7 +32,7 @@ const isOpen = ref(false)
       type="button"
       class="accordion-header"
       :aria-expanded="isOpen"
-      @click="isOpen = !isOpen"
+      @click="toggle"
     >
       <span class="accordion-icon">
         <slot name="icon"></slot>

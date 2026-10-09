@@ -75,6 +75,10 @@ const emit = defineEmits([
 // padre lo aplica, lo que dispara su autoguardado como antes.
 const patch = (partial) => emit('update:settings', partial)
 
+// Apartado de Ajustes abierto. Solo puede haber uno: abrir un acordeón cierra
+// el que ya estaba, como hacía el menú antiguo antes del componente.
+const openSection = ref('')
+
 const showToken = ref(false)
 // Estado del botón de copiar ('' = normal, 'ok', 'fail'): la etiqueta se deriva
 // así sigue la traducción si el idioma cambia mientras el aviso está en pantalla.
@@ -365,6 +369,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.downloadsTitle')"
             :description="t('settings.downloadsSub')"
+            :model-value="openSection === 'downloads'"
+            @update:model-value="openSection = $event ? 'downloads' : ''"
           >
             <template #icon>
               <ArrowDownToLine :size="15" />
@@ -496,6 +502,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.themesTitle')"
             :description="t('settings.themesSub')"
+            :model-value="openSection === 'themes'"
+            @update:model-value="openSection = $event ? 'themes' : ''"
           >
             <template #icon>
               <Palette :size="15" />
@@ -667,6 +675,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.langTitle')"
             :description="t('settings.langSub')"
+            :model-value="openSection === 'language'"
+            @update:model-value="openSection = $event ? 'language' : ''"
           >
             <template #icon>
               <Languages :size="15" />
@@ -698,6 +708,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.remoteTitle')"
             :description="t('settings.remoteSub')"
+            :model-value="openSection === 'remote'"
+            @update:model-value="openSection = $event ? 'remote' : ''"
           >
             <template #icon>
               <KeyRound :size="15" />
@@ -758,6 +770,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.notificationsTitle')"
             :description="t('settings.notificationsSub')"
+            :model-value="openSection === 'notifications'"
+            @update:model-value="openSection = $event ? 'notifications' : ''"
           >
             <template #icon>
               <Bell :size="15" />
@@ -940,6 +954,8 @@ const sendTestNotification = async () => {
           <AppAccordion
             :title="t('settings.dataTitle')"
             :description="t('settings.dataSub')"
+            :model-value="openSection === 'data'"
+            @update:model-value="openSection = $event ? 'data' : ''"
           >
             <template #icon>
               <HardDrive :size="15" />
