@@ -84,14 +84,14 @@ const compareDownloads = (a, b) => {
 
   // Para Activos/En cola (prioridad >= 2), orden de creación ascendente
   if (sA >= 2) {
-    // Priorizar MessageID si son del mismo Job (rango)
+    if ((a.created_at || 0) !== (b.created_at || 0)) {
+      return (a.created_at || 0) - (b.created_at || 0)
+    }
+    // Para rangos (mismo JobID con la misma fecha), priorizar MessageID
     if (a.job_id && a.job_id === b.job_id) {
       if (a.message_id !== b.message_id) {
         return (a.message_id || 0) - (b.message_id || 0)
       }
-    }
-    if ((a.created_at || 0) !== (b.created_at || 0)) {
-      return (a.created_at || 0) - (b.created_at || 0)
     }
     // Desempate por MessageID para rangos
     return (a.message_id || 0) - (b.message_id || 0)
