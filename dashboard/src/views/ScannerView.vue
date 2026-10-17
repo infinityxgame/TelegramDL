@@ -10,8 +10,10 @@ import {
   Music,
   Search,
   Settings2,
+  Star,
   Trash2,
-  Video
+  Video,
+  X
 } from '../icons'
 import { useAuthToken } from '../composables/useAuthToken'
 import { useI18n } from '../i18n'
@@ -82,6 +84,74 @@ const downloadingBatch = ref(false)
 const nameSelectionMenus = ref({})
 const bulkNameMenuOpen = ref(false)
 
+// Chats recientes consultados en la BD
+const recentsOpen = ref(false)
+const recentChats = ref([])
+const loadingRecents = ref(false)
+
+const fetchRecents = async () => {
+  try {
+    loadingRecents.value = true
+    const data = await api('/api/scanner/recents')
+    recentChats.value = Array.isArray(data) ? data : []
+  } catch (err) {
+    console.error('Error cargando chats recientes:', err)
+  } finally {
+    loadingRecents.value = false
+  }
+}
+
+const toggleRecentsModal = () => {
+  recentsOpen.value = !recentsOpen.value
+  if (recentsOpen.value) {
+    fetchRecents()
+  }
+}
+
+const selectRecentChat = (chat) => {
+  target.value = chat.username
+    ? '@' + chat.username
+    : chat.target || String(chat.chat_id)
+  recentsOpen.value = false
+}
+
+const toggleFavoriteRecent = async (chat) => {
+  try {
+    const newFav = !chat.is_favorite
+    chat.is_favorite = newFav
+    await api('/api/scanner/recents/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: chat.id, is_favorite: newFav })
+    })
+    await fetchRecents()
+  } catch (err) {
+    props.notify(err.message || t('common.serverError'), 'danger')
+  }
+}
+
+const deleteRecentChat = async (chat) => {
+  try {
+    await api('/api/scanner/recents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: chat.id })
+    })
+    recentChats.value = recentChats.value.filter((item) => item.id !== chat.id)
+  } catch (err) {
+    props.notify(err.message || t('common.serverError'), 'danger')
+  }
+}
+
+const clearAllNonFavorites = async () => {
+  try {
+    await api('/api/scanner/recents/clear', { method: 'POST' })
+    recentChats.value = recentChats.value.filter((item) => item.is_favorite)
+  } catch (err) {
+    props.notify(err.message || t('common.serverError'), 'danger')
+  }
+}
+
 // Paginación de resultados idéntica al historial de descargas
 const PAGE_SIZES = [10, 25, 50, 100]
 const pageSize = ref(25)
@@ -117,6 +187,8 @@ const onSearch = async () => {
     error.value = t('scanner.targetPlaceholder')
     return
   }
+
+  recentsOpen.value = false
 
   error.value = ''
   loading.value = true
@@ -157,6 +229,7 @@ const onSearch = async () => {
     if (rawResults.value.length === 0) {
       props.notify(t('scanner.noResults'), 'info')
     }
+    fetchRecents()
   } catch (err) {
     error.value = err.message || t('scanner.searchError')
     props.notify(error.value, 'danger')
@@ -188,6 +261,7 @@ const onResetFilters = () => {
   currentPage.value = 1
   nameSelectionMenus.value = {}
   bulkNameMenuOpen.value = false
+  recentsOpen.value = false
   sortKey.value = 'date'
   sortOrder.value = 'desc'
 }
@@ -367,6 +441,7 @@ const onWindowClick = () => {
 
 onMounted(() => {
   window.addEventListener('click', onWindowClick)
+  fetchRecents()
 })
 
 onUnmounted(() => {
@@ -459,6 +534,17 @@ const getKindIcon = (kind) => {
         >
           <Trash2 :size="15" />
           <span>{{ t('scanner.clearFilters') }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="clear-history-button history-button recents-btn"
+          :class="{ active: recentsOpen }"
+          :title="t('scanner.viewRecents')"
+          @click="toggleRecentsModal"
+        >
+          <Clock3 :size="15" />
+          <span>{{ t('scanner.viewRecents') }}</span>
         </button>
       </div>
 
@@ -556,6 +642,90 @@ const getKindIcon = (kind) => {
 
       <div v-if="error" class="scanner-error">
         <AlertCircle :size="14" /> {{ error }}
+      </div>
+    </section>
+
+    <!-- Card de Chats Recientes (debajo del panel de filtros) -->
+    <section v-if="recentsOpen" class="panel scanner-recents-panel">
+      <div class="panel-heading recents-card-heading">
+        <div class="recents-heading-left">
+          <Clock3 :size="16" class="icon-accent" />
+          <h2>{{ t('scanner.recentsTitle') }}</h2>
+        </div>
+
+        <div class="recents-card-actions">
+          <button
+            v-if="recentChats.length > 0"
+            type="button"
+            class="clear-recents-btn"
+            :title="t('scanner.clearRecents')"
+            @click="clearAllNonFavorites"
+          >
+            <Trash2 :size="14" />
+            <span>{{ t('scanner.clearRecents') }}</span>
+          </button>
+
+          <button
+            type="button"
+            class="close-recents-card-btn"
+            @click="recentsOpen = false"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+      </div>
+
+      <div v-if="loadingRecents" class="recents-loading">
+        <Loader2 :size="18" class="spin icon-accent" />
+      </div>
+
+      <div v-else-if="recentChats.length === 0" class="recents-empty">
+        {{ t('scanner.noRecents') }}
+      </div>
+
+      <div v-else class="recents-card-grid">
+        <div
+          v-for="chat in recentChats"
+          :key="chat.id"
+          class="recent-card-item"
+          @click="selectRecentChat(chat)"
+        >
+          <button
+            type="button"
+            class="star-btn"
+            :class="{ starred: chat.is_favorite }"
+            :title="
+              chat.is_favorite
+                ? t('scanner.unfavoriteRecent')
+                : t('scanner.favoriteRecent')
+            "
+            @click.stop="toggleFavoriteRecent(chat)"
+          >
+            <Star :size="15" />
+          </button>
+
+          <div class="chat-info">
+            <strong class="chat-title" :title="chat.chat_name">{{
+              chat.chat_name
+            }}</strong>
+            <small class="chat-sub">
+              <template v-if="chat.username">@{{ chat.username }}</template>
+              <template v-else-if="chat.chat_id"
+                >ID: {{ chat.chat_id }}</template
+              >
+              <template v-else>{{ chat.target }}</template>
+            </small>
+          </div>
+
+          <button
+            type="button"
+            class="trash-btn"
+            :title="t('scanner.deleteRecent')"
+            @click.stop="deleteRecentChat(chat)"
+          >
+            <Trash2 :size="14" />
+          </button>
+        </div>
       </div>
     </section>
 
@@ -983,6 +1153,224 @@ html.theme-light
   white-space: nowrap !important;
   flex-shrink: 0 !important;
   box-sizing: border-box !important;
+}
+
+.recents-btn.clear-history-button {
+  width: auto !important;
+  margin-top: 0 !important;
+  height: 42px !important;
+  padding: 0 18px !important;
+  font-size: 13px !important;
+  border-radius: 12px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.recents-btn.clear-history-button.active {
+  border-color: var(--user-primary) !important;
+  background: var(--user-surface-light) !important;
+  color: var(--user-primary) !important;
+}
+
+.scanner-recents-panel {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+.recents-card-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 12px !important;
+  border-bottom: 1px solid var(--user-border) !important;
+}
+
+.recents-heading-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.recents-heading-left h2 {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: var(--user-text-main, #dbe7f5) !important;
+  margin: 0 !important;
+}
+
+.recents-card-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.clear-recents-btn {
+  height: 32px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  color: #f87171 !important;
+  transition: all 0.2s ease !important;
+}
+
+.clear-recents-btn:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: #ef4444 !important;
+}
+
+.close-recents-card-btn {
+  background: transparent !important;
+  border: 1px solid var(--user-border-light) !important;
+  color: var(--user-text-dim, #94a8bc) !important;
+  cursor: pointer !important;
+  padding: 6px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s ease !important;
+}
+
+.close-recents-card-btn:hover {
+  color: var(--user-text-main, #dbe7f5) !important;
+  border-color: var(--user-primary) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.recents-loading,
+.recents-empty {
+  padding: 20px 8px !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  color: var(--user-text-dim, #94a8bc) !important;
+}
+
+.recents-card-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  gap: 12px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+  padding: 4px !important;
+}
+
+.recent-card-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  border-radius: 10px !important;
+  background: var(--user-bg-base) !important;
+  border: 1px solid var(--user-border-light) !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.recent-card-item:hover {
+  border-color: var(--user-primary) !important;
+  background: var(--user-surface-light) !important;
+}
+
+.star-btn {
+  background: transparent !important;
+  border: none !important;
+  color: var(--user-text-dim, #94a8bc) !important;
+  cursor: pointer !important;
+  padding: 4px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s ease !important;
+}
+
+.star-btn:hover,
+.star-btn.starred {
+  color: #f59e0b !important;
+}
+
+.star-btn.starred svg {
+  fill: #f59e0b !important;
+}
+
+.chat-info {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.chat-title {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--user-text-main, #dbe7f5) !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  display: block !important;
+}
+
+.chat-sub {
+  font-size: 10px !important;
+  color: var(--user-text-dim, #94a8bc) !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  display: block !important;
+}
+
+.trash-btn {
+  background: transparent !important;
+  border: none !important;
+  color: var(--user-text-dim, #94a8bc) !important;
+  cursor: pointer !important;
+  padding: 4px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s ease !important;
+}
+
+.trash-btn:hover {
+  color: #ef4444 !important;
+}
+
+html.theme-light .scanner-recents-panel {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, rgba(0, 0, 0, 0.15)) !important;
+}
+
+html.theme-light .recents-heading-left h2 {
+  color: #0f172a !important;
+}
+
+html.theme-light .recent-card-item {
+  background: var(--light-surface, #ffffff) !important;
+  border-color: var(--light-border, rgba(0, 0, 0, 0.15)) !important;
+}
+
+html.theme-light .chat-title {
+  color: #0f172a !important;
+}
+
+html.theme-light .chat-sub {
+  color: var(--light-text-dim, #64748b) !important;
 }
 
 /* Fila 2: Filtros por Tipo + Fechas Inicio/Fin + Tamaños Mínimo/Máximo en la misma línea */

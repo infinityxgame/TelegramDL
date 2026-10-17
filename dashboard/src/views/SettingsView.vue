@@ -4,7 +4,6 @@ import {
   Settings2,
   Zap,
   Trash2,
-  Save,
   Copy,
   Eye,
   EyeOff,

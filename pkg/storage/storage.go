@@ -158,6 +158,18 @@ func (s *Storage) initSchema() error {
 		PRIMARY KEY(download_id, chunk_index),
 		FOREIGN KEY(download_id) REFERENCES downloads(id) ON DELETE CASCADE
 	);
+
+	CREATE TABLE IF NOT EXISTS scanner_recent_chats (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		target TEXT NOT NULL,
+		chat_id INTEGER NOT NULL DEFAULT 0,
+		chat_name TEXT NOT NULL,
+		username TEXT NOT NULL DEFAULT '',
+		is_favorite INTEGER NOT NULL DEFAULT 0,
+		updated_at REAL NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scanner_recent_updated ON scanner_recent_chats(updated_at DESC);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -1129,3 +1141,139 @@ func (s *Storage) deleteFinishedAndOrphanChunks() (int64, error) {
 
 	return rows, nil
 }
+
+type RecentChat struct {
+	ID         int64   `json:"id"`
+	Target     string  `json:"target"`
+	ChatID     int64   `json:"chat_id"`
+	ChatName   string  `json:"chat_name"`
+	Username   string  `json:"username"`
+	IsFavorite bool    `json:"is_favorite"`
+	UpdatedAt  float64 `json:"updated_at"`
+}
+
+// SaveRecentChat guarda o actualiza un chat consultado en el escáner histórico.
+func (s *Storage) SaveRecentChat(target string, chatID int64, chatName string, username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target = strings.TrimSpace(target)
+	chatName = strings.TrimSpace(chatName)
+	username = strings.TrimSpace(username)
+	if target == "" && chatName == "" {
+		return nil
+	}
+
+	now := float64(time.Now().UnixNano()) / 1e9
+
+	var existingID int64
+	var err error
+
+	if chatID != 0 {
+		err = s.db.QueryRow("SELECT id FROM scanner_recent_chats WHERE chat_id = ?", chatID).Scan(&existingID)
+	} else {
+		err = s.db.QueryRow("SELECT id FROM scanner_recent_chats WHERE LOWER(target) = LOWER(?)", target).Scan(&existingID)
+	}
+
+	if err == nil && existingID > 0 {
+		_, updateErr := s.db.Exec(`
+			UPDATE scanner_recent_chats
+			SET target = ?, chat_name = ?, username = ?, updated_at = ?
+			WHERE id = ?
+		`, target, chatName, username, now, existingID)
+		if updateErr != nil {
+			return fmt.Errorf("error actualizando chat reciente: %w", updateErr)
+		}
+	} else {
+		_, insertErr := s.db.Exec(`
+			INSERT INTO scanner_recent_chats (target, chat_id, chat_name, username, is_favorite, updated_at)
+			VALUES (?, ?, ?, ?, 0, ?)
+		`, target, chatID, chatName, username, now)
+		if insertErr != nil {
+			return fmt.Errorf("error guardando chat reciente: %w", insertErr)
+		}
+	}
+
+	_, _ = s.db.Exec(`
+		DELETE FROM scanner_recent_chats
+		WHERE is_favorite = 0 AND id NOT IN (
+			SELECT id FROM scanner_recent_chats
+			WHERE is_favorite = 0
+			ORDER BY updated_at DESC
+			LIMIT 50
+		)
+	`)
+
+	return nil
+}
+
+// GetRecentChats devuelve la lista de chats recientes ordenados por favoritos y fecha.
+func (s *Storage) GetRecentChats() ([]RecentChat, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query(`
+		SELECT id, target, chat_id, chat_name, username, is_favorite, updated_at
+		FROM scanner_recent_chats
+		ORDER BY is_favorite DESC, updated_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("error consultando chats recientes: %w", err)
+	}
+	defer rows.Close()
+
+	recents := make([]RecentChat, 0)
+	for rows.Next() {
+		var item RecentChat
+		var isFav int
+		if err := rows.Scan(&item.ID, &item.Target, &item.ChatID, &item.ChatName, &item.Username, &isFav, &item.UpdatedAt); err != nil {
+			continue
+		}
+		item.IsFavorite = (isFav != 0)
+		recents = append(recents, item)
+	}
+
+	return recents, nil
+}
+
+// ToggleRecentChatFavorite marca o desmarca un chat reciente como favorito.
+func (s *Storage) ToggleRecentChatFavorite(id int64, isFavorite bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	favVal := 0
+	if isFavorite {
+		favVal = 1
+	}
+
+	_, err := s.db.Exec("UPDATE scanner_recent_chats SET is_favorite = ? WHERE id = ?", favVal, id)
+	if err != nil {
+		return fmt.Errorf("error cambiando favorito en chat reciente: %w", err)
+	}
+	return nil
+}
+
+// DeleteRecentChat elimina un chat reciente.
+func (s *Storage) DeleteRecentChat(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM scanner_recent_chats WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("error eliminando chat reciente: %w", err)
+	}
+	return nil
+}
+
+// ClearRecentChats elimina todos los chats recientes que NO estén marcados como favoritos.
+func (s *Storage) ClearRecentChats() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM scanner_recent_chats WHERE is_favorite = 0")
+	if err != nil {
+		return fmt.Errorf("error limpiando historial de chats recientes: %w", err)
+	}
+	return nil
+}
+

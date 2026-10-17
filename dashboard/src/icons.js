@@ -56,6 +56,7 @@ import {
   Search01Icon,
   Settings02Icon,
   ShieldCheckIcon,
+  StarIcon,
   Delete02Icon,
   Upload01Icon,
   UserCheck01Icon,
@@ -131,6 +132,7 @@ export const Search = icon(Search01Icon) // buscar dentro del registro
 export const Send = icon(DeliverySent02Icon) // enviar el token a Telegram
 export const Settings2 = icon(Settings02Icon) // entrada "Ajustes" del menú
 export const ShieldCheck = icon(ShieldCheckIcon) // verificación en dos pasos
+export const Star = icon(StarIcon) // marcar favorito
 export const Trash2 = icon(Delete02Icon) // eliminar
 export const Upload = icon(Upload01Icon) // subida
 export const UserCheck = icon(UserCheck01Icon) // usuario con sesión iniciada

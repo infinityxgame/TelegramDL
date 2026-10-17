@@ -81,6 +81,7 @@ type ClientManager struct {
 	channelAccessHashes  map[int64]int64
 	userAccessHashes     map[int64]int64
 	chatNames            map[int64]string
+	chatUsernames        map[int64]string
 	onGenericMessage     func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
 }
 
@@ -352,12 +353,28 @@ func (cm *ClientManager) GetChatName(peerID int64) string {
 	return cm.chatNames[peerID]
 }
 
+// GetChatUsername devuelve el nombre de usuario (@username) cacheado de un chat a partir de su ID
+func (cm *ClientManager) GetChatUsername(peerID int64) string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.chatUsernames[peerID]
+}
+
 // RememberChatName permite a otros componentes alimentar la caché de nombres
 // (por ejemplo, la escucha cuando resuelve un chat vigilado).
 func (cm *ClientManager) RememberChatName(peerID int64, name string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	boundedNameSet(cm.chatNames, peerID, name)
+}
+
+// RememberChatUsername permite a otros componentes alimentar la caché de usernames
+func (cm *ClientManager) RememberChatUsername(peerID int64, username string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if username != "" {
+		boundedNameSet(cm.chatUsernames, peerID, strings.TrimPrefix(username, "@"))
+	}
 }
 
 func NewClientManager() *ClientManager {
@@ -371,6 +388,7 @@ func NewClientManager() *ClientManager {
 		channelAccessHashes: make(map[int64]int64),
 		userAccessHashes:    make(map[int64]int64),
 		chatNames:           make(map[int64]string),
+		chatUsernames:       make(map[int64]string),
 		dcPools:             make(map[int]telegram.CloseInvoker),
 		dcClients:           make(map[int]*tg.Client),
 	}
@@ -501,10 +519,16 @@ func (cm *ClientManager) cacheEntities(entities tg.Entities) {
 	for id, ch := range entities.Channels {
 		boundedHashSet(cm.channelAccessHashes, id, ch.AccessHash)
 		boundedNameSet(cm.chatNames, channelPeerID(id), ch.Title)
+		if ch.Username != "" {
+			boundedNameSet(cm.chatUsernames, channelPeerID(id), ch.Username)
+		}
 	}
 	for id, u := range entities.Users {
 		boundedHashSet(cm.userAccessHashes, id, u.AccessHash)
 		boundedNameSet(cm.chatNames, id, userDisplayName(u))
+		if u.Username != "" {
+			boundedNameSet(cm.chatUsernames, id, u.Username)
+		}
 	}
 	for id, c := range entities.Chats {
 		boundedNameSet(cm.chatNames, -id, c.Title)
@@ -567,6 +591,9 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 			case *tg.Channel:
 				boundedHashSet(cm.channelAccessHashes, ch.ID, ch.AccessHash)
 				boundedNameSet(cm.chatNames, channelPeerID(ch.ID), ch.Title)
+				if ch.Username != "" {
+					boundedNameSet(cm.chatUsernames, channelPeerID(ch.ID), ch.Username)
+				}
 			case *tg.Chat:
 				boundedNameSet(cm.chatNames, -ch.ID, ch.Title)
 			}
@@ -575,6 +602,9 @@ func (cm *ClientManager) FetchDialogs(ctx context.Context) error {
 			if usr, ok := u.(*tg.User); ok {
 				boundedHashSet(cm.userAccessHashes, usr.ID, usr.AccessHash)
 				boundedNameSet(cm.chatNames, usr.ID, userDisplayName(usr))
+				if usr.Username != "" {
+					boundedNameSet(cm.chatUsernames, usr.ID, usr.Username)
+				}
 			}
 		}
 		cm.mu.Unlock()
@@ -649,6 +679,9 @@ func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (
 		case *tg.Channel:
 			boundedHashSet(cm.channelAccessHashes, ch.ID, ch.AccessHash)
 			boundedNameSet(cm.chatNames, channelPeerID(ch.ID), ch.Title)
+			if ch.Username != "" {
+				boundedNameSet(cm.chatUsernames, channelPeerID(ch.ID), ch.Username)
+			}
 		case *tg.Chat:
 			boundedNameSet(cm.chatNames, -ch.ID, ch.Title)
 		}
@@ -657,6 +690,9 @@ func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (
 		if usr, ok := u.(*tg.User); ok {
 			boundedHashSet(cm.userAccessHashes, usr.ID, usr.AccessHash)
 			boundedNameSet(cm.chatNames, usr.ID, userDisplayName(usr))
+			if usr.Username != "" {
+				boundedNameSet(cm.chatUsernames, usr.ID, usr.Username)
+			}
 		}
 	}
 

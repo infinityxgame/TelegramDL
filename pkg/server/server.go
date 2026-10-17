@@ -1372,6 +1372,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/scanner/search", s.handleScannerSearch)
 	mux.HandleFunc("/api/scanner/download", s.handleScannerDownload)
 	mux.HandleFunc("/api/scanner/resolve-target", s.handleScannerResolveTarget)
+	mux.HandleFunc("/api/scanner/recents", s.handleScannerRecents)
+	mux.HandleFunc("/api/scanner/recents/favorite", s.handleScannerRecentFavorite)
+	mux.HandleFunc("/api/scanner/recents/delete", s.handleScannerRecentDelete)
+	mux.HandleFunc("/api/scanner/recents/clear", s.handleScannerRecentClear)
 
 	// Registro de actividad (vista de logs en vivo)
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -3445,6 +3449,91 @@ func (s *Server) handleScannerResolveTarget(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.jsonResponse(w, http.StatusOK, res)
+}
+
+func (s *Server) handleScannerRecents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	recents, err := s.storage.GetRecentChats()
+	if err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, recents)
+}
+
+func (s *Server) handleScannerRecentFavorite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	var body struct {
+		ID         int64 `json:"id"`
+		IsFavorite bool  `json:"is_favorite"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
+		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.invalidData"))
+		return
+	}
+
+	if err := s.storage.ToggleRecentChatFavorite(body.ID, body.IsFavorite); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleScannerRecentDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	var id int64
+	if r.Method == http.MethodDelete {
+		if q := r.URL.Query().Get("id"); q != "" {
+			id, _ = strconv.ParseInt(q, 10, 64)
+		}
+	}
+	if id == 0 {
+		var body struct {
+			ID int64 `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		id = body.ID
+	}
+
+	if id == 0 {
+		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.invalidData"))
+		return
+	}
+
+	if err := s.storage.DeleteRecentChat(id); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleScannerRecentClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	if err := s.storage.ClearRecentChats(); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 

@@ -199,8 +199,74 @@ func (s *ScannerService) ResolveTarget(ctx context.Context, target string) (Reso
 	}
 
 	chatName := s.clientMgr.GetChatName(chatID)
+	if username == "" {
+		username = s.clientMgr.GetChatUsername(chatID)
+	}
+
+	raw := s.clientMgr.RawClient()
+	if username == "" && raw != nil {
+		sID := strconv.FormatInt(chatID, 10)
+		if strings.HasPrefix(sID, "-100") && len(sID) > 4 {
+			if channelID, err := strconv.ParseInt(sID[4:], 10, 64); err == nil {
+				accessHash, found := s.clientMgr.GetChannelAccessHash(channelID)
+				if !found {
+					_ = s.clientMgr.FetchDialogs(ctx)
+					accessHash, _ = s.clientMgr.GetChannelAccessHash(channelID)
+				}
+				if accessHash != 0 {
+					res, err := raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{&tg.InputChannel{
+						ChannelID:  channelID,
+						AccessHash: accessHash,
+					}})
+					if err == nil {
+						for _, c := range res.GetChats() {
+							if ch, ok := c.(*tg.Channel); ok {
+								if ch.Title != "" {
+									chatName = ch.Title
+									s.clientMgr.RememberChatName(chatID, ch.Title)
+								}
+								if ch.Username != "" {
+									username = ch.Username
+									s.clientMgr.RememberChatUsername(chatID, ch.Username)
+								}
+							}
+						}
+					}
+				}
+			}
+		} else if chatID > 0 {
+			accessHash, found := s.clientMgr.GetUserAccessHash(chatID)
+			if !found {
+				_ = s.clientMgr.FetchDialogs(ctx)
+				accessHash, _ = s.clientMgr.GetUserAccessHash(chatID)
+			}
+			if accessHash != 0 {
+				users, err := raw.UsersGetUsers(ctx, []tg.InputUserClass{&tg.InputUser{
+					UserID:     chatID,
+					AccessHash: accessHash,
+				}})
+				if err == nil {
+					for _, u := range users {
+						if usr, ok := u.(*tg.User); ok {
+							if usr.Username != "" {
+								username = usr.Username
+								s.clientMgr.RememberChatUsername(chatID, usr.Username)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if chatName == "" {
 		chatName = strconv.FormatInt(chatID, 10)
+	}
+
+	if s.storage != nil {
+		if err := s.storage.SaveRecentChat(clean, chatID, chatName, username); err != nil {
+			log.Printf("[SCANNER] error saving recent chat: %v", err)
+		}
 	}
 
 	return ResolvedTargetInfo{
@@ -315,6 +381,12 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 	peer, chatName, err := s.resolveInputPeer(ctx, chatID)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.storage != nil && chatName != "" {
+		if err := s.storage.SaveRecentChat(req.Target, chatID, chatName, targetInfo.Username); err != nil {
+			log.Printf("[SCANNER] error updating recent chat: %v", err)
+		}
 	}
 
 	// Parsear fechas
