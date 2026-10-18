@@ -79,7 +79,7 @@ const message = ref('')
 const error = ref('')
 const saving = ref(false)
 const hydrated = ref(false)
-const host = window.location.host
+// const host = window.location.host Footer
 const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 const activeView = ref('downloads')
 const mobileMenuOpen = ref(false)
@@ -1550,9 +1550,11 @@ onUnmounted(() => {
           @cancel="handleCancel"
         />
 
+        <!-- Footer del sitio 
         <footer>
           {{ t('sidebar.footer', { host }) }}
         </footer>
+        -->
       </main>
     </div>
   </template>
