@@ -9,6 +9,7 @@ TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado c
 ## Características
 
 - Descarga de documentos, vídeos, audios, fotos y stickers desde enlaces de mensajes de Telegram.
+- Descarga en lote de múltiples enlaces pegados en una sola entrada (separados por espacio o salto de línea) respetando el orden secuencial.
 - Rangos de mensajes, por ejemplo `https://t.me/c/2121902112/31449-31455`.
 - Descarga de canales con temas igual copiando su enlace.
 - Posibilidad de poner en la escucha un grupo con temas, este le da la posibilidad de escuchar todo el grupo o un tema específico

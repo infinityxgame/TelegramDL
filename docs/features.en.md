@@ -15,6 +15,10 @@ TelegramDL features an intelligent URL parser (`pkg/downloader/parser.go`) that 
 | `https://t.me/publicchannel/1234` | Public channel or supergroup | Downloads message `1234` from public channel |
 | `https://t.me/b/botname/50` | Telegram Bot Link | Downloads media dispatched by the bot |
 | `https://t.me/c/2121902112/450/455` | Topic message | Downloads message `455` within topic `450` |
+| `https://t.me/...1 https://t.me/...2` | **Batch Download** | Processes multiple links separated by space or Enter in sequential order |
+
+### Batch Download of Multiple Links
+The main download box supports pasting multiple links simultaneously in a single entry, separated by **spaces**, **newlines (Enter)**, **commas**, or **semicolons**. The system parses and queues them preserving their strict **sequential order** (the first link entered is queued and processed first).
 
 ---
 

@@ -17,6 +17,10 @@ TelegramDL cuenta con un analizador sintáctico inteligente (`pkg/downloader/par
 | `https://t.me/c/2121902112/31449-31455` | **Rango de mensajes** | Encola todos los mensajes desde el `31449` hasta el `31455` |
 | `https://t.me/nombrecanal/1234` | Canal o supergrupo público | Descarga el mensaje `1234` del canal público |
 | `https://t.me/c/2121902112/450/455` | Mensaje en subtema (topic) | Descarga el mensaje `455` perteneciente al tema `450` |
+| `https://t.me/...1 https://t.me/...2` | **Descarga en Lote (Batch)** | Procesa múltiples enlaces separados por espacio o Enter en orden secuencial |
+
+### Descarga en Lote de Múltiples Enlaces
+El formulario principal de descargas permite pegar varios enlaces a la vez en una sola entrada, separándolos mediante **espacios**, **saltos de línea (Enter)**, **comas** o **puntos y comas**. El sistema los extrae encolándolos y procesándolos respetando de forma estricta el **orden secuencial** de entrada (el primer enlace ingresado se procesa primero).
 
 ---
 
