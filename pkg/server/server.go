@@ -2193,15 +2193,40 @@ func (s *Server) handleStartDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.EnqueueURL(r.Context(), body.URL); err != nil {
-		// SEC-21: cola llena → 429 con Retry-After; cualquier otro error sigue
-		// respondiendo 400 como hasta ahora.
-		if errors.Is(err, ErrQueueFull) {
-			s.respondQueueFull(w)
-			return
+	// Separar por espacios, saltos de línea, comas o puntos y comas para procesar enlaces en lote en orden secuencial
+	rawTokens := regexp.MustCompile(`[\s,;]+`).Split(strings.TrimSpace(body.URL), -1)
+	var urls []string
+	for _, tok := range rawTokens {
+		tok = strings.TrimSpace(tok)
+		if tok != "" {
+			urls = append(urls, tok)
 		}
-		s.errorResponse(w, http.StatusBadRequest, err.Error())
+	}
+
+	if len(urls) == 0 {
+		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.urlRequired"))
 		return
+	}
+
+	var enqueuedCount int
+	for _, rawURL := range urls {
+		if err := s.EnqueueURL(r.Context(), rawURL); err != nil {
+			// SEC-21: cola llena → 429 con Retry-After si no se pudo encolar ninguno;
+			// si ya se encolaron algunos, se detiene y responde OK con los procesados.
+			if errors.Is(err, ErrQueueFull) {
+				if enqueuedCount > 0 {
+					break
+				}
+				s.respondQueueFull(w)
+				return
+			}
+			if enqueuedCount == 0 {
+				s.errorResponse(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			break
+		}
+		enqueuedCount++
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{

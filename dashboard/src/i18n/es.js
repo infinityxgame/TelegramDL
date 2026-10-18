@@ -87,7 +87,8 @@ export default {
     },
     heroKicker: 'NUEVA TAREA',
     heroTitle: 'Descarga contenido de Telegram',
-    heroText: 'Pega un enlace de mensaje o un rango para comenzar.',
+    heroText:
+      'Pega uno o varios enlaces (separados por espacio o Enter) o un rango para comenzar.',
     inputAria: 'Enlace de Telegram',
     start: 'Iniciar descarga',
     adding: 'Añadiendo…',

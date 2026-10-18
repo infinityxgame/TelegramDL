@@ -85,7 +85,8 @@ export default {
     },
     heroKicker: 'NEW TASK',
     heroTitle: 'Download Telegram content',
-    heroText: 'Paste a message link or a range to get started.',
+    heroText:
+      'Paste one or multiple links (separated by space or Enter) or a range to get started.',
     inputAria: 'Telegram link',
     start: 'Start download',
     adding: 'Adding…',
