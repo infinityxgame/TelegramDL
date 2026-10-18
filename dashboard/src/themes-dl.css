@@ -3844,3 +3844,272 @@ html.theme-darling-red .update-required-overlay {
     var(--user-bg-base) 52%
   );
 }
+
+/* -----------------------------------------------------------------------------
+   UDYAT (color 23)   ·   tema oscuro
+   Inspirado en el lenguaje visual de Apple TV+ y tvOS: negro profundo OLED,
+   capas elevadas translúcidas con efecto vidrio esmerilado (glassmorphism),
+   sutiles resplandores azul eléctrico (#007AFF), bordes refinados con reflejo
+   especular y tarjetas con alta legibilidad.
+   -------------------------------------------------------------------------- */
+
+html.theme-udyat {
+  color-scheme: dark;
+
+  --apple-tv-bg-base: #000000;
+  --apple-tv-bg-surface: #121212;
+  --apple-tv-bg-elevated: #1c1c1e;
+  --apple-tv-text-primary: #ffffff;
+  --apple-tv-text-secondary: #8e8e93;
+  --apple-tv-accent-blue: #007aff;
+  --apple-tv-glass-subtle: rgba(255, 255, 255, 0.08);
+  --apple-tv-glass-medium: rgba(255, 255, 255, 0.15);
+  --apple-tv-glass-blur: blur(40px);
+
+  --udyat-glow: rgba(0, 122, 255, 0.35);
+  --udyat-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  --udyat-border: rgba(255, 255, 255, 0.1);
+  --udyat-border-hover: rgba(255, 255, 255, 0.22);
+}
+
+/* --- Fondo ---------------------------------------------------------------- */
+
+html.theme-udyat body {
+  background-color: var(--apple-tv-bg-base);
+  background-image:
+    radial-gradient(
+      900px circle at 50% -120px,
+      rgba(0, 122, 255, 0.18),
+      transparent 75%
+    ),
+    radial-gradient(
+      700px circle at 85% 105%,
+      rgba(0, 122, 255, 0.08),
+      transparent 70%
+    );
+  background-attachment: fixed;
+  color: var(--apple-tv-text-primary);
+}
+
+/* --- Barra lateral (tvOS glass sidebar) ----------------------------------- */
+
+html.theme-udyat .sidebar {
+  background: rgba(18, 18, 18, 0.72);
+  backdrop-filter: var(--apple-tv-glass-blur);
+  -webkit-backdrop-filter: var(--apple-tv-glass-blur);
+  border-right: 1px solid var(--apple-tv-glass-subtle);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+html.theme-udyat .sidebar-nav button {
+  border-radius: 12px;
+  transition:
+    background 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+    color 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html.theme-udyat .sidebar-nav button:hover {
+  background: var(--apple-tv-glass-medium);
+  color: var(--apple-tv-text-primary);
+  transform: scale(1.02);
+}
+
+html.theme-udyat .sidebar-nav button.selected {
+  background: var(--apple-tv-accent-blue) !important;
+  color: #ffffff;
+  box-shadow: 0 4px 20px var(--udyat-glow);
+}
+
+html.theme-udyat .sidebar-nav button.selected span {
+  color: #ffffff;
+}
+
+html.theme-udyat .sidebar-user-badge,
+html.theme-udyat .sidebar-status {
+  background: var(--apple-tv-glass-subtle);
+  border: 1px solid var(--apple-tv-glass-subtle);
+  border-radius: 12px;
+  color: var(--apple-tv-text-secondary);
+}
+
+/* --- Encabezado ----------------------------------------------------------- */
+
+html.theme-udyat .topbar h1 {
+  color: var(--apple-tv-text-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* --- Tarjetas y Paneles (tvOS elevated glass surfaces) ------------------ */
+
+html.theme-udyat .stat-card,
+html.theme-udyat .panel,
+html.theme-udyat .logs-hero,
+html.theme-udyat .listener-hero,
+html.theme-udyat .hero-card {
+  background: rgba(28, 28, 30, 0.72);
+  backdrop-filter: var(--apple-tv-glass-blur);
+  -webkit-backdrop-filter: var(--apple-tv-glass-blur);
+  border: 1px solid var(--udyat-border);
+  border-radius: 18px;
+  box-shadow: var(--udyat-shadow);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html.theme-udyat .stat-card:hover,
+html.theme-udyat .panel:hover {
+  border-color: var(--udyat-border-hover);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(0, 122, 255, 0.15);
+}
+
+html.theme-udyat .stat-card strong,
+html.theme-udyat .panel h2,
+html.theme-udyat .hero-card h2 {
+  color: var(--apple-tv-text-primary);
+}
+
+/* --- Botones principales y acciones --------------------------------------- */
+
+html.theme-udyat .primary-button,
+html.theme-udyat .save-button,
+html.theme-udyat .auth-button.primary,
+html.theme-udyat .update-btn,
+html.theme-udyat .pager-btn.active {
+  background: var(--apple-tv-accent-blue);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px var(--udyat-glow);
+  transition:
+    background 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html.theme-udyat .primary-button:hover:not(:disabled),
+html.theme-udyat .save-button:hover:not(:disabled) {
+  background: #0062cc;
+  box-shadow: 0 6px 24px rgba(0, 122, 255, 0.5);
+  transform: translateY(-1px) scale(1.01);
+}
+
+/* --- Formularios y Campos de Entrada ------------------------------------- */
+
+html.theme-udyat .download-form input,
+html.theme-udyat .speed-row input,
+html.theme-udyat .speed-row select,
+html.theme-udyat .token-row input {
+  background: rgba(28, 28, 30, 0.85);
+  border: 1px solid var(--udyat-border);
+  border-radius: 12px;
+  color: var(--apple-tv-text-primary);
+}
+
+html.theme-udyat .download-form input:focus,
+html.theme-udyat .speed-row input:focus,
+html.theme-udyat .token-row input:focus {
+  border-color: var(--apple-tv-accent-blue);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.3);
+}
+
+/* --- Barras de progreso e indicadores ------------------------------------ */
+
+html.theme-udyat .progress-track,
+html.theme-udyat .disk-bar {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+}
+
+html.theme-udyat .progress-fill,
+html.theme-udyat .disk-bar .fill,
+html.theme-udyat .update-progress-fill {
+  background: linear-gradient(
+    90deg,
+    var(--apple-tv-accent-blue) 0%,
+    #0a84ff 50%,
+    #30d158 100%
+  );
+  box-shadow: 0 0 12px var(--udyat-glow);
+  border-radius: 99px;
+}
+
+html.theme-udyat .status-dot,
+html.theme-udyat .live-dot {
+  background: var(--apple-tv-accent-blue);
+  box-shadow: 0 0 10px var(--udyat-glow);
+}
+
+html.theme-udyat .status-dot.disconnected {
+  background: #ff453a;
+  box-shadow: 0 0 10px rgba(255, 69, 58, 0.4);
+}
+
+html.theme-udyat .badge,
+html.theme-udyat .save-state {
+  background: var(--apple-tv-glass-subtle);
+  color: var(--apple-tv-text-secondary);
+  border: 1px solid var(--udyat-border);
+  border-radius: 8px;
+}
+
+html.theme-udyat .count-pill {
+  background: var(--apple-tv-glass-medium);
+  color: var(--apple-tv-text-primary);
+}
+
+html.theme-udyat .inline-link,
+html.theme-udyat .inline-link:visited {
+  color: var(--apple-tv-accent-blue);
+}
+
+html.theme-udyat .inline-link:hover {
+  color: #30d158;
+}
+
+html.theme-udyat .range-input {
+  accent-color: var(--apple-tv-accent-blue);
+}
+
+html.theme-udyat .switch span {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+html.theme-udyat .switch input:checked + span {
+  background: var(--apple-tv-accent-blue);
+}
+
+/* --- Scrollbar y pantallas de carga / actualización ----------------------- */
+
+html.theme-udyat ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html.theme-udyat ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.theme-udyat ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+}
+
+html.theme-udyat ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+html.theme-udyat .boot-screen,
+html.theme-udyat .update-required-overlay {
+  background-color: var(--apple-tv-bg-base);
+  background-image: radial-gradient(
+    circle at 50% 0%,
+    rgba(0, 122, 255, 0.2) 0%,
+    var(--apple-tv-bg-base) 70%
+  );
+}

@@ -41,7 +41,8 @@
               19: { primary: '#f48fb1', accent: '#2a6f69', bgBase: '#e3dbea', bgTop: '#f0cfdc', surface: '#f4eef6', surfaceLight: '#ece2ee', border: '#d6c9d7', borderLight: '#bfb0c2', iconBg: '#f0d9e3', glow: 'rgba(244, 143, 177, 0.25)', textDim: '#6b6270', gradient: 'linear-gradient(120deg, #ffb7c5 0%, #f48fb1 52%, #a0e7e5 100%)' },
               20: { primary: '#0a84ff', accent: '#64d2ff', bgBase: '#09090b', bgTop: '#10131a', surface: '#1c1c1e', surfaceLight: '#2c2c2e', border: '#2c2c2e', borderLight: '#3a3a3c', iconBg: '#26262a', glow: 'rgba(10, 132, 255, 0.28)', textDim: '#98989f', gradient: 'linear-gradient(180deg, #3e9bff 0%, #0a84ff 100%)' },
               21: { primary: '#7fb069', accent: '#8fc0d4', bgBase: '#141f18', bgTop: '#25402f', surface: '#1a261d', surfaceLight: '#223026', border: '#2c4550', borderLight: '#3d6272', iconBg: '#22392b', glow: 'rgba(127, 176, 105, 0.20)', textDim: '#8fa596', gradient: 'linear-gradient(120deg, #4a7c59 0%, #7fb069 58%, #99c2a2 100%)' },
-              22: { primary: '#d32f2f', accent: '#00e5ff', bgBase: '#14050c', bgTop: '#3c0a18', surface: '#481019', surfaceLight: '#5a1622', border: '#6e2230', borderLight: '#8a3546', iconBg: '#330b13', glow: 'rgba(211, 47, 47, 0.22)', textDim: '#e3b3bd', gradient: 'linear-gradient(120deg, #c62828 0%, #d32f2f 48%, #f48fb1 100%)' }
+              22: { primary: '#d32f2f', accent: '#00e5ff', bgBase: '#14050c', bgTop: '#3c0a18', surface: '#481019', surfaceLight: '#5a1622', border: '#6e2230', borderLight: '#8a3546', iconBg: '#330b13', glow: 'rgba(211, 47, 47, 0.22)', textDim: '#e3b3bd', gradient: 'linear-gradient(120deg, #c62828 0%, #d32f2f 48%, #f48fb1 100%)' },
+              23: { primary: '#007aff', accent: '#007aff', bgBase: '#000000', bgTop: '#121212', surface: '#121212', surfaceLight: '#1c1c1e', border: '#2c2c2e', borderLight: '#3a3a3c', iconBg: '#1c1c1e', glow: 'rgba(0, 122, 255, 0.25)', textDim: '#8e8e93', gradient: 'linear-gradient(135deg, #007aff 0%, #0a84ff 50%, #5ac8fa 100%)' }
             };
             const theme = themeMap[user.color_id] || themeMap[5];
             const root = document.documentElement;
@@ -57,7 +58,7 @@
             root.style.setProperty('--user-glow', theme.glow);
             root.style.setProperty('--user-text-dim', theme.textDim);
             root.style.setProperty('--user-gradient', theme.gradient);
-            var specialThemeClasses = { 16: 'theme-twilight-comet', 17: 'theme-edge-runner', 18: 'theme-rainy-garden', 19: 'theme-silent-cherry', 20: 'theme-osx', 21: 'theme-herbal-apothecary', 22: 'theme-darling-red' };
+            var specialThemeClasses = { 16: 'theme-twilight-comet', 17: 'theme-edge-runner', 18: 'theme-rainy-garden', 19: 'theme-silent-cherry', 20: 'theme-osx', 21: 'theme-herbal-apothecary', 22: 'theme-darling-red', 23: 'theme-udyat' };
             var lightThemeIds = [19];
             var themeId = themeMap[user.color_id] ? user.color_id : 5;
             var themeClass = specialThemeClasses[themeId];

@@ -376,6 +376,23 @@ export const themeMap = {
     glow: 'rgba(211, 47, 47, 0.22)',
     textDim: '#e3b3bd',
     gradient: 'linear-gradient(120deg, #c62828 0%, #d32f2f 48%, #f48fb1 100%)'
+  },
+  23: {
+    name: 'UDYAT',
+    special: true,
+    secondary: '#007aff',
+    primary: '#007aff',
+    accent: '#007aff',
+    bgBase: '#000000',
+    bgTop: '#121212',
+    surface: '#121212',
+    surfaceLight: '#1c1c1e',
+    border: '#2c2c2e',
+    borderLight: '#3a3a3c',
+    iconBg: '#1c1c1e',
+    glow: 'rgba(0, 122, 255, 0.25)',
+    textDim: '#8e8e93',
+    gradient: 'linear-gradient(135deg, #007aff 0%, #0a84ff 50%, #5ac8fa 100%)'
   }
 }
 
@@ -388,7 +405,8 @@ const specialThemeClasses = {
   19: 'theme-silent-cherry',
   20: 'theme-osx',
   21: 'theme-herbal-apothecary',
-  22: 'theme-darling-red'
+  22: 'theme-darling-red',
+  23: 'theme-udyat'
 }
 
 // Los temas de fondo claro llevan además la clase `theme-light`, que enciende
