@@ -857,6 +857,7 @@ const getKindIcon = (kind) => {
                   sortOrder === 'asc' ? '▲' : '▼'
                 }}</span>
               </th>
+              <th class="col-status">{{ t('scanner.statusColumn') }}</th>
               <th class="col-name-mode">{{ t('scanner.nameModeColumn') }}</th>
               <th class="col-date sortable" @click="toggleSort('date')">
                 <span>{{ t('scanner.date') }}</span>
@@ -882,6 +883,7 @@ const getKindIcon = (kind) => {
               <td class="col-check">
                 <input
                   type="checkbox"
+                  :disabled="item.is_deleted"
                   :checked="selectedIds.has(item.id)"
                   @change="toggleSelectItem(item.id)"
                 />
@@ -908,6 +910,15 @@ const getKindIcon = (kind) => {
                     {{ item.caption_file_name }}
                   </span>
                 </div>
+              </td>
+              <td class="col-status">
+                <span
+                  v-if="item.is_deleted"
+                  class="clear-history-button clear-btn badge-deleted"
+                  :title="t('scanner.itemDeletedTooltip')"
+                >
+                  {{ t('scanner.itemDeleted') }}
+                </span>
               </td>
               <td class="col-name-mode">
                 <div
@@ -954,7 +965,12 @@ const getKindIcon = (kind) => {
                 <button
                   type="button"
                   class="ghost-button btn-icon"
-                  :title="t('scanner.downloadItem')"
+                  :disabled="item.is_deleted"
+                  :title="
+                    item.is_deleted
+                      ? t('scanner.itemDeletedTooltip')
+                      : t('scanner.downloadItem')
+                  "
                   @click="onDownloadItems([item])"
                 >
                   <Download :size="13" />
@@ -1714,6 +1730,29 @@ html.theme-light .compact-select option {
   text-align: center;
 }
 
+.col-status {
+  width: 110px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.col-status .badge-deleted {
+  height: 24px !important;
+  padding: 0 8px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  cursor: default !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+}
+
 .col-name {
   width: auto;
   overflow: hidden;
@@ -1726,6 +1765,22 @@ html.theme-light .compact-select option {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+
+.badge-deleted {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 2px 6px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  border-radius: 4px !important;
+  white-space: nowrap !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  flex-shrink: 0 !important;
 }
 
 .sub-name {

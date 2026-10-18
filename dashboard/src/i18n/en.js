@@ -333,6 +333,10 @@ export default {
     favoriteRecent: 'Mark as favorite',
     unfavoriteRecent: 'Unmark favorite',
     selectRecent: 'Use this chat',
+    itemDeleted: 'Non-existent',
+    itemDeletedTooltip:
+      'This file was deleted on Telegram and cannot be downloaded.',
+    statusColumn: 'Status',
     scanning: 'Scanning history...',
     scanningNote: 'Applying pauses to prevent Telegram FLOOD_WAIT',
     noResults: 'No media files found in the selected range.',

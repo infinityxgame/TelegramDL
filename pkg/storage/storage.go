@@ -170,6 +170,33 @@ func (s *Storage) initSchema() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_scanner_recent_updated ON scanner_recent_chats(updated_at DESC);
+
+	CREATE TABLE IF NOT EXISTS scanner_cache_items (
+		id TEXT PRIMARY KEY,
+		chat_id INTEGER NOT NULL,
+		chat_name TEXT NOT NULL,
+		message_id INTEGER NOT NULL,
+		file_name TEXT NOT NULL,
+		caption_file_name TEXT NOT NULL DEFAULT '',
+		original_file_name TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL,
+		file_size INTEGER NOT NULL,
+		formatted_size TEXT NOT NULL,
+		date INTEGER NOT NULL,
+		date_str TEXT NOT NULL,
+		is_deleted INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scanner_items_chat_date ON scanner_cache_items(chat_id, date DESC);
+
+	CREATE TABLE IF NOT EXISTS scanner_cache_ranges (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id INTEGER NOT NULL,
+		start_ts INTEGER NOT NULL,
+		end_ts INTEGER NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scanner_ranges_chat ON scanner_cache_ranges(chat_id);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -1253,27 +1280,235 @@ func (s *Storage) ToggleRecentChatFavorite(id int64, isFavorite bool) error {
 	return nil
 }
 
-// DeleteRecentChat elimina un chat reciente.
+// DeleteRecentChat elimina un chat reciente y todos sus datos escaneados en SQLite.
 func (s *Storage) DeleteRecentChat(id int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	var chatID int64
+	_ = s.db.QueryRow("SELECT chat_id FROM scanner_recent_chats WHERE id = ?", id).Scan(&chatID)
 
 	_, err := s.db.Exec("DELETE FROM scanner_recent_chats WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("error eliminando chat reciente: %w", err)
 	}
+
+	if chatID != 0 {
+		_, _ = s.db.Exec("DELETE FROM scanner_cache_items WHERE chat_id = ?", chatID)
+		_, _ = s.db.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
+	}
+
 	return nil
 }
 
-// ClearRecentChats elimina todos los chats recientes que NO estén marcados como favoritos.
+// ClearRecentChats elimina todos los chats recientes no favoritos y sus datos escaneados en SQLite.
 func (s *Storage) ClearRecentChats() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.Exec("DELETE FROM scanner_recent_chats WHERE is_favorite = 0")
+	rows, err := s.db.Query("SELECT chat_id FROM scanner_recent_chats WHERE is_favorite = 0")
+	if err == nil {
+		var chatIDs []int64
+		for rows.Next() {
+			var cid int64
+			if err := rows.Scan(&cid); err == nil && cid != 0 {
+				chatIDs = append(chatIDs, cid)
+			}
+		}
+		rows.Close()
+
+		for _, cid := range chatIDs {
+			_, _ = s.db.Exec("DELETE FROM scanner_cache_items WHERE chat_id = ?", cid)
+			_, _ = s.db.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", cid)
+		}
+	}
+
+	_, err = s.db.Exec("DELETE FROM scanner_recent_chats WHERE is_favorite = 0")
 	if err != nil {
 		return fmt.Errorf("error limpiando historial de chats recientes: %w", err)
 	}
+
+	return nil
+}
+
+type ScanItem struct {
+	ID               string `json:"id"`
+	ChatID           int64  `json:"chat_id"`
+	ChatName         string `json:"chat_name"`
+	MessageID        int64  `json:"message_id"`
+	FileName         string `json:"file_name"`
+	CaptionFileName  string `json:"caption_file_name,omitempty"`
+	OriginalFileName string `json:"original_file_name,omitempty"`
+	Kind             string `json:"kind"`
+	FileSize         int64  `json:"file_size"`
+	FormattedSize    string `json:"formatted_size"`
+	Date             int64  `json:"date"`
+	DateStr          string `json:"date_str"`
+	IsDeleted        bool   `json:"is_deleted"`
+}
+
+type DateRange struct {
+	StartTS int64 `json:"start_ts"`
+	EndTS   int64 `json:"end_ts"`
+}
+
+// SaveScannerCacheItems guarda o actualiza elementos detectados durante un escaneo en SQLite.
+func (s *Storage) SaveScannerCacheItems(items []ScanItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO scanner_cache_items (
+			id, chat_id, chat_name, message_id, file_name, caption_file_name,
+			original_file_name, kind, file_size, formatted_size, date, date_str, is_deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT is_deleted FROM scanner_cache_items WHERE id = ?), 0))
+		ON CONFLICT(id) DO UPDATE SET
+			file_name = excluded.file_name,
+			caption_file_name = excluded.caption_file_name,
+			original_file_name = excluded.original_file_name,
+			formatted_size = excluded.formatted_size
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range items {
+		deletedVal := 0
+		if item.IsDeleted {
+			deletedVal = 1
+		}
+		_, err := stmt.Exec(
+			item.ID,
+			item.ChatID,
+			item.ChatName,
+			item.MessageID,
+			item.FileName,
+			item.CaptionFileName,
+			item.OriginalFileName,
+			item.Kind,
+			item.FileSize,
+			item.FormattedSize,
+			item.Date,
+			item.DateStr,
+			item.ID,
+		)
+		if err != nil {
+			log.Printf("[STORAGE] error guardando elemento de escáner %s: %v", item.ID, err)
+		}
+		if deletedVal == 1 {
+			_, _ = tx.Exec("UPDATE scanner_cache_items SET is_deleted = 1 WHERE id = ?", item.ID)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// SaveScannerCacheRanges guarda los rangos de fechas ya escaneados para un chat en SQLite.
+func (s *Storage) SaveScannerCacheRanges(chatID int64, ranges []DateRange) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare("INSERT INTO scanner_cache_ranges (chat_id, start_ts, end_ts) VALUES (?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, r := range ranges {
+		if _, err := stmt.Exec(chatID, r.StartTS, r.EndTS); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetScannerCache recupera los elementos y rangos cubiertos guardados en SQLite para un chat.
+func (s *Storage) GetScannerCache(chatID int64) ([]ScanItem, []DateRange, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]ScanItem, 0)
+	rows, err := s.db.Query(`
+		SELECT id, chat_id, chat_name, message_id, file_name, caption_file_name,
+		       original_file_name, kind, file_size, formatted_size, date, date_str, is_deleted
+		FROM scanner_cache_items
+		WHERE chat_id = ?
+		ORDER BY date DESC
+	`, chatID)
+	if err == nil {
+		for rows.Next() {
+			var it ScanItem
+			var isDel int
+			if err := rows.Scan(
+				&it.ID, &it.ChatID, &it.ChatName, &it.MessageID, &it.FileName,
+				&it.CaptionFileName, &it.OriginalFileName, &it.Kind, &it.FileSize,
+				&it.FormattedSize, &it.Date, &it.DateStr, &isDel,
+			); err == nil {
+				it.IsDeleted = (isDel != 0)
+				items = append(items, it)
+			}
+		}
+		rows.Close()
+	}
+
+	ranges := make([]DateRange, 0)
+	rRows, err := s.db.Query("SELECT start_ts, end_ts FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
+	if err == nil {
+		for rRows.Next() {
+			var dr DateRange
+			if err := rRows.Scan(&dr.StartTS, &dr.EndTS); err == nil {
+				ranges = append(ranges, dr)
+			}
+		}
+		rRows.Close()
+	}
+
+	return items, ranges, nil
+}
+
+// SetScannerItemDeleted marca o desmarca un elemento escaneado como eliminado/inexistente en Telegram.
+func (s *Storage) SetScannerItemDeleted(chatID int64, messageID int64, isDeleted bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delVal := 0
+	if isDeleted {
+		delVal = 1
+	}
+
+	_, err := s.db.Exec("UPDATE scanner_cache_items SET is_deleted = ? WHERE chat_id = ? AND message_id = ?", delVal, chatID, messageID)
+	return err
+}
+
+// DeleteScannerCacheByChat elimina todos los datos escaneados de un chat en SQLite.
+func (s *Storage) DeleteScannerCacheByChat(chatID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, _ = s.db.Exec("DELETE FROM scanner_cache_items WHERE chat_id = ?", chatID)
+	_, _ = s.db.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
 	return nil
 }
 

@@ -79,6 +79,9 @@ func (e *Engine) resolveItemMetadata(itemID string) {
 				i18n.T("downloads.msgMissingDetail",
 					e.chatLabel(itemData.ChatID)))
 			e.discardDownload(itemID)
+			if e.storage != nil {
+				_ = e.storage.SetScannerItemDeleted(itemData.ChatID, itemData.MessageID, true)
+			}
 		}
 		return
 	}

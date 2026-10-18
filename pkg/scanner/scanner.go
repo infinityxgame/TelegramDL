@@ -34,20 +34,8 @@ type ScanRequest struct {
 	MaxScan   int    `json:"max_scan"` // Máximo de mensajes a inspeccionar
 }
 
-type ScanItem struct {
-	ID               string `json:"id"`
-	ChatID           int64  `json:"chat_id"`
-	ChatName         string `json:"chat_name"`
-	MessageID        int64  `json:"message_id"`
-	FileName         string `json:"file_name"`
-	CaptionFileName  string `json:"caption_file_name,omitempty"`
-	OriginalFileName string `json:"original_file_name,omitempty"`
-	Kind             string `json:"kind"`
-	FileSize         int64  `json:"file_size"`
-	FormattedSize    string `json:"formatted_size"`
-	Date             int64  `json:"date"`
-	DateStr          string `json:"date_str"`
-}
+type ScanItem = storage.ScanItem
+type DateRange = storage.DateRange
 
 type ScanResponse struct {
 	Status       string     `json:"status"`
@@ -63,11 +51,6 @@ type ResolvedTargetInfo struct {
 	ChatName string `json:"chat_name"`
 	Type     string `json:"type"`
 	Username string `json:"username,omitempty"`
-}
-
-type DateRange struct {
-	StartTS int64
-	EndTS   int64
 }
 
 type ChatCache struct {
@@ -407,24 +390,25 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 		endTS = time.Now().Unix() + 86400
 	}
 
-	// Obtener o inicializar la caché para este chat
-	s.cacheMu.Lock()
-	if s.chatCache == nil {
-		s.chatCache = make(map[int64]*ChatCache)
-	}
-	cache, exists := s.chatCache[chatID]
-	if !exists {
-		cache = &ChatCache{
-			Items: make(map[int64]ScanItem),
+	// Obtener los rangos de fechas ya escaneados guardados en la base de datos
+	var coveredRanges []DateRange
+	var allCachedItems []ScanItem
+
+	if s.storage != nil {
+		var errCache error
+		allCachedItems, coveredRanges, errCache = s.storage.GetScannerCache(chatID)
+		if errCache != nil {
+			log.Printf("[SCANNER] error leyendo caché de escáner desde BD: %v", errCache)
 		}
-		s.chatCache[chatID] = cache
 	}
-	s.cacheMu.Unlock()
+
+	existingMsgIDs := make(map[int64]bool, len(allCachedItems))
+	for _, it := range allCachedItems {
+		existingMsgIDs[it.MessageID] = true
+	}
 
 	// Determinar los subrangos de fechas que aún no se han escaneado para este chat
-	s.cacheMu.RLock()
-	missingRanges := GetUnscannedRanges(cache.Ranges, startTS, endTS)
-	s.cacheMu.RUnlock()
+	missingRanges := GetUnscannedRanges(coveredRanges, startTS, endTS)
 
 	maxScan := req.MaxScan
 	if maxScan <= 0 || maxScan > 5000 {
@@ -437,6 +421,97 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 	}
 
 	var floodMsg string
+	var newlyDiscovered []ScanItem
+	var newRangesToSave []DateRange
+
+	// Comprobar mensajes de hoy en tiempo real si el rango incluye la fecha actual
+	nowTS := time.Now().Unix()
+	todayStartTS := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Now().Location()).Unix()
+
+	if endTS >= todayStartTS && len(existingMsgIDs) > 0 {
+		offsetID := 0
+		checkCount := 0
+		hitExisting := false
+
+		for checkCount < 300 && !hitExisting {
+			if checkCount > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(200 * time.Millisecond):
+				}
+			}
+
+			reqBatch := &tg.MessagesGetHistoryRequest{
+				Peer:     peer,
+				OffsetID: offsetID,
+				Limit:    batchLimit,
+			}
+
+			res, err := raw.MessagesGetHistory(ctx, reqBatch)
+			if err != nil {
+				break
+			}
+
+			var msgClasses []tg.MessageClass
+			switch resMsg := res.(type) {
+			case *tg.MessagesMessages:
+				msgClasses = resMsg.Messages
+			case *tg.MessagesMessagesSlice:
+				msgClasses = resMsg.Messages
+			case *tg.MessagesChannelMessages:
+				msgClasses = resMsg.Messages
+			}
+
+			if len(msgClasses) == 0 {
+				break
+			}
+
+			for _, mc := range msgClasses {
+				msg, ok := mc.(*tg.Message)
+				if !ok {
+					continue
+				}
+
+				checkCount++
+				offsetID = msg.ID
+
+				if existingMsgIDs[int64(msg.ID)] {
+					hitExisting = true
+					break
+				}
+
+				mediaInfo := downloader.ExtractMediaInfo(msg)
+				if mediaInfo != nil {
+					tMsg := time.Unix(int64(msg.Date), 0)
+					dateStr := tMsg.Format("2006-01-02 15:04:05")
+
+					item := ScanItem{
+						ID:               fmt.Sprintf("scanner:%d:%d", chatID, msg.ID),
+						ChatID:           chatID,
+						ChatName:         chatName,
+						MessageID:        int64(msg.ID),
+						FileName:         mediaInfo.FileName,
+						CaptionFileName:  mediaInfo.CaptionFileName,
+						OriginalFileName: mediaInfo.OriginalFileName,
+						Kind:             string(mediaInfo.Kind),
+						FileSize:         mediaInfo.FileSize,
+						FormattedSize:    config.FormatBytes(float64(mediaInfo.FileSize)),
+						Date:             int64(msg.Date),
+						DateStr:          dateStr,
+						IsDeleted:        false,
+					}
+
+					newlyDiscovered = append(newlyDiscovered, item)
+					existingMsgIDs[int64(msg.ID)] = true
+				}
+			}
+		}
+
+		if hitExisting || checkCount > 0 {
+			newRangesToSave = append(newRangesToSave, DateRange{StartTS: todayStartTS, EndTS: nowTS + 86400})
+		}
+	}
 
 	// Escanear únicamente los rangos de fechas faltantes en Telegram
 	for _, mRange := range missingRanges {
@@ -490,10 +565,6 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 				break
 			}
 
-			s.cacheMu.Lock()
-			cache.ScannedTotal += len(msgClasses)
-			s.cacheMu.Unlock()
-
 			for _, mc := range msgClasses {
 				msg, ok := mc.(*tg.Message)
 				if !ok {
@@ -519,7 +590,7 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 					break
 				}
 
-				// Extraer información multimedia y guardarla en la caché del chat
+				// Extraer información multimedia
 				mediaInfo := downloader.ExtractMediaInfo(msg)
 				if mediaInfo == nil {
 					continue
@@ -541,11 +612,10 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 					FormattedSize:    config.FormatBytes(float64(mediaInfo.FileSize)),
 					Date:             msgDate,
 					DateStr:          dateStr,
+					IsDeleted:        false,
 				}
 
-				s.cacheMu.Lock()
-				cache.Items[item.MessageID] = item
-				s.cacheMu.Unlock()
+				newlyDiscovered = append(newlyDiscovered, item)
 			}
 
 			if reachedLimit {
@@ -553,18 +623,36 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 			}
 		}
 
-		// Registrar en la caché el rango efectivamente escaneado
+		// Registrar en la caché del servidor el rango efectivamente escaneado
 		if actualStart <= mRange.EndTS {
-			s.cacheMu.Lock()
-			cache.Ranges = MergeRanges(cache.Ranges, DateRange{StartTS: actualStart, EndTS: mRange.EndTS})
-			s.cacheMu.Unlock()
+			newRangesToSave = append(newRangesToSave, DateRange{StartTS: actualStart, EndTS: mRange.EndTS})
 		}
 	}
 
-	// Filtrar de la caché todos los elementos que corresponden al rango de fechas, tipos de medio y tamaños solicitados
-	s.cacheMu.RLock()
+	// Persistir elementos descubiertos y rangos escaneados en SQLite
+	if len(newlyDiscovered) > 0 && s.storage != nil {
+		if err := s.storage.SaveScannerCacheItems(newlyDiscovered); err != nil {
+			log.Printf("[SCANNER] error guardando elementos escaneados en BD: %v", err)
+		}
+	}
+
+	if len(newRangesToSave) > 0 && s.storage != nil {
+		finalRanges := coveredRanges
+		for _, nr := range newRangesToSave {
+			finalRanges = MergeRanges(finalRanges, nr)
+		}
+		if err := s.storage.SaveScannerCacheRanges(chatID, finalRanges); err != nil {
+			log.Printf("[SCANNER] error guardando rangos escaneados en BD: %v", err)
+		}
+	}
+
+	// Consultar de la base de datos todos los elementos del chat para filtrar por fecha, tipo y tamaño
+	if s.storage != nil {
+		allCachedItems, _, _ = s.storage.GetScannerCache(chatID)
+	}
+
 	var resultItems []ScanItem
-	for _, item := range cache.Items {
+	for _, item := range allCachedItems {
 		// Filtrar por el rango de fechas actual
 		if startTS > 0 && item.Date < startTS {
 			continue
@@ -601,8 +689,6 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 
 		resultItems = append(resultItems, item)
 	}
-	scannedTotal := cache.ScannedTotal
-	s.cacheMu.RUnlock()
 
 	// Ordenar los resultados del rango actual por fecha descendente
 	sort.Slice(resultItems, func(i, j int) bool {
@@ -614,7 +700,7 @@ func (s *ScannerService) Scan(ctx context.Context, req ScanRequest) (*ScanRespon
 
 	return &ScanResponse{
 		Status:       "ok",
-		ScannedCount: scannedTotal,
+		ScannedCount: len(allCachedItems),
 		MatchCount:   len(resultItems),
 		Items:        resultItems,
 		ReachedLimit: true,
@@ -628,6 +714,11 @@ func (s *ScannerService) QueueItems(items []ScanItem) int {
 	now := float64(time.Now().UnixNano()) / 1e9
 
 	for _, item := range items {
+		if item.IsDeleted {
+			log.Printf("[SCANNER] omitiendo elemento borrado en Telegram: %s", item.ID)
+			continue
+		}
+
 		dlItem := storage.DownloadItem{
 			ID:               item.ID,
 			JobID:            fmt.Sprintf("scanner:%d", item.ChatID),

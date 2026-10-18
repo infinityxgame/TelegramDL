@@ -309,6 +309,9 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 			i18n.T("downloads.msgMissingDetail",
 				e.chatLabel(cp.ChatID)))
 		e.discardDownload(itemID)
+		if e.storage != nil {
+			_ = e.storage.SetScannerItemDeleted(cp.ChatID, cp.MessageID, true)
+		}
 		return false
 	}
 	e.mu.Lock()

@@ -337,6 +337,10 @@ export default {
     favoriteRecent: 'Marcar como favorito',
     unfavoriteRecent: 'Quitar de favoritos',
     selectRecent: 'Usar este chat',
+    itemDeleted: 'No existente',
+    itemDeletedTooltip:
+      'Este archivo fue eliminado de Telegram y no se puede descargar.',
+    statusColumn: 'Estado',
     scanning: 'Escaneando historial...',
     scanningNote: 'Aplicando pausas para evitar FLOOD_WAIT de Telegram',
     noResults:
