@@ -427,9 +427,9 @@ export default {
     importingDownloads: 'Importando descargas…',
     downloadsExportEmpty: 'No hay descargas en el historial para exportar',
     downloadsExported:
-      'Descargas exportadas ({n} ítems) en tu carpeta de descargas',
+      'Descargas exportadas ({n} ítems) en tu carpeta de descargas: {path}',
     downloadsExportedOne:
-      'Descargas exportadas (1 ítem) en tu carpeta de descargas',
+      'Descargas exportadas (1 ítem) en tu carpeta de descargas: {path}',
     downloadsExportFail: 'No se pudo exportar las descargas',
     downloadsImported:
       'Descargas importadas ({n} ítems). Copia los archivos .temp y reanuda.',

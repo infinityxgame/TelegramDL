@@ -337,17 +337,12 @@ const exportDownloads = async () => {
       return
     }
 
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-    triggerBlobDownload(
-      JSON.stringify(data.payload || data, null, 2),
-      `tgdown-downloads-${stamp}.json`,
-      'application/json'
-    )
+    const path = data.export_path || props.settings.download_folder
 
     props.notify(
       count === 1
-        ? t('settings.downloadsExportedOne')
-        : t('settings.downloadsExported', { n: count })
+        ? t('settings.downloadsExportedOne', { path })
+        : t('settings.downloadsExported', { n: count, path })
     )
   } catch (err) {
     props.notify(err.message || t('settings.downloadsExportFail'), true)

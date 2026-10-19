@@ -419,9 +419,9 @@ export default {
     importingDownloads: 'Importing downloads…',
     downloadsExportEmpty: 'There are no downloads in history to export',
     downloadsExported:
-      'Downloads exported ({n} items) to your downloads folder',
+      'Downloads exported ({n} items) in your downloads folder: {path}',
     downloadsExportedOne:
-      'Downloads exported (1 item) to your downloads folder',
+      'Downloads exported (1 item) in your downloads folder: {path}',
     downloadsExportFail: 'Could not export downloads',
     downloadsImported:
       'Downloads imported ({n} items). Copy .temp files and resume.',
