@@ -69,7 +69,16 @@ En la sección de **Chats Vigilados**, cada origen cuenta con un interruptor **N
   - **Original**: Nombre original del archivo
   - **Caption**:  caption (`pie de mensaje`) disponible
 
-En la lista de **Multimedia Detectada**, cada elemento perteneciente a un chat con la opción **Nombre** desactivada dispone de un botón **Nombre** para elegir de forma manual el nombre deseado por archivo o si desea que todos de golpe tomen un nombre arriba de la lista hay un botón dedicado con el que todos los archivos pertenecientes a un chat que no tiene la opción de un nombre activa se le puede asignar de forma masiva el nombre original o el caption
+En la lista de **Multimedia Detectada**, cada elemento perteneciente a un chat con la opción **Nombre** desactivada dispone de un botón **Nombre** para elegir de forma manual el nombre deseado por archivo o si desea que todos de golpe tomen un nombre arriba de la lista hay un botón dedicado con el que todos los archivos pertenecientes a un chat que no tiene la opción de un nombre activa se le puede asignar de forma masiva el nombre original o el caption.
+
+---
+
+## Reordenamiento y Organización de Archivos Detectados
+
+En la lista de **Multimedia Detectada**, los elementos no están restringidos a un orden fijo. Puedes organizar y reordenar libremente los archivos moviéndolos hacia arriba o hacia abajo unos respecto de otros:
+
+- **Arrastrar y soltar (Drag & Drop)**: Mantén pulsado el icono de agarre (asidero de reordenación) situado a la izquierda de cualquier archivo y arrástralo hacia arriba o hacia abajo en la lista para reubicarlo.
+- **Guardado automático del orden**: Al soltar el elemento en su nueva posición, el sistema actualiza inmediatamente la secuencia en el servidor (`/api/listener/reorder`), asegurando que los archivos se mantengan en el orden exacto en el que deseas procesarlos o descargarlos.
 
 ---
 

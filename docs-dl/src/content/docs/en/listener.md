@@ -70,6 +70,16 @@ In the **Monitored Chats** list, each chat entry features a **Nombre** toggle sw
   - **Caption**:  caption (`message footer`) available
 
 In the **Detected Media** list, for any item belonging to a chat where the **Name** option is disabled, a **Name** button is available to manually select a desired name for each file. Alternatively, if you wish to apply a name to all such files at once, there is a dedicated button at the top of the list that allows you to batch-assign either the original filename or the caption to all files from a chat that does not have the naming option enabled.
+
+---
+
+## Reordering and Organizing Detected Files
+
+In the **Detected Media** list, items are not restricted to a fixed order. You can freely organize and reorder files by moving them up or down relative to one another:
+
+- **Drag & Drop**: Click and hold the drag handle located on the left side of any file item, then drag it up or down in the list to reposition it.
+- **Automatic Order Persistence**: When dropped into its new position, the system immediately updates the sequence on the server (`/api/listener/reorder`), ensuring files remain in the exact order you want to process or download them.
+
 ---
 
 ## Forum Topics Support
