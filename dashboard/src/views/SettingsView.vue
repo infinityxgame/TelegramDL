@@ -312,6 +312,101 @@ const onImportFile = async (event) => {
   }
 }
 
+// Exportar e importar descargas e historial con chunks
+const exportingDownloads = ref(false)
+const importingDownloads = ref(false)
+const importDownloadsInput = ref(null)
+
+const exportDownloads = async () => {
+  if (exportingDownloads.value) return
+  exportingDownloads.value = true
+  try {
+    const response = await fetch('/api/downloads/export', {
+      method: 'POST',
+      headers: { ...authHeaders() }
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(
+        data.detail || data.error || t('settings.downloadsExportFail')
+      )
+    }
+    const count = data.downloads_count || data.payload?.downloads?.length || 0
+    if (count === 0) {
+      props.notify(t('settings.downloadsExportEmpty'), true)
+      return
+    }
+
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    triggerBlobDownload(
+      JSON.stringify(data.payload || data, null, 2),
+      `tgdown-downloads-${stamp}.json`,
+      'application/json'
+    )
+
+    props.notify(
+      count === 1
+        ? t('settings.downloadsExportedOne')
+        : t('settings.downloadsExported', { n: count })
+    )
+  } catch (err) {
+    props.notify(err.message || t('settings.downloadsExportFail'), true)
+  } finally {
+    exportingDownloads.value = false
+  }
+}
+
+const pickImportDownloadsFile = () => {
+  if (importingDownloads.value) return
+  importDownloadsInput.value?.click()
+}
+
+const onImportDownloadsFile = async (event) => {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || importingDownloads.value) return
+  importingDownloads.value = true
+  try {
+    const text = await file.text()
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error(t('settings.importInvalidJson'))
+    }
+
+    const response = await fetch('/api/downloads/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify(parsed)
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(
+        data.detail || data.error || t('settings.downloadsImportFail')
+      )
+    }
+
+    const imported = data.imported_count || 0
+    if (imported === 0) {
+      props.notify(t('settings.importNoDownloads'), true)
+    } else {
+      props.notify(
+        imported === 1
+          ? t('settings.downloadsImportedOne')
+          : t('settings.downloadsImported', { n: imported })
+      )
+    }
+  } catch (err) {
+    props.notify(err.message || t('settings.downloadsImportFail'), true)
+  } finally {
+    importingDownloads.value = false
+  }
+}
+
 // Estado y funciones para notificaciones del bot
 const showBotToken = ref(false)
 const detectingChat = ref(false)
@@ -1023,6 +1118,33 @@ const sendTestNotification = async () => {
                 <button
                   type="button"
                   class="reset-button-alt"
+                  :disabled="exportingDownloads"
+                  @click="exportDownloads"
+                >
+                  <Download :size="14" />
+                  {{
+                    exportingDownloads
+                      ? t('settings.exportingDownloads')
+                      : t('settings.exportDownloads')
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="reset-button-alt"
+                  :disabled="importingDownloads"
+                  @click="pickImportDownloadsFile"
+                >
+                  <Upload :size="14" />
+                  {{
+                    importingDownloads
+                      ? t('settings.importingDownloads')
+                      : t('settings.importDownloads')
+                  }}
+                </button>
+
+                <button
+                  type="button"
+                  class="reset-button-alt"
                   :disabled="exporting"
                   @click="exportListener"
                 >
@@ -1059,6 +1181,13 @@ const sendTestNotification = async () => {
                   accept="application/json,.json"
                   style="display: none"
                   @change="onImportFile"
+                />
+                <input
+                  ref="importDownloadsInput"
+                  type="file"
+                  accept="application/json,.json"
+                  style="display: none"
+                  @change="onImportDownloadsFile"
                 />
               </div>
             </div>

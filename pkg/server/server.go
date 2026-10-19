@@ -1332,6 +1332,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Downloads (Soporta /api/downloads, /api/downloads/history, /api/downloads/open, /api/downloads/{id})
 	mux.HandleFunc("/api/downloads", s.handleDownloadsRoute)
 	mux.HandleFunc("/api/downloads/", s.handleDownloadsRoute)
+	mux.HandleFunc("/api/downloads/export", s.handleExportDownloads)
+	mux.HandleFunc("/api/downloads/import", s.handleImportDownloads)
 	mux.HandleFunc("/api/downloads/cancel-all", s.handleCancelAllDownloads)
 	mux.HandleFunc("/api/downloads/pause-all", s.handlePauseAllDownloads)
 	mux.HandleFunc("/api/downloads/resume-all", s.handleResumeAllDownloads)
@@ -2382,6 +2384,16 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if subpath == "export" {
+		s.handleExportDownloads(w, r)
+		return
+	}
+
+	if subpath == "import" {
+		s.handleImportDownloads(w, r)
+		return
+	}
+
 	// Subpath es el ID de la descarga (ej. DELETE /api/downloads/{id})
 	if r.Method == http.MethodDelete {
 		// Por defecto NO se borra el archivo: solo se quita la entrada del
@@ -2400,6 +2412,78 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.errorResponse(w, http.StatusNotFound, i18n.T("server.notFound"))
+}
+
+func (s *Server) handleExportDownloads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	payload, exportPath, err := s.downloader.ExportDownloads()
+	if err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":          "ok",
+		"export_path":     exportPath,
+		"downloads_count": len(payload.Downloads),
+		"payload":         payload,
+	})
+}
+
+func (s *Server) handleImportDownloads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	var raw map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidJson"))
+		return
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidJson"))
+		return
+	}
+
+	var payload downloader.DownloadsExportPayload
+	if err := json.Unmarshal(data, &payload); err != nil || len(payload.Downloads) == 0 {
+		if pObj, ok := raw["payload"].(map[string]any); ok {
+			pData, _ := json.Marshal(pObj)
+			_ = json.Unmarshal(pData, &payload)
+		}
+		if len(payload.Downloads) == 0 {
+			var list []downloader.ExportedDownload
+			if json.Unmarshal(data, &list) == nil && len(list) > 0 {
+				payload.Format = "tgdown-downloads"
+				payload.Version = 1
+				payload.Downloads = list
+			}
+		}
+	}
+
+	if len(payload.Downloads) == 0 {
+		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.importNoDownloads"))
+		return
+	}
+
+	importedCount, importedChunks, err := s.downloader.ImportDownloads(payload)
+	if err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":          "ok",
+		"imported_count":  importedCount,
+		"imported_chunks": importedChunks,
+	})
 }
 
 func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {

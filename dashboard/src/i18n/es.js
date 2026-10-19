@@ -420,7 +420,23 @@ export default {
     exposureText:
       'El servidor está escuchando en {host}, así que cualquier equipo de tu red local puede leer todo lo que viaja por él (token, credenciales y contraseña de 2FA). Cierra ese puerto o protégelo con un túnel o una VPN como Tailscale; los detalles están en REMOTE_ACCESS.md.',
     dataTitle: 'Datos y respaldo',
-    dataSub: 'Exportar o importar la escucha y limpiar el historial',
+    dataSub: 'Exportar o importar descargas, escucha y limpiar el historial',
+    exportDownloads: 'Exportar descargas',
+    exportingDownloads: 'Exportando descargas…',
+    importDownloads: 'Importar descargas',
+    importingDownloads: 'Importando descargas…',
+    downloadsExportEmpty: 'No hay descargas en el historial para exportar',
+    downloadsExported:
+      'Descargas exportadas ({n} ítems) en tu carpeta de descargas',
+    downloadsExportedOne:
+      'Descargas exportadas (1 ítem) en tu carpeta de descargas',
+    downloadsExportFail: 'No se pudo exportar las descargas',
+    downloadsImported:
+      'Descargas importadas ({n} ítems). Copia los archivos .temp y reanuda.',
+    downloadsImportedOne:
+      'Descarga importada (1 ítem). Copia el archivo .temp y reanuda.',
+    downloadsImportFail: 'No se pudo importar las descargas',
+    importNoDownloads: 'El archivo no contiene una lista de descargas válida',
     exportListener: 'Exportar escucha',
     exportingListener: 'Exportando…',
     importListener: 'Importar escucha',

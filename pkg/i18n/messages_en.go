@@ -67,6 +67,7 @@ var messagesEN = map[string]string{
 	"server.noAppWindowForPicker":   "No application window available to open selector",
 	"server.idAndFileNameRequired": "ID and file_name required",
 	"server.chatIdRequiredInPath":   "chat_id required in path",
+	"server.importNoDownloads":      "The file does not contain a valid downloads format",
 	"app.windowNotReady":            "Application window is not ready",
 
 	// Public surface and setup gate (SEC-01/03/04/09/24)

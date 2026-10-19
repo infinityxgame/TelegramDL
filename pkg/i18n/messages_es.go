@@ -68,6 +68,7 @@ var messagesES = map[string]string{
 	"server.noAppWindowForPicker":   "No hay ventana de la aplicación para abrir el selector",
 	"server.idAndFileNameRequired": "ID y nombre de archivo requeridos",
 	"server.chatIdRequiredInPath":   "chat_id requerido en la ruta",
+	"server.importNoDownloads":      "El archivo no contiene un formato de descargas válido",
 	"app.windowNotReady":            "La ventana de la aplicación todavía no está lista",
 
 	// Superficie pública y puerta de setup (SEC-01/03/04/09/24)

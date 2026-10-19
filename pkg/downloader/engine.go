@@ -8,6 +8,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -865,3 +866,157 @@ func (e *Engine) ResumeAll(ctx context.Context) {
 		_ = e.ResumeDownload(ctx, item.ID)
 	}
 }
+
+type ExportedDownload struct {
+	storage.DownloadItem
+	Chunks []int64 `json:"chunks"`
+}
+
+type DownloadsExportPayload struct {
+	Format     string             `json:"format"`
+	Version    int                `json:"version"`
+	ExportedAt string             `json:"exported_at"`
+	Downloads  []ExportedDownload `json:"downloads"`
+}
+
+// ExportDownloads exporta el estado actual de las descargas e historial con sus chunks a JSON
+// y guarda una copia en la carpeta de descargas configurada.
+func (e *Engine) ExportDownloads() (*DownloadsExportPayload, string, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.storage == nil {
+		return nil, "", errors.New("storage not initialized")
+	}
+
+	saved, err := e.storage.LoadDownloads("")
+	if err != nil {
+		return nil, "", fmt.Errorf("error loading downloads: %w", err)
+	}
+
+	exportedItems := make([]ExportedDownload, 0, len(saved))
+	for id, item := range saved {
+		// Sobrescribir con el estado mas reciente en memoria si la descarga esta activa
+		if memItem, ok := e.downloads[id]; ok {
+			item = *memItem
+		}
+
+		chunksMap, err := e.storage.Chunks(id)
+		chunksList := make([]int64, 0, len(chunksMap))
+		if err == nil {
+			for cIdx := range chunksMap {
+				chunksList = append(chunksList, cIdx)
+			}
+			sort.Slice(chunksList, func(i, j int) bool { return chunksList[i] < chunksList[j] })
+		}
+
+		exportedItems = append(exportedItems, ExportedDownload{
+			DownloadItem: item,
+			Chunks:       chunksList,
+		})
+	}
+
+	payload := &DownloadsExportPayload{
+		Format:     "tgdown-downloads",
+		Version:    1,
+		ExportedAt: time.Now().Format(time.RFC3339),
+		Downloads:  exportedItems,
+	}
+
+	downloadFolder := e.config.DownloadFolder
+	if downloadFolder == "" {
+		downloadFolder = config.GetDefaultDownloadFolder()
+	}
+	if err := os.MkdirAll(downloadFolder, 0755); err != nil {
+		log.Printf("[ENGINE] error creating download directory for export: %v", err)
+	}
+	exportFilePath := filepath.Join(downloadFolder, "tgdown_downloads_export.json")
+
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err == nil {
+		if errWrite := os.WriteFile(exportFilePath, data, 0644); errWrite != nil {
+			log.Printf("[ENGINE] error writing export file to download dir: %v", errWrite)
+		} else {
+			log.Printf("[ENGINE] downloads state exported successfully to %s", exportFilePath)
+		}
+	}
+
+	return payload, exportFilePath, nil
+}
+
+// ImportDownloads importa el estado de descargas y sus chunks, recalculando
+// la ruta del archivo para que apunte a la carpeta de descargas de la maquina actual.
+func (e *Engine) ImportDownloads(payload DownloadsExportPayload) (int, int, error) {
+	if len(payload.Downloads) == 0 {
+		return 0, 0, errors.New("no downloads in payload")
+	}
+
+	if e.storage == nil {
+		return 0, 0, errors.New("storage not initialized")
+	}
+
+	downloadFolder := e.config.DownloadFolder
+	if downloadFolder == "" {
+		downloadFolder = config.GetDefaultDownloadFolder()
+	}
+
+	importedCount := 0
+	importedChunks := 0
+
+	for _, exp := range payload.Downloads {
+		item := exp.DownloadItem
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+
+		// Recomputar la ruta del archivo con la carpeta de descargas de la maquina actual
+		subFolder := strings.TrimSpace(item.SubFolder)
+		var destDir string
+		if subFolder != "" {
+			destDir = filepath.Join(downloadFolder, subFolder)
+		} else {
+			destDir = downloadFolder
+		}
+		_ = os.MkdirAll(destDir, 0755)
+
+		item.FilePath = filepath.Join(destDir, item.FileName)
+
+		// Si el estado guardado era 'downloading' o vacio, se pasa a 'paused'
+		if item.Status == "downloading" || item.Status == "" {
+			item.Status = "paused"
+		}
+
+		// Persistir descarga en la base de datos de la maquina destino
+		if err := e.storage.SaveDownload(item); err != nil {
+			log.Printf("[ENGINE] error saving imported download %s: %v", item.ID, err)
+			continue
+		}
+
+		// Limpiar chunks previos e importar los chunks nuevos
+		_ = e.storage.DeleteChunks(item.ID)
+		if len(exp.Chunks) > 0 {
+			if err := e.storage.AddChunks(item.ID, exp.Chunks); err != nil {
+				log.Printf("[ENGINE] error saving chunks for imported download %s: %v", item.ID, err)
+			} else {
+				importedChunks += len(exp.Chunks)
+			}
+		}
+
+		// Actualizar estado en memoria del motor
+		e.mu.Lock()
+		copyItem := item
+		e.downloads[item.ID] = &copyItem
+		if item.ChatID != 0 && item.MessageID != 0 {
+			key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
+			e.chatMsgMap[key] = item.ID
+		}
+		e.mu.Unlock()
+
+		// Notificar a la interfaz
+		e.notifyState(item)
+		importedCount++
+	}
+
+	return importedCount, importedChunks, nil
+}
+

@@ -412,7 +412,23 @@ export default {
     exposureText:
       'The server is listening on {host}, so any device on your local network can read everything that travels through it (token, credentials and 2FA password). Close that port or protect it with a tunnel or a VPN like Tailscale; details are in REMOTE_ACCESS.md.',
     dataTitle: 'Data and backup',
-    dataSub: 'Export or import the listener and clear the history',
+    dataSub: 'Export or import downloads, listener and clear history',
+    exportDownloads: 'Export downloads',
+    exportingDownloads: 'Exporting downloads…',
+    importDownloads: 'Import downloads',
+    importingDownloads: 'Importing downloads…',
+    downloadsExportEmpty: 'There are no downloads in history to export',
+    downloadsExported:
+      'Downloads exported ({n} items) to your downloads folder',
+    downloadsExportedOne:
+      'Downloads exported (1 item) to your downloads folder',
+    downloadsExportFail: 'Could not export downloads',
+    downloadsImported:
+      'Downloads imported ({n} items). Copy .temp files and resume.',
+    downloadsImportedOne:
+      'Download imported (1 item). Copy .temp file and resume.',
+    downloadsImportFail: 'Could not import downloads',
+    importNoDownloads: 'The file does not contain a valid downloads list',
     exportListener: 'Export listener',
     exportingListener: 'Exporting…',
     importListener: 'Import listener',
