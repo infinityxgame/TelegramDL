@@ -230,6 +230,9 @@ func (a *App) startup(ctx context.Context) {
 // lo que dejaba estados sin guardar y volcados contra una BD ya cerrada.
 func (a *App) shutdown(ctx context.Context) {
 	logbus.Info(logbus.CatSystem, i18n.T("system.closing"), "")
+	if a.trayReady {
+		systray.Quit()
+	}
 	if a.downloader != nil {
 		// Un error aquí (p. ej. context.DeadlineExceeded) significa que
 		// quedaron trabajos o escrituras sin terminar: se registra para que el
@@ -378,6 +381,7 @@ func (a *App) onTrayReady() {
 }
 
 func (a *App) onTrayExit() {
+	a.trayReady = false
 }
 
 func (a *App) RestoreWindow() {
@@ -388,6 +392,9 @@ func (a *App) RestoreWindow() {
 }
 
 func (a *App) QuitApp() {
+	if a.trayReady {
+		systray.Quit()
+	}
 	if ctx := a.context(); ctx != nil {
 		wailsRuntime.Quit(ctx)
 	}
