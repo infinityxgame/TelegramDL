@@ -67,7 +67,7 @@ func TestDailyLogFile(t *testing.T) {
 	b.CloseFile()
 
 	today := time.Now().Format("02-01-06")
-	expectedName := "log_" + today + ".log"
+	expectedName := "telegramdl_" + today + ".log"
 	expectedPath := filepath.Join(tempDir, "logs", expectedName)
 
 	data, err := os.ReadFile(expectedPath)
@@ -96,8 +96,8 @@ func TestDailyLogFileRotation(t *testing.T) {
 	b.writeFileForTime(day2, "entrada dia 20")
 	b.CloseFile()
 
-	path1 := filepath.Join(tempDir, "logs", "log_19-10-26.log")
-	path2 := filepath.Join(tempDir, "logs", "log_20-10-26.log")
+	path1 := filepath.Join(tempDir, "logs", "telegramdl_19-10-26.log")
+	path2 := filepath.Join(tempDir, "logs", "telegramdl_20-10-26.log")
 
 	data1, err1 := os.ReadFile(path1)
 	if err1 != nil {
