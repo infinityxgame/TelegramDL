@@ -53,9 +53,8 @@ const (
 	DefaultCapacity = 2000
 	// maxFileBytes es el tamaño a partir del cual se rota el archivo .log.
 	maxFileBytes = 5 << 20 // 5 MiB
-	// logFileName y logDirName definen dónde se guarda el archivo.
-	logDirName  = "logs"
-	logFileName = "tgdown.log"
+	// logDirName define la carpeta donde se guardan los archivos de registro.
+	logDirName = "logs"
 )
 
 // Entry es una línea del registro ya normalizada.
@@ -87,6 +86,8 @@ type Bus struct {
 
 	fileMu   sync.Mutex
 	file     *os.File
+	baseDir  string
+	fileDate string
 	filePath string
 	fileSize int64
 }
@@ -114,20 +115,44 @@ func Default() *Bus { return std }
 // Archivo en disco
 // ---------------------------------------------------------------------------
 
-// OpenFile empieza a volcar el registro a <dir>/logs/tgdown.log. Un error al
-// abrir el archivo no es fatal: el registro en memoria sigue funcionando.
+// OpenFile empieza a volcar el registro a <dir>/logs/log_DD-MM-YY.log. Un error
+// al abrir el archivo no es fatal: el registro en memoria sigue funcionando.
 func (b *Bus) OpenFile(dir string) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("%s", i18n.T("logbus.emptyLogDir"))
 	}
-	logDir := filepath.Join(dir, logDirName)
+	b.fileMu.Lock()
+	defer b.fileMu.Unlock()
+
+	b.baseDir = dir
+	return b.openFileForDate(time.Now())
+}
+
+// openFileForDate abre (o rota) el archivo de registro correspondiente a la fecha de t.
+// Debe llamarse con b.fileMu bloqueado.
+func (b *Bus) openFileForDate(t time.Time) error {
+	if strings.TrimSpace(b.baseDir) == "" {
+		return fmt.Errorf("%s", i18n.T("logbus.emptyLogDir"))
+	}
+	dateStr := t.Format("02-01-06")
+	if b.file != nil && b.fileDate == dateStr {
+		return nil
+	}
+
+	if b.file != nil {
+		_ = b.file.Close()
+		b.file = nil
+	}
+
+	logDir := filepath.Join(b.baseDir, logDirName)
 	// SEC-30: el registro lleva nombres de chats y mensajes de error que el
 	// usuario puede exportar, así que ni el directorio (0700) ni el archivo
 	// (0600) deben ser legibles por otros usuarios de la máquina.
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return err
 	}
-	path := filepath.Join(logDir, logFileName)
+	fileName := fmt.Sprintf("telegramdl_%s.log", dateStr)
+	path := filepath.Join(logDir, fileName)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
@@ -138,14 +163,10 @@ func (b *Bus) OpenFile(dir string) error {
 		size = fi.Size()
 	}
 
-	b.fileMu.Lock()
-	if b.file != nil {
-		_ = b.file.Close()
-	}
 	b.file = f
 	b.filePath = path
+	b.fileDate = dateStr
 	b.fileSize = size
-	b.fileMu.Unlock()
 	return nil
 }
 
@@ -169,11 +190,22 @@ func (b *Bus) CloseFile() {
 // writeFile añade una línea al archivo y lo rota si se pasa de tamaño. Nunca
 // usa log.Printf: eso provocaría una recursión infinita.
 func (b *Bus) writeFile(line string) {
+	b.writeFileForTime(time.Now(), line)
+}
+
+// writeFileForTime añade una línea al archivo correspondiente a la fecha de t.
+func (b *Bus) writeFileForTime(t time.Time, line string) {
 	b.fileMu.Lock()
 	defer b.fileMu.Unlock()
-	if b.file == nil {
+
+	if strings.TrimSpace(b.baseDir) == "" && b.file == nil {
 		return
 	}
+
+	if err := b.openFileForDate(t); err != nil {
+		return
+	}
+
 	n, err := b.file.WriteString(line + "\n")
 	if err != nil {
 		return
@@ -183,7 +215,7 @@ func (b *Bus) writeFile(line string) {
 		return
 	}
 
-	// Rotación simple: tgdown.log -> tgdown.log.1 (se sustituye el anterior).
+	// Rotación simple por tamaño en el mismo día: log_19-10-26.log -> log_19-10-26.log.1.
 	_ = b.file.Close()
 	b.file = nil
 	backup := b.filePath + ".1"
@@ -265,7 +297,7 @@ func (b *Bus) Emit(level, category, message, detail string) Entry {
 	if b.mirror != nil {
 		_, _ = io.WriteString(b.mirror, formatted+"\n")
 	}
-	b.writeFile(formatted)
+	b.writeFileForTime(now, formatted)
 	b.notify(entry)
 	return entry
 }

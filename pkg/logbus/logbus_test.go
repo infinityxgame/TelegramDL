@@ -1,8 +1,11 @@
 package logbus
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestEmitNeutralizesLineBreaks comprueba (SEC-28) que un message/detail
@@ -48,5 +51,67 @@ func TestSanitizeLogField(t *testing.T) {
 		if got := sanitizeLogField(c.in); got != c.want {
 			t.Errorf("sanitizeLogField(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestDailyLogFile comprueba que los logs se guardan en un archivo con formato log_DD-MM-YY.log.
+func TestDailyLogFile(t *testing.T) {
+	tempDir := t.TempDir()
+	b := NewBus(16)
+
+	if err := b.OpenFile(tempDir); err != nil {
+		t.Fatalf("OpenFile falló: %v", err)
+	}
+
+	b.Emit(LevelInfo, CatSystem, "prueba daily log", "detalle de prueba")
+	b.CloseFile()
+
+	today := time.Now().Format("02-01-06")
+	expectedName := "log_" + today + ".log"
+	expectedPath := filepath.Join(tempDir, "logs", expectedName)
+
+	data, err := os.ReadFile(expectedPath)
+	if err != nil {
+		t.Fatalf("no se pudo leer el archivo de log esperado %s: %v", expectedPath, err)
+	}
+
+	if !strings.Contains(string(data), "prueba daily log") {
+		t.Errorf("el contenido del log no contiene el mensaje esperado: %s", string(data))
+	}
+}
+
+// TestDailyLogFileRotation comprueba que los logs cambian de archivo automáticamente al cambiar de día.
+func TestDailyLogFileRotation(t *testing.T) {
+	tempDir := t.TempDir()
+	b := NewBus(16)
+
+	if err := b.OpenFile(tempDir); err != nil {
+		t.Fatalf("OpenFile falló: %v", err)
+	}
+
+	day1 := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	day2 := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+
+	b.writeFileForTime(day1, "entrada dia 19")
+	b.writeFileForTime(day2, "entrada dia 20")
+	b.CloseFile()
+
+	path1 := filepath.Join(tempDir, "logs", "log_19-10-26.log")
+	path2 := filepath.Join(tempDir, "logs", "log_20-10-26.log")
+
+	data1, err1 := os.ReadFile(path1)
+	if err1 != nil {
+		t.Fatalf("error leyendo log dia 1: %v", err1)
+	}
+	if !strings.Contains(string(data1), "entrada dia 19") {
+		t.Errorf("el log del día 19 no contiene 'entrada dia 19': %s", string(data1))
+	}
+
+	data2, err2 := os.ReadFile(path2)
+	if err2 != nil {
+		t.Fatalf("error leyendo log dia 2: %v", err2)
+	}
+	if !strings.Contains(string(data2), "entrada dia 20") {
+		t.Errorf("el log del día 20 no contiene 'entrada dia 20': %s", string(data2))
 	}
 }

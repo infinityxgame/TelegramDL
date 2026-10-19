@@ -62,7 +62,7 @@ func NewApp(assets fs.FS) *App {
 
 	// 0. Arrancar el registro antes que nada: a partir de aquí, todo lo que la
 	// aplicación escriba con log.Printf acaba también en la vista de logs del
-	// panel y en ~/.tgdown/logs/tgdown.log.
+	// panel y en ~/.tgdown/logs/log_DD-MM-YY.log.
 	logFileErr := logbus.Init(config.DataDir)
 	logbus.Attach()
 	logbus.Success(logbus.CatSystem, i18n.T("system.appStarted", config.AppVersion), "")
