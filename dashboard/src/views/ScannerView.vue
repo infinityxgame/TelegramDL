@@ -452,10 +452,22 @@ const onDownloadItems = async (itemsToDownload) => {
   if (!itemsToDownload || itemsToDownload.length === 0) return
   downloadingBatch.value = true
   try {
+    const sortedItems = [...itemsToDownload].sort((a, b) => {
+      if (a.message_id && b.message_id && a.message_id !== b.message_id) {
+        return a.message_id - b.message_id
+      }
+      if (a.date && b.date && a.date !== b.date) {
+        return a.date - b.date
+      }
+      return String(a.id).localeCompare(String(b.id), undefined, {
+        numeric: true
+      })
+    })
+
     const data = await api('/api/scanner/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: itemsToDownload })
+      body: JSON.stringify({ items: sortedItems })
     })
 
     const count = data.queued || itemsToDownload.length

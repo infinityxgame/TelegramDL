@@ -713,11 +713,29 @@ func (s *ScannerService) QueueItems(items []ScanItem) int {
 	queued := 0
 	now := float64(time.Now().UnixNano()) / 1e9
 
-	for _, item := range items {
+	// Ordenar ítems de menor a mayor MessageID / Date para que las descargas en lote
+	// comiencen desde el mensaje más antiguo al más reciente (ID 100, 101, ...),
+	// coincidiendo con el orden en la lista de descargas activas.
+	sortedItems := make([]ScanItem, len(items))
+	copy(sortedItems, items)
+	sort.SliceStable(sortedItems, func(i, j int) bool {
+		if sortedItems[i].MessageID != sortedItems[j].MessageID {
+			return sortedItems[i].MessageID < sortedItems[j].MessageID
+		}
+		if sortedItems[i].Date != sortedItems[j].Date {
+			return sortedItems[i].Date < sortedItems[j].Date
+		}
+		return sortedItems[i].ID < sortedItems[j].ID
+	})
+
+	for i, item := range sortedItems {
 		if item.IsDeleted {
 			log.Printf("[SCANNER] omitiendo elemento borrado en Telegram: %s", item.ID)
 			continue
 		}
+
+		// Asignar CreatedAt con un minúsculo incremento para garantizar el orden cronológico
+		itemCreatedAt := now + float64(i)*0.0001
 
 		dlItem := storage.DownloadItem{
 			ID:               item.ID,
@@ -732,7 +750,7 @@ func (s *ScannerService) QueueItems(items []ScanItem) int {
 			TotalStr:         item.FormattedSize,
 			TotalBytes:       item.FileSize,
 			Source:           "scanner",
-			CreatedAt:        now,
+			CreatedAt:        itemCreatedAt,
 			UpdatedAt:        now,
 		}
 
