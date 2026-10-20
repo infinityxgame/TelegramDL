@@ -37,27 +37,27 @@ var trayIcon []byte
 var notificationWav []byte
 
 type App struct {
-	ctx          context.Context
-	clientMgr    *telegram.ClientManager
-	storage      *storage.Storage
-	downloader   *downloader.Engine
-	listener     *listener.ListenerEngine
-	updater      *updater.AppUpdater
-	server       *server.Server
+	ctx        context.Context
+	clientMgr  *telegram.ClientManager
+	storage    *storage.Storage
+	downloader *downloader.Engine
+	listener   *listener.ListenerEngine
+	updater    *updater.AppUpdater
+	server     *server.Server
 	// config es la copia que consume la bandeja del sistema (MinimizeToTray).
 	// El diálogo de carpetas NO la usa: pregunta al servidor con GetConfig()
 	// para no quedarse congelado en el valor de arranque (SEC-40).
-	config       config.Config
-	assets       fs.FS
-	mu           sync.Mutex
-	startupURL   string // URL pasada desde línea de comandos al iniciar
+	config             config.Config
+	assets             fs.FS
+	mu                 sync.Mutex
+	startupURL         string // URL pasada desde línea de comandos al iniciar
 	trayOpenItem       *systray.MenuItem
 	trayExitItem       *systray.MenuItem
 	trayReady          bool
 	lastTrayNotifyTime time.Time
 }
 
-func NewApp(assets fs.FS) *App {
+func NewApp(assets fs.FS) (*App, error) {
 	config.InitPaths()
 
 	// 0. Arrancar el registro antes que nada: a partir de aquí, todo lo que la
@@ -72,24 +72,18 @@ func NewApp(assets fs.FS) *App {
 		logbus.Info(logbus.CatSystem, i18n.T("system.logFileActive"), path)
 	}
 
-	// 1. Usar base de datos SQLite original de Python (tgdown.sqlite3)
+	// 1. Abrir la base de datos única (la de Python: tgdown.sqlite3). Si está
+	// dañada, OpenResilient la aparta renombrada, crea una nueva y rescata en
+	// ella todo lo legible; el fallback a un segundo archivo (tgdown.db) se
+	// retiró porque repartía los datos entre dos bases según cuál abriera.
 	dbPath := filepath.Join(config.DataDir, "tgdown.sqlite3")
-	st, err := storage.NewStorage(dbPath)
+	st, err := storage.OpenResilient(dbPath)
 	if err != nil {
-		logbus.Warn(logbus.CatSystem, i18n.T("system.dbOpenError"), err.Error())
-		// Fallback si no se puede abrir tgdown.sqlite3
-		dbPath = filepath.Join(config.DataDir, "tgdown.db")
-		var errBackup error
-		st, errBackup = storage.NewStorage(dbPath)
-		if errBackup != nil {
-			// Antes el error del respaldo se descartaba, así que se seguía con
-			// un puntero nil y la aplicación reventaba en la línea siguiente sin
-			// decir por qué. Sin base de datos no hay nada que arrancar.
-			logbus.Error(logbus.CatSystem,
-				i18n.T("system.dbOpenFatal"),
-				errBackup.Error())
-			return nil
-		}
+		// Sin base de datos no hay nada que arrancar. El error exacto sube a
+		// quien llama: en el escritorio se muestra en el aviso de arranque y
+		// en el modo servidor sale por la consola.
+		logbus.Error(logbus.CatSystem, i18n.T("system.dbOpenFatal"), err.Error())
+		return nil, err
 	}
 
 	// SEC-30: la base de datos (y sus ficheros -wal/-shm) se acaban de crear
@@ -183,7 +177,7 @@ func NewApp(assets fs.FS) *App {
 		logbus.Warn(logbus.CatTelegram, i18n.T("telegram.noCredentials"), i18n.T("telegram.noCredentialsHint"))
 	}
 
-	return app
+	return app, nil
 }
 
 // setContext y context guardan el contexto de Wails detrás del mutex. Lo
@@ -548,6 +542,3 @@ func (a *App) monitorMinimize() {
 		}
 	}
 }
-
-
-

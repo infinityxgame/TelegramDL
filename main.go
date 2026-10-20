@@ -57,7 +57,18 @@ func main() {
 			printUsage()
 			os.Exit(1)
 		}
-		os.Exit(cli.RunCLIMode(url))
+		// El modo CLI escribe en la misma base de datos que la aplicación de
+		// escritorio: sin el candato de instancia podían coexistir dos
+		// procesos sobre el mismo archivo. Se espera a que la otra instancia
+		// cierre y, si no suelta el candato, se avisa en vez de descargar.
+		release, ok := waitInstanceLock(8 * time.Second)
+		if !ok {
+			notifyAlreadyRunning()
+			os.Exit(1)
+		}
+		code := cli.RunCLIMode(url)
+		release()
+		os.Exit(code)
 	}
 
 	// Detectar si el primer argumento es una URL de Telegram (sin flag)
@@ -222,12 +233,14 @@ func runDesktopMode() {
 	}
 	defer release()
 
-	app := NewApp(assets)
+	app, appErr := NewApp(assets)
 	if app == nil {
-		// NewApp solo devuelve nil cuando no consigue abrir ninguna base de
-		// datos. Abierta con doble clic no hay consola donde leer el motivo, así
-		// que el aviso tiene que ser una ventana del sistema.
-		showNotice(i18n.T("cli.dbOpenAviso", config.DataDir))
+		// NewApp solo falla cuando no consigue abrir ni recuperar la base de
+		// datos. Abierta con doble clic no hay consola donde leer el motivo,
+		// así que el aviso tiene que ser una ventana del sistema, y llevar el
+		// error exacto: es la única pista para distinguir un disco lleno de
+		// un permiso o un archivo bloqueado.
+		showNotice(i18n.T("cli.dbOpenAviso", config.DataDir, appErr))
 		return
 	}
 
@@ -298,9 +311,9 @@ func runServerMode() int {
 	}
 	defer release()
 
-	app := NewApp(assets)
+	app, appErr := NewApp(assets)
 	if app == nil {
-		fmt.Fprintf(os.Stderr, i18n.T("cli.dbOpenError"), config.DataDir)
+		fmt.Fprintln(os.Stderr, i18n.T("cli.dbOpenError", config.DataDir, appErr))
 		return 1
 	}
 	if app.server == nil {

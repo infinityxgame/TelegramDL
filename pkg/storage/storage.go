@@ -69,7 +69,15 @@ func NewStorage(dbPath string) (*Storage, error) {
 	// consulta posterior puede caer en otra conexión con las claves foráneas
 	// desactivadas, así que el ON DELETE CASCADE de download_chunks se aplicaba
 	// o no según qué conexión tocara.
-	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	//
+	// journal_mode y synchronous van aquí (y no en initSchema, donde vivían
+	// como Exec) por lo mismo: así llegan a TODAS las conexiones del pool. Con
+	// WAL en el DSN, además, si el modo no puede activarse (disco lleno, -wal
+	// bloqueado por otro proceso) la propia apertura falla con el error real
+	// en vez de arrancar en modo journal clásico sin que nadie se entere.
+	// synchronous=NORMAL, con WAL, evita el fsync de cada commit: un corte de
+	// luz pierde la última transacción, pero no corrompe la base.
+	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("storage.openErr"), err)
@@ -101,22 +109,8 @@ func (s *Storage) initSchema() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// journal_mode queda grabado en el propio archivo, así que basta con
-	// fijarlo una vez. foreign_keys y busy_timeout se aplican por conexión y
-	// ya vienen en el DSN de NewStorage.
-	//
-	// SEC-38: estos dos PRAGMA ya no se descartan en silencio. Si journal_mode
-	// no llega a WAL, cada escritura queda sincronizada con el diario completo
-	// (rendimiento) y una caída puede dejar el archivo incoherente; si falla
-	// synchronous, el riesgo es de corrupción ante cortes de alimentación.
-	// Ninguno de los dos es una operación por arranque esperada que falle, así
-	// que cualquier error se registra con el patrón [STORAGE] del paquete.
-	if _, err := s.db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
-		log.Printf("[STORAGE] failed to enable WAL journal mode: %v", err)
-	}
-	if _, err := s.db.Exec("PRAGMA synchronous=NORMAL;"); err != nil {
-		log.Printf("[STORAGE] failed to set synchronous mode: %v", err)
-	}
+	// journal_mode, synchronous, foreign_keys y busy_timeout se fijan por
+	// conexión en el DSN de NewStorage; aquí no queda ningún PRAGMA suelto.
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS app_config (
@@ -1511,4 +1505,3 @@ func (s *Storage) DeleteScannerCacheByChat(chatID int64) error {
 	_, _ = s.db.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
 	return nil
 }
-

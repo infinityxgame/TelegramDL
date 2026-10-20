@@ -23,16 +23,14 @@ func RunCLIMode(url string) int {
 	fmt.Println(i18n.T("cli.modeHeader"))
 	fmt.Println("======================")
 
-	// 2. Abrir base de datos
+	// 2. Abrir base de datos (la única: tgdown.sqlite3). Si está dañada, se
+	// aparta renombrada, se crea una nueva y se rescata todo lo legible, así
+	// que el fallback a un segundo archivo de la versión anterior se retiró.
 	dbPath := filepath.Join(config.DataDir, "tgdown.sqlite3")
-	st, err := storage.NewStorage(dbPath)
+	st, err := storage.OpenResilient(dbPath)
 	if err != nil {
-		dbPath = filepath.Join(config.DataDir, "tgdown.db")
-		st, err = storage.NewStorage(dbPath)
-		if err != nil {
-			fmt.Fprint(os.Stderr, i18n.T("cli.errDatabase", err))
-			return 1
-		}
+		fmt.Fprint(os.Stderr, i18n.T("cli.errDatabase", err))
+		return 1
 	}
 
 	// SEC-30: la base de datos (y sus ficheros -wal/-shm) se acaban de crear
