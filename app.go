@@ -74,8 +74,7 @@ func NewApp(assets fs.FS) (*App, error) {
 
 	// 1. Abrir la base de datos única (la de Python: tgdown.sqlite3). Si está
 	// dañada, OpenResilient la aparta renombrada, crea una nueva y rescata en
-	// ella todo lo legible; el fallback a un segundo archivo (tgdown.db) se
-	// retiró porque repartía los datos entre dos bases según cuál abriera.
+	// ella todo lo legible.
 	dbPath := filepath.Join(config.DataDir, "tgdown.sqlite3")
 	st, err := storage.OpenResilient(dbPath)
 	if err != nil {
@@ -89,7 +88,7 @@ func NewApp(assets fs.FS) (*App, error) {
 	// SEC-30: la base de datos (y sus ficheros -wal/-shm) se acaban de crear
 	// aquí con los permisos por defecto del sistema; se cierran a 0600 justo
 	// después de un NewStorage exitoso. dbPath ya apunta a la BD realmente
-	// usada, incluido el caso de respaldo (tgdown.db).
+	// usada.
 	config.SecureDataDir(dbPath, dbPath+"-wal", dbPath+"-shm")
 
 	// 1.b Volcar a la base de datos lo que quedara en el .env de una versión

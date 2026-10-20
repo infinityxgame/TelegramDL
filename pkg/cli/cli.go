@@ -35,8 +35,7 @@ func RunCLIMode(url string) int {
 
 	// SEC-30: la base de datos (y sus ficheros -wal/-shm) se acaban de crear
 	// con los permisos por defecto del sistema; se cierran a 0600 tras un
-	// NewStorage exitoso. dbPath ya apunta a la BD realmente usada, incluido
-	// el caso de respaldo (tgdown.db).
+	// NewStorage exitoso. dbPath ya apunta a la BD realmente usada
 	config.SecureDataDir(dbPath, dbPath+"-wal", dbPath+"-shm")
 
 	defer st.Close()
