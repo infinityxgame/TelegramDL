@@ -205,23 +205,6 @@ const chatFolder = (chat) => {
   return chat.topic_id && topic ? `${base} / ${topic}` : base
 }
 
-// Acepta un ID numérico o un enlace privado https://t.me/c/<grupo>/<tema>[/<mensaje>].
-const parseChatInput = (raw) => {
-  const value = (raw || '').trim()
-  if (!value) return null
-
-  const link = value.match(/t\.me\/c\/(\d+)\/(\d+)(?:\/(\d+))?/i)
-  if (link) {
-    const id = Number(`-100${link[1]}`)
-    const topic = Number(link[2])
-    return { id, topic: Number.isInteger(topic) && topic > 0 ? topic : 0 }
-  }
-
-  const id = Number(value)
-  if (!Number.isInteger(id) || id === 0) return null
-  return { id, topic: 0 }
-}
-
 const api = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
@@ -343,28 +326,29 @@ const addResolvedChat = async (chat) => {
 }
 
 const addChat = async () => {
-  if (!newChatId.value.trim()) return
-  const parsed = parseChatInput(newChatId.value)
-  if (!parsed) {
-    error.value = t('listener.errInvalidInput', { link: 'https://t.me/c/...' })
-    return
-  }
+  const query = newChatId.value.trim()
+  if (!query) return
 
   let chat
   try {
-    const data = await api(`/api/listener/chat/${parsed.id}`)
+    const data = await api(`/api/listener/chat/${encodeURIComponent(query)}`)
     chat = data.chat
   } catch (err) {
     props.notify(err.message, true)
     return
   }
 
-  // Solo los grupos con temas ofrecen la elección; el resto se añade directo.
-  if (chat && chat.is_forum) {
-    await openTopicPicker(chat, parsed.topic)
+  if (!chat || !chat.id) {
+    error.value = t('listener.errInvalidInput', { link: 'https://t.me/c/...' })
     return
   }
-  await addResolvedChat({ ...chat, topic_id: parsed.topic || 0 })
+
+  // Solo los grupos con temas ofrecen la elección; el resto se añade directo.
+  if (chat.is_forum) {
+    await openTopicPicker(chat, chat.topic_id || 0)
+    return
+  }
+  await addResolvedChat({ ...chat, topic_id: chat.topic_id || 0 })
 }
 
 const confirmTopicSelection = async () => {

@@ -166,15 +166,17 @@ export default {
     chatsTitle: 'Chats vigilados',
     chatsPill: '{n} configurados',
     helper:
-      'Añade el ID numérico de un grupo, canal o chat privado, o pega un enlace {link}. Si el grupo usa temas podrás escuchar solo uno de ellos en lugar del grupo entero.',
-    placeholder: 'Ej. -1001234567890 o https://t.me/c/1234567890/57',
+      'Añade el @username, ID numérico de un grupo, canal, bot o chat privado, o pega un enlace {link}. Si el grupo usa temas podrás escuchar solo uno de ellos en lugar del grupo entero.',
+    placeholder:
+      'Ej. @usuario_bot, -1001234567890 o https://t.me/c/1234567890/57',
     topicHint: 'Este grupo usa temas. Elige qué quieres escuchar.',
     topicsLoading: 'Cargando temas…',
     wholeGroup: 'Todo el grupo',
     topicClosed: '(cerrado)',
     errTopicExists: 'Ese tema ya está configurado',
     errChatExists: 'Ese chat ya está configurado',
-    errInvalidInput: 'Escribe el ID numérico del chat o un enlace {link}',
+    errInvalidInput:
+      'Escribe el @username, ID numérico del chat o un enlace {link}',
     autoLabel: 'Auto',
     autoDownloadLine1: 'Descarga',
     autoDownloadLine2: 'auto',

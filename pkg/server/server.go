@@ -3198,15 +3198,24 @@ func topicIDFromQuery(r *http.Request) int64 {
 
 func (s *Server) handleListenerResolveChat(w http.ResponseWriter, r *http.Request) {
 	chatIDStr := r.URL.Query().Get("chat_id")
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if chatIDStr == "" {
+		chatIDStr = r.URL.Query().Get("id")
+	}
+
+	chatID, topicIDFromLink, err := s.listener.ResolveChatIdentifier(r.Context(), chatIDStr)
 	if err != nil {
-		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidChatID"))
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	topicID := topicIDFromQuery(r)
+	if topicID == 0 {
+		topicID = topicIDFromLink
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]any{
 		"status": "ok",
-		"chat":   s.resolveChatPayload(r.Context(), chatID, topicIDFromQuery(r)),
+		"chat":   s.resolveChatPayload(r.Context(), chatID, topicID),
 	})
 }
 
@@ -3217,20 +3226,16 @@ func (s *Server) handleListenerResolveChatPath(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	chatIDStr := parts[3]
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	chatQuery := strings.Join(parts[3:], "/")
+	chatID, topicIDFromLink, err := s.listener.ResolveChatIdentifier(r.Context(), chatQuery)
 	if err != nil {
-		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidChatID"))
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// El tema puede venir en la ruta (/api/listener/chat/-100.../57) o como
-	// parámetro (?topic_id=57).
 	topicID := topicIDFromQuery(r)
-	if len(parts) >= 5 && strings.TrimSpace(parts[4]) != "" {
-		if parsed, perr := strconv.ParseInt(parts[4], 10, 64); perr == nil && parsed > 0 {
-			topicID = parsed
-		}
+	if topicID == 0 {
+		topicID = topicIDFromLink
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]any{
@@ -3247,13 +3252,13 @@ func (s *Server) handleListenerTopics(w http.ResponseWriter, r *http.Request) {
 		// También se admite /api/listener/topics/<chat_id>
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(parts) >= 4 {
-			chatIDStr = parts[3]
+			chatIDStr = strings.Join(parts[3:], "/")
 		}
 	}
 
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	chatID, _, err := s.listener.ResolveChatIdentifier(r.Context(), chatIDStr)
 	if err != nil {
-		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidChatID"))
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

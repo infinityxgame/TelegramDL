@@ -1008,6 +1008,76 @@ type ForumTopicInfo struct {
 	Closed bool   `json:"closed,omitempty"`
 }
 
+// ResolveChatIdentifier toma una cadena ingresada por el usuario (ID numérico, @username,
+// username a secas, enlace t.me/c/..., enlace t.me/username...) y la resuelve al
+// ID numérico canónico de Telegram y, opcionalmente, al ID de tema si el enlace lo incluye.
+func (le *ListenerEngine) ResolveChatIdentifier(ctx context.Context, rawInput string) (int64, int64, error) {
+	clean := strings.TrimSpace(rawInput)
+	if clean == "" {
+		return 0, 0, errors.New(i18n.T("server.invalidChatID"))
+	}
+
+	// 1. Probar si es directamente un ID numérico
+	if id, err := strconv.ParseInt(clean, 10, 64); err == nil && id != 0 {
+		return id, 0, nil
+	}
+
+	// 2. Normalizar enlaces t.me y telegram.me
+	clean = strings.Replace(clean, "http://telegram.me/", "https://t.me/", 1)
+	clean = strings.Replace(clean, "https://telegram.me/", "https://t.me/", 1)
+	clean = strings.Replace(clean, "telegram.me/", "https://t.me/", 1)
+	clean = strings.Replace(clean, "http://t.me/", "https://t.me/", 1)
+
+	// 3. Caso enlace de canal/grupo privado: t.me/c/<channel_id>[/<topic_id>][/<msg_id>]
+	if idx := strings.Index(clean, "t.me/c/"); idx != -1 {
+		path := clean[idx+len("t.me/c/"):]
+		parts := strings.Split(path, "/")
+		if len(parts) >= 1 && parts[0] != "" {
+			rawID, err := strconv.ParseInt(parts[0], 10, 64)
+			if err == nil && rawID > 0 {
+				canonicalID, _ := strconv.ParseInt(fmt.Sprintf("-100%d", rawID), 10, 64)
+				var topicID int64
+				if len(parts) >= 2 && parts[1] != "" {
+					if parsedTopic, errTopic := strconv.ParseInt(parts[1], 10, 64); errTopic == nil && parsedTopic > 0 {
+						topicID = parsedTopic
+					}
+				}
+				return canonicalID, topicID, nil
+			}
+		}
+	}
+
+	// 4. Username o enlace público: @username, username, t.me/username, t.me/b/username, t.me/username/57...
+	clean = strings.TrimPrefix(clean, "https://")
+	clean = strings.TrimPrefix(clean, "t.me/b/")
+	clean = strings.TrimPrefix(clean, "t.me/")
+	clean = strings.TrimPrefix(clean, "@")
+
+	parts := strings.Split(clean, "/")
+	username := strings.TrimSpace(parts[0])
+	if username == "" {
+		return 0, 0, errors.New(i18n.T("server.invalidChatID"))
+	}
+
+	var topicID int64
+	if len(parts) >= 2 && parts[1] != "" {
+		if parsedTopic, errTopic := strconv.ParseInt(parts[1], 10, 64); errTopic == nil && parsedTopic > 0 {
+			topicID = parsedTopic
+		}
+	}
+
+	if le == nil || le.clientMgr == nil {
+		return 0, 0, errors.New("client not connected")
+	}
+
+	chatID, err := le.clientMgr.ResolveUsername(ctx, username)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return chatID, topicID, nil
+}
+
 // ResolveChat consulta a Telegram los datos de un chat y, de paso, guarda su
 // título en la caché del cliente para que el registro de actividad pueda
 // mostrar nombres en lugar de IDs.
