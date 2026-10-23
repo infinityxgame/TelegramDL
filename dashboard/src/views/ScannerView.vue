@@ -387,16 +387,123 @@ const selectedItemsList = computed(() => {
 })
 
 // Funciones para selección de nombres (individual y masivo)
-const toggleNameMenu = (itemId) => {
+let justOpenedMenu = false
+
+const toggleNameMenu = (itemId, event) => {
   const current = !!nameSelectionMenus.value[itemId]
-  nameSelectionMenus.value = { [itemId]: !current }
+  if (current) {
+    nameSelectionMenus.value = {}
+  } else {
+    nameSelectionMenus.value = { [itemId]: true }
+    justOpenedMenu = true
+    setTimeout(() => {
+      justOpenedMenu = false
+    }, 250)
+
+    if (event) {
+      let btn = event.currentTarget || event.target
+      if (btn && btn.closest) {
+        btn = btn.closest('button') || btn
+      }
+      if (btn && btn.getBoundingClientRect) {
+        const rect = btn.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom
+        const spaceAbove = rect.top
+        const dropUp = spaceBelow < 170 && spaceAbove > spaceBelow
+
+        nameMenuPosition.value = {
+          dropUp,
+          right: window.innerWidth - rect.right,
+          top: dropUp ? null : rect.bottom + 6,
+          bottom: dropUp ? window.innerHeight - rect.top + 6 : null
+        }
+      }
+    }
+  }
   bulkNameMenuOpen.value = false
 }
 
-const toggleBulkNameMenu = () => {
-  bulkNameMenuOpen.value = !bulkNameMenuOpen.value
+const toggleBulkNameMenu = (event) => {
+  const current = bulkNameMenuOpen.value
+  if (current) {
+    bulkNameMenuOpen.value = false
+  } else {
+    bulkNameMenuOpen.value = true
+    justOpenedMenu = true
+    setTimeout(() => {
+      justOpenedMenu = false
+    }, 250)
+
+    if (event) {
+      let btn = event.currentTarget || event.target
+      if (btn && btn.closest) {
+        btn = btn.closest('button') || btn
+      }
+      if (btn && btn.getBoundingClientRect) {
+        const rect = btn.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom
+        const spaceAbove = rect.top
+        const dropUp = spaceBelow < 170 && spaceAbove > spaceBelow
+
+        bulkNameMenuPosition.value = {
+          dropUp,
+          left: rect.left,
+          top: dropUp ? null : rect.bottom + 6,
+          bottom: dropUp ? window.innerHeight - rect.top + 6 : null
+        }
+      }
+    }
+  }
   nameSelectionMenus.value = {}
 }
+
+const nameMenuPosition = ref({
+  top: null,
+  bottom: null,
+  right: 0,
+  dropUp: false
+})
+
+const bulkNameMenuPosition = ref({
+  top: null,
+  bottom: null,
+  left: 0,
+  dropUp: false
+})
+
+const menuStyle = computed(() => {
+  const pos = nameMenuPosition.value
+  const style = {
+    position: 'fixed',
+    zIndex: 9999,
+    right: `${pos.right}px`
+  }
+  if (pos.dropUp) {
+    style.top = 'auto'
+    style.bottom = `${pos.bottom}px`
+  } else {
+    style.top = `${pos.top}px`
+    style.bottom = 'auto'
+  }
+  return style
+})
+
+const bulkMenuStyle = computed(() => {
+  const pos = bulkNameMenuPosition.value
+  const style = {
+    position: 'fixed',
+    zIndex: 9999,
+    left: `${pos.left}px`
+  }
+  if (pos.dropUp) {
+    style.top = 'auto'
+    style.bottom = `${pos.bottom}px`
+  } else {
+    style.top = `${pos.top}px`
+    style.bottom = 'auto'
+  }
+  return style
+})
 
 const selectFileName = (item, selectedName) => {
   if (selectedName) {
@@ -435,17 +542,22 @@ const selectBulkFileName = (type) => {
 }
 
 const onWindowClick = () => {
+  if (justOpenedMenu) return
   bulkNameMenuOpen.value = false
   nameSelectionMenus.value = {}
 }
 
 onMounted(() => {
   window.addEventListener('click', onWindowClick)
+  window.addEventListener('scroll', onWindowClick, true)
+  window.addEventListener('resize', onWindowClick)
   fetchRecents()
 })
 
 onUnmounted(() => {
   window.removeEventListener('click', onWindowClick)
+  window.removeEventListener('scroll', onWindowClick, true)
+  window.removeEventListener('resize', onWindowClick)
 })
 
 const onDownloadItems = async (itemsToDownload) => {
@@ -789,26 +901,36 @@ const getKindIcon = (kind) => {
               type="button"
               class="bulk-name-button btn-compact"
               :title="t('listener.bulkNameTitle')"
-              @click.stop="toggleBulkNameMenu"
+              @click.stop="toggleBulkNameMenu($event)"
             >
               <Settings2 :size="13" />
               <span>{{ t('listener.nameLabel') }}</span>
             </button>
-            <div
-              v-if="bulkNameMenuOpen"
-              class="name-dropdown bulk-name-dropdown"
-            >
-              <div class="name-option" @click="selectBulkFileName('caption')">
-                <span class="name-preview">{{ t('listener.useCaption') }}</span>
-                <small>{{ t('scanner.useCaptionSub') }}</small>
+            <Teleport to="body">
+              <div
+                v-if="bulkNameMenuOpen"
+                class="name-dropdown bulk-name-dropdown"
+                :class="{ 'drop-up': bulkNameMenuPosition.dropUp }"
+                :style="bulkMenuStyle"
+                @click.stop
+              >
+                <div class="name-option" @click="selectBulkFileName('caption')">
+                  <span class="name-preview">{{
+                    t('listener.useCaption')
+                  }}</span>
+                  <small>{{ t('scanner.useCaptionSub') }}</small>
+                </div>
+                <div
+                  class="name-option"
+                  @click="selectBulkFileName('original')"
+                >
+                  <span class="name-preview">{{
+                    t('listener.useOriginal')
+                  }}</span>
+                  <small>{{ t('scanner.useOriginalSub') }}</small>
+                </div>
               </div>
-              <div class="name-option" @click="selectBulkFileName('original')">
-                <span class="name-preview">{{
-                  t('listener.useOriginal')
-                }}</span>
-                <small>{{ t('scanner.useOriginalSub') }}</small>
-              </div>
-            </div>
+            </Teleport>
           </div>
 
           <button
@@ -944,31 +1066,39 @@ const getKindIcon = (kind) => {
                     type="button"
                     class="name-select-button"
                     :title="t('listener.nameLabel')"
-                    @click.stop="toggleNameMenu(item.id)"
+                    @click.stop="toggleNameMenu(item.id, $event)"
                   >
                     <Settings2 :size="12" />
                   </button>
-                  <div v-if="nameSelectionMenus[item.id]" class="name-dropdown">
+                  <Teleport to="body">
                     <div
-                      class="name-option"
-                      @click="selectFileName(item, item.caption_file_name)"
+                      v-if="nameSelectionMenus[item.id]"
+                      class="name-dropdown"
+                      :class="{ 'drop-up': nameMenuPosition.dropUp }"
+                      :style="menuStyle"
+                      @click.stop
                     >
-                      <span class="name-preview">{{
-                        item.caption_file_name
-                      }}</span>
-                      <small>({{ t('listener.captionTag') }})</small>
+                      <div
+                        class="name-option"
+                        @click="selectFileName(item, item.caption_file_name)"
+                      >
+                        <span class="name-preview">{{
+                          item.caption_file_name
+                        }}</span>
+                        <small>({{ t('listener.captionTag') }})</small>
+                      </div>
+                      <div
+                        v-if="item.original_file_name"
+                        class="name-option"
+                        @click="selectFileName(item, item.original_file_name)"
+                      >
+                        <span class="name-preview">{{
+                          item.original_file_name
+                        }}</span>
+                        <small>({{ t('listener.originalTag') }})</small>
+                      </div>
                     </div>
-                    <div
-                      v-if="item.original_file_name"
-                      class="name-option"
-                      @click="selectFileName(item, item.original_file_name)"
-                    >
-                      <span class="name-preview">{{
-                        item.original_file_name
-                      }}</span>
-                      <small>({{ t('listener.originalTag') }})</small>
-                    </div>
-                  </div>
+                  </Teleport>
                 </div>
               </td>
               <td class="col-date">{{ item.date_str }}</td>
@@ -1901,6 +2031,15 @@ html.theme-light .compact-select option {
   border-left: 2px solid var(--user-primary);
   border-top: 2px solid var(--user-primary);
   transform: rotate(45deg);
+}
+
+.name-dropdown.drop-up::before {
+  top: auto;
+  bottom: -6px;
+  border-left: none;
+  border-top: none;
+  border-right: 2px solid var(--user-primary);
+  border-bottom: 2px solid var(--user-primary);
 }
 
 .bulk-name-dropdown::before {

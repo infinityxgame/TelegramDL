@@ -560,13 +560,123 @@ const hasManualNameSelection = (item) => {
   return !!(found && found.name_mode === 'manual')
 }
 
-const toggleNameMenu = (itemId) => {
-  nameSelectionMenus.value[itemId] = !nameSelectionMenus.value[itemId]
+const nameMenuPosition = ref({
+  top: null,
+  bottom: null,
+  right: 0,
+  dropUp: false
+})
+
+const bulkNameMenuPosition = ref({
+  top: null,
+  bottom: null,
+  left: 0,
+  dropUp: false
+})
+
+let justOpenedMenu = false
+
+const toggleNameMenu = (itemId, event) => {
+  const current = !!nameSelectionMenus.value[itemId]
+  if (current) {
+    nameSelectionMenus.value = {}
+  } else {
+    nameSelectionMenus.value = { [itemId]: true }
+    justOpenedMenu = true
+    setTimeout(() => {
+      justOpenedMenu = false
+    }, 250)
+
+    if (event) {
+      let btn = event.currentTarget || event.target
+      if (btn && btn.closest) {
+        btn = btn.closest('button') || btn
+      }
+      if (btn && btn.getBoundingClientRect) {
+        const rect = btn.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom
+        const spaceAbove = rect.top
+        const dropUp = spaceBelow < 170 && spaceAbove > spaceBelow
+
+        nameMenuPosition.value = {
+          dropUp,
+          right: window.innerWidth - rect.right,
+          top: dropUp ? null : rect.bottom + 6,
+          bottom: dropUp ? window.innerHeight - rect.top + 6 : null
+        }
+      }
+    }
+  }
+  bulkNameMenuOpen.value = false
 }
 
-const toggleBulkNameMenu = () => {
-  bulkNameMenuOpen.value = !bulkNameMenuOpen.value
+const toggleBulkNameMenu = (event) => {
+  const current = bulkNameMenuOpen.value
+  if (current) {
+    bulkNameMenuOpen.value = false
+  } else {
+    bulkNameMenuOpen.value = true
+    justOpenedMenu = true
+    setTimeout(() => {
+      justOpenedMenu = false
+    }, 250)
+
+    if (event) {
+      let btn = event.currentTarget || event.target
+      if (btn && btn.closest) {
+        btn = btn.closest('button') || btn
+      }
+      if (btn && btn.getBoundingClientRect) {
+        const rect = btn.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom
+        const spaceAbove = rect.top
+        const dropUp = spaceBelow < 170 && spaceAbove > spaceBelow
+
+        bulkNameMenuPosition.value = {
+          dropUp,
+          left: rect.left,
+          top: dropUp ? null : rect.bottom + 6,
+          bottom: dropUp ? window.innerHeight - rect.top + 6 : null
+        }
+      }
+    }
+  }
+  nameSelectionMenus.value = {}
 }
+
+const menuStyle = computed(() => {
+  const pos = nameMenuPosition.value
+  const style = {
+    position: 'fixed',
+    zIndex: 9999,
+    right: `${pos.right}px`
+  }
+  if (pos.dropUp) {
+    style.top = 'auto'
+    style.bottom = `${pos.bottom}px`
+  } else {
+    style.top = `${pos.top}px`
+    style.bottom = 'auto'
+  }
+  return style
+})
+
+const bulkMenuStyle = computed(() => {
+  const pos = bulkNameMenuPosition.value
+  const style = {
+    position: 'fixed',
+    zIndex: 9999,
+    left: `${pos.left}px`
+  }
+  if (pos.dropUp) {
+    style.top = 'auto'
+    style.bottom = `${pos.bottom}px`
+  } else {
+    style.top = `${pos.top}px`
+    style.bottom = 'auto'
+  }
+  return style
+})
 
 const selectFileName = async (item, selectedName) => {
   try {
@@ -699,10 +809,14 @@ const selectChatNameMode = async (chat, mode) => {
 }
 
 const handleClickOutside = (e) => {
+  if (justOpenedMenu) return
   if (
+    e &&
+    e.target &&
     !e.target.closest('.name-select-wrapper') &&
     !e.target.closest('.bulk-name-wrapper') &&
-    !e.target.closest('.chat-name-mode-wrapper')
+    !e.target.closest('.chat-name-mode-wrapper') &&
+    !e.target.closest('.name-dropdown')
   ) {
     nameSelectionMenus.value = {}
     bulkNameMenuOpen.value = false
@@ -713,12 +827,16 @@ const handleClickOutside = (e) => {
 onMounted(async () => {
   disposed = false
   window.addEventListener('click', handleClickOutside)
+  window.addEventListener('scroll', handleClickOutside, true)
+  window.addEventListener('resize', handleClickOutside)
   await load()
   timer = setInterval(load, 15000) // Polling mucho más lento, el socket de App.vue ya trae los datos
 })
 onUnmounted(() => {
   disposed = true
   window.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleClickOutside, true)
+  window.removeEventListener('resize', handleClickOutside)
   nameSelectionMenus.value = {}
   chatNameModeMenus.value = {}
   clearInterval(timer)
@@ -990,33 +1108,38 @@ onUnmounted(() => {
                 <button
                   class="bulk-name-button"
                   :title="t('listener.bulkNameTitle')"
-                  @click.stop="toggleBulkNameMenu"
+                  @click.stop="toggleBulkNameMenu($event)"
                 >
                   <Settings2 :size="14" /> {{ t('listener.nameLabel') }}
                 </button>
-                <div
-                  v-if="bulkNameMenuOpen"
-                  class="name-dropdown bulk-name-dropdown"
-                >
+                <Teleport to="body">
                   <div
-                    class="name-option"
-                    @click="selectBulkFileName('caption')"
+                    v-if="bulkNameMenuOpen"
+                    class="name-dropdown bulk-name-dropdown"
+                    :class="{ 'drop-up': bulkNameMenuPosition.dropUp }"
+                    :style="bulkMenuStyle"
+                    @click.stop
                   >
-                    <span class="name-preview">{{
-                      t('listener.useCaption')
-                    }}</span>
-                    <small>{{ t('listener.onlyManual') }}</small>
+                    <div
+                      class="name-option"
+                      @click="selectBulkFileName('caption')"
+                    >
+                      <span class="name-preview">{{
+                        t('listener.useCaption')
+                      }}</span>
+                      <small>{{ t('listener.onlyManual') }}</small>
+                    </div>
+                    <div
+                      class="name-option"
+                      @click="selectBulkFileName('original')"
+                    >
+                      <span class="name-preview">{{
+                        t('listener.useOriginal')
+                      }}</span>
+                      <small>{{ t('listener.onlyManual') }}</small>
+                    </div>
                   </div>
-                  <div
-                    class="name-option"
-                    @click="selectBulkFileName('original')"
-                  >
-                    <span class="name-preview">{{
-                      t('listener.useOriginal')
-                    }}</span>
-                    <small>{{ t('listener.onlyManual') }}</small>
-                  </div>
-                </div>
+                </Teleport>
               </div>
               <button
                 class="bulk-download"
@@ -1087,38 +1210,46 @@ onUnmounted(() => {
               >
                 <button
                   class="name-select-button"
-                  @click="toggleNameMenu(item.id)"
+                  @click.stop="toggleNameMenu(item.id, $event)"
                 >
                   <Settings2 :size="13" /> {{ t('listener.nameLabel') }}
                 </button>
-                <div v-if="nameSelectionMenus[item.id]" class="name-dropdown">
+                <Teleport to="body">
                   <div
-                    v-if="
-                      item.caption_file_name &&
-                      item.caption_file_name !== item.file_name
-                    "
-                    class="name-option"
-                    @click="selectFileName(item, item.caption_file_name)"
+                    v-if="nameSelectionMenus[item.id]"
+                    class="name-dropdown"
+                    :class="{ 'drop-up': nameMenuPosition.dropUp }"
+                    :style="menuStyle"
+                    @click.stop
                   >
-                    <span class="name-preview">{{
-                      item.caption_file_name
-                    }}</span>
-                    <small>({{ t('listener.captionTag') }})</small>
+                    <div
+                      v-if="
+                        item.caption_file_name &&
+                        item.caption_file_name !== item.file_name
+                      "
+                      class="name-option"
+                      @click="selectFileName(item, item.caption_file_name)"
+                    >
+                      <span class="name-preview">{{
+                        item.caption_file_name
+                      }}</span>
+                      <small>({{ t('listener.captionTag') }})</small>
+                    </div>
+                    <div
+                      v-if="
+                        item.original_file_name &&
+                        item.original_file_name !== item.file_name
+                      "
+                      class="name-option"
+                      @click="selectFileName(item, item.original_file_name)"
+                    >
+                      <span class="name-preview">{{
+                        item.original_file_name
+                      }}</span>
+                      <small>({{ t('listener.originalTag') }})</small>
+                    </div>
                   </div>
-                  <div
-                    v-if="
-                      item.original_file_name &&
-                      item.original_file_name !== item.file_name
-                    "
-                    class="name-option"
-                    @click="selectFileName(item, item.original_file_name)"
-                  >
-                    <span class="name-preview">{{
-                      item.original_file_name
-                    }}</span>
-                    <small>({{ t('listener.originalTag') }})</small>
-                  </div>
-                </div>
+                </Teleport>
               </div>
               <button
                 v-if="item.status === 'available'"
@@ -1879,6 +2010,14 @@ onUnmounted(() => {
   border-left: 2px solid var(--user-primary);
   border-top: 2px solid var(--user-primary);
   transform: rotate(45deg);
+}
+.name-dropdown.drop-up::before {
+  top: auto;
+  bottom: -6px;
+  border-left: none;
+  border-top: none;
+  border-right: 2px solid var(--user-primary);
+  border-bottom: 2px solid var(--user-primary);
 }
 .name-option {
   padding: 10px 12px;
