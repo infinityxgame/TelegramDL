@@ -188,6 +188,12 @@ html.theme-light select option {
   color: var(--user-accent);
 }
 
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+}
 .sidebar-status {
   display: flex;
   gap: 8px;
@@ -199,6 +205,7 @@ html.theme-light select option {
   border-radius: 10px;
   transition: all 0.3s ease;
   border: 1px solid transparent;
+  margin-bottom: 14px;
 }
 .sidebar-status.is-disconnected {
   color: #ffadad;
@@ -220,7 +227,6 @@ html.theme-light select option {
   animation-name: alertPulse;
 }
 .sidebar-bottom {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 7px;

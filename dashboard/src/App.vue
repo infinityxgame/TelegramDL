@@ -1334,7 +1334,9 @@ onUnmounted(() => {
               <Settings2 :size="16" /> {{ t('nav.settings') }}
             </button>
           </nav>
+        </div>
 
+        <div class="sidebar-footer">
           <!-- Notificaciones: dos botones de solo icono, uno junto al otro (el
                sidebar no da para texto). El hover explica qué es cada uno y en
                qué estado está, y el color de acento marca el encendido. -->
@@ -1441,15 +1443,16 @@ onUnmounted(() => {
                 : t('sidebar.serviceDisconnected')
             }}</span>
           </div>
-        </div>
-        <div class="sidebar-bottom">
-          <span class="mini-label">{{ t('sidebar.currentLimit') }}</span>
-          <strong>{{
-            t('sidebar.downloadsCount', {
-              n: settings.max_concurrent_downloads
-            })
-          }}</strong>
-          <span>{{ speedText }}</span>
+
+          <div class="sidebar-bottom">
+            <span class="mini-label">{{ t('sidebar.currentLimit') }}</span>
+            <strong>{{
+              t('sidebar.downloadsCount', {
+                n: settings.max_concurrent_downloads
+              })
+            }}</strong>
+            <span>{{ speedText }}</span>
+          </div>
         </div>
       </aside>
 
