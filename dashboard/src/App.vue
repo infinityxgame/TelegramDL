@@ -263,7 +263,10 @@ const syncSettings = async (nextSettings) => {
 let userChangingSidebar = false
 
 const showMessage = (txt, isError = false) => {
-  if (isError) {
+  // Evalúa si el parámetro indica explícitamente un error
+  const isErr = isError === true || isError === 'danger' || isError === 'error'
+
+  if (isErr) {
     // La heurística mira el texto en español porque es el idioma en que el
     // backend redacta sus errores; el título del aviso sí va traducido.
     if (
