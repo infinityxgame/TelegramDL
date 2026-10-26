@@ -2580,18 +2580,32 @@ html.theme-silent-cherry .accordion-icon {
   color: var(--light-alert);
 }
 
-/* Campana y bot del sidebar encendidos: el rosa pastel del acento no se lee
-   sobre el papel claro del sidebar, así que el icono activo va en el rosa
-   oscuro, igual que la tarjeta de apagado armada. */
-html.theme-silent-cherry .sidebar-toggle.armed {
-  color: var(--light-alert);
+/* Campana y bot del sidebar: cuando están apagados van en fondo claro neutro;
+   al activarse (armed) toman un fondo rosa pastel con borde e ícono en
+   cereza oscuro para destacar claramente. */
+html.theme-silent-cherry .sidebar-toggle {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 60%);
+  color: #7c6f8a;
 }
-/* Y el hover: el icono pasa al rosa oscuro (el pastel del acento no se ve) y
-   el fondo toma el mismo tinte rosa que las entradas del menú. */
+
+html.theme-silent-cherry .sidebar-toggle.armed {
+  background: var(--light-alert-bg) !important;
+  border-color: color-mix(in srgb, var(--light-alert), transparent 50%) !important;
+  color: var(--light-alert) !important;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--light-alert), transparent 82%);
+}
+
 html.theme-silent-cherry .sidebar-toggle:hover {
-  border-color: var(--light-alert);
-  background: color-mix(in srgb, var(--sc-sakura), transparent 78%);
-  color: var(--light-alert);
+  border-color: var(--light-alert) !important;
+  background: color-mix(in srgb, var(--sc-sakura), transparent 70%) !important;
+  color: var(--light-alert) !important;
+}
+
+html.theme-silent-cherry .sidebar-toggle.armed:hover {
+  background: #f7cbd7 !important;
+  border-color: var(--light-alert) !important;
+  color: #8e1b34 !important;
 }
 
 /* -----------------------------------------------------------------------------
