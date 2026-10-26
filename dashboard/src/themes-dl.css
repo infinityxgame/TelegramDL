@@ -1799,6 +1799,61 @@ html.theme-light .level-chip.active.debug {
   color: var(--light-ink) !important;
 }
 
+/* --- Logs: Filas del registro, etiquetas de nivel y metadatos --- */
+html.theme-light .log-time {
+  color: var(--light-ink) !important;
+  font-weight: 600;
+}
+
+html.theme-light .log-category {
+  color: var(--light-ink-soft) !important;
+  font-weight: 600;
+}
+
+html.theme-light .log-level.error {
+  color: #b03a56 !important;
+}
+
+html.theme-light .log-level.warn {
+  color: #8f6414 !important;
+}
+
+html.theme-light .log-level.success {
+  color: #25756a !important;
+}
+
+html.theme-light .log-level.info {
+  color: #0277bd !important;
+}
+
+html.theme-light .log-level.debug {
+  color: var(--light-ink) !important;
+}
+
+html.theme-light .log-row.error::before {
+  background: #b03a56 !important;
+}
+
+html.theme-light .log-row.warn::before {
+  background: #8f6414 !important;
+}
+
+html.theme-light .log-row.success::before {
+  background: #25756a !important;
+}
+
+html.theme-light .log-row.info::before {
+  background: #0277bd !important;
+}
+
+html.theme-light .log-row.debug::before {
+  background: var(--light-ink-soft) !important;
+}
+
+html.theme-light .log-row:hover {
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 90%) !important;
+}
+
 /* --- Logs: Filtro Orígenes Dropdown --- */
 html.theme-light .cat-select {
   background-color: #ffffff !important;
