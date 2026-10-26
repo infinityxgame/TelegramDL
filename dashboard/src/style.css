@@ -1319,8 +1319,10 @@ footer {
   }
   .hero-card,
   .panel {
-    padding: 18px;
+    padding: 16px 14px;
     border-radius: 14px;
+    box-sizing: border-box;
+    width: 100%;
   }
   .hero-card h2 {
     font-size: 20px;
@@ -1351,24 +1353,54 @@ footer {
     width: 100%;
     justify-content: flex-start;
     align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .disk-monitor {
     align-items: flex-start;
+    width: 100%;
+  }
+  .disk-bar {
+    width: 100%;
+    max-width: 160px;
+  }
+  .disk-monitor small {
+    font-size: 10px;
+    word-break: break-word;
   }
   .download-row {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 31px minmax(0, 1fr);
     gap: 10px;
+    align-items: start;
+    padding: 12px 0;
+  }
+  .file-info {
+    min-width: 0;
+  }
+  .file-info span {
+    font-size: 10px;
+    word-break: break-word;
   }
   .row-side {
+    grid-column: 1 / -1;
     width: 100%;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     min-width: 0;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--user-border);
   }
   .recent-row {
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .recent-row strong {
+    min-width: 0;
+    flex: 1 1 120px;
   }
   .recent-size {
     display: none;
@@ -1408,7 +1440,7 @@ footer {
   }
   .hero-card,
   .panel {
-    padding: 15px;
+    padding: 12px 10px;
   }
   .panel-heading {
     gap: 8px;
@@ -1420,14 +1452,8 @@ footer {
   .save-state {
     padding: 5px 7px;
   }
-  .download-row {
-    gap: 8px;
-  }
   .file-info span {
     font-size: 10px;
-  }
-  .row-side {
-    min-width: 56px;
   }
   .row-side button {
     font-size: 9px;
