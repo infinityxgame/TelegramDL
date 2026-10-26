@@ -1485,6 +1485,16 @@
   border: 1px solid color-mix(in srgb, var(--rg-rain), transparent 62%);
 }
 
+.theme-rainy-garden .exposure-banner {
+  background: color-mix(in srgb, #c97a6d, transparent 82%);
+  border-color: color-mix(in srgb, #c97a6d, transparent 55%);
+  color: #f2c4bb;
+}
+
+.theme-rainy-garden .exposure-banner .banner-icon {
+  color: #f5b96b;
+}
+
 .theme-rainy-garden .inline-link,
 .theme-rainy-garden .inline-link:visited {
   color: var(--rg-rain);
@@ -1715,7 +1725,8 @@ html.theme-light .tool-button.danger:hover,
 html.theme-light .bulk-delete:hover,
 html.theme-light .delete-small,
 html.theme-light .delete-small:hover,
-html.theme-light .level-chip.active.error {
+html.theme-light .level-chip.active.error,
+html.theme-light .exposure-banner {
   color: var(--light-alert);
 }
 
@@ -1732,9 +1743,14 @@ html.theme-light .bulk-delete:hover,
 html.theme-light .delete-small,
 html.theme-light .delete-small:hover,
 html.theme-light .level-chip.active.error,
-html.theme-light .clear-history-button {
+html.theme-light .clear-history-button,
+html.theme-light .exposure-banner {
   background: var(--light-alert-bg);
   border-color: color-mix(in srgb, var(--light-alert), transparent 78%);
+}
+
+html.theme-light .exposure-banner .banner-icon {
+  color: var(--light-amber);
 }
 
 /* --- Ámbar de "atención" -------------------------------------------------- */
@@ -1978,7 +1994,7 @@ html.theme-silent-cherry {
   --light-link: #b03a56;
   --light-link-hover: #8e2a44;
   /* Los botones llevan el degradado pastel: encima, el blanco se pierde. */
-  --light-button-text: #463a57;
+  --light-button-text: #111111;
 }
 
 /* --- El jardín en flor ---------------------------------------------------- */
@@ -2301,16 +2317,43 @@ html.theme-silent-cherry .sidebar-shutdown.armed .shutdown-info {
    de 12px sobre su eje: en horizontal repite cada 12 / sen(100°) = 12,19px, y
    el recorrido, 24,37px, son dos periodos justos. */
 
+/* --- Botones principales con texto e iconos en negro --- */
+html.theme-silent-cherry .btn--primary,
+html.theme-silent-cherry .primary-button,
+html.theme-silent-cherry .save-button,
+html.theme-silent-cherry .auth-button.primary,
+html.theme-silent-cherry .confirm-btn.primary,
+html.theme-silent-cherry .update-btn {
+  color: #111111 !important;
+  font-weight: 700;
+}
+
+html.theme-silent-cherry .btn--primary *,
+html.theme-silent-cherry .primary-button *,
+html.theme-silent-cherry .save-button *,
+html.theme-silent-cherry .auth-button.primary *,
+html.theme-silent-cherry .confirm-btn.primary *,
+html.theme-silent-cherry .update-btn * {
+  color: #111111 !important;
+  stroke: #111111 !important;
+}
+
 html.theme-silent-cherry .progress-fill,
 html.theme-silent-cherry .disk-bar .fill,
 html.theme-silent-cherry .update-progress-fill {
-  background-image: var(--user-gradient);
+  background-image: linear-gradient(
+    120deg,
+    #e05275 0%,
+    #b82d55 50%,
+    #21a096 100%
+  );
   box-shadow: 0 0 10px
-    color-mix(in srgb, var(--sc-sakura-deep), transparent 70%);
+    color-mix(in srgb, #b82d55, transparent 65%);
 }
 
 html.theme-silent-cherry .progress-track {
-  background: color-mix(in srgb, var(--sc-sakura), transparent 76%);
+  background: color-mix(in srgb, var(--sc-sakura), transparent 50%);
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 60%);
 }
 
 html.theme-silent-cherry .progress-fill,
