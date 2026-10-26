@@ -1851,7 +1851,11 @@ html.theme-light .log-row.debug::before {
 }
 
 html.theme-light .log-row:hover {
-  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 90%) !important;
+  background: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 90%
+  ) !important;
 }
 
 /* --- Logs: Filtro Orígenes Dropdown --- */
@@ -1876,7 +1880,11 @@ html.theme-light .ghost-button {
   color: var(--light-ink) !important;
 }
 html.theme-light .ghost-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 75%) !important;
+  background: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 75%
+  ) !important;
   color: var(--light-ink) !important;
 }
 html.theme-light .ghost-button:disabled {
@@ -1896,7 +1904,11 @@ html.theme-light .scanner-table .sub-name {
 }
 
 html.theme-light .scanner-table .btn-icon {
-  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 78%) !important;
+  background: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 78%
+  ) !important;
   border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
   color: var(--light-alert) !important;
 }
@@ -1907,7 +1919,11 @@ html.theme-light .scanner-table .btn-icon:hover:not(:disabled) {
 
 html.theme-light .name-select-button,
 html.theme-light .bulk-name-button {
-  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 80%) !important;
+  background: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 80%
+  ) !important;
   border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
   color: var(--light-alert) !important;
 }
@@ -1926,7 +1942,11 @@ html.theme-light .name-dropdown {
 
 html.theme-light .name-dropdown::before {
   background: #ffffff !important;
-  border-color: color-mix(in srgb, var(--sc-sakura-deep), transparent 40%) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 40%
+  ) !important;
 }
 
 html.theme-light .name-option {
@@ -1935,7 +1955,11 @@ html.theme-light .name-option {
 
 html.theme-light .name-option:hover {
   background: var(--light-ok-bg) !important;
-  border-color: color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 50%
+  ) !important;
 }
 
 html.theme-light .name-preview {
@@ -1948,7 +1972,11 @@ html.theme-light .name-option small {
 
 /* --- Descargas: Ícono de archivos e interacciones en Pausar / Cancelar --- */
 html.theme-light .file-symbol {
-  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 75%) !important;
+  background: color-mix(
+    in srgb,
+    var(--sc-sakura-deep),
+    transparent 75%
+  ) !important;
   color: var(--light-alert) !important;
 }
 
@@ -2547,8 +2575,7 @@ html.theme-silent-cherry .update-progress-fill {
     #b82d55 50%,
     #21a096 100%
   );
-  box-shadow: 0 0 10px
-    color-mix(in srgb, #b82d55, transparent 65%);
+  box-shadow: 0 0 10px color-mix(in srgb, #b82d55, transparent 65%);
 }
 
 html.theme-silent-cherry .progress-track {
@@ -2646,7 +2673,11 @@ html.theme-silent-cherry .sidebar-toggle {
 
 html.theme-silent-cherry .sidebar-toggle.armed {
   background: var(--light-alert-bg) !important;
-  border-color: color-mix(in srgb, var(--light-alert), transparent 50%) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--light-alert),
+    transparent 50%
+  ) !important;
   color: var(--light-alert) !important;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--light-alert), transparent 82%);
 }

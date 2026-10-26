@@ -547,7 +547,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 520px;
+  max-width: 100%;
 }
 .logs-counters {
   display: flex;
@@ -919,11 +919,25 @@ onUnmounted(() => {
   }
 }
 @media (max-width: 580px) {
+  .logs-hero {
+    padding: 18px 16px;
+  }
+  .logs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar-right {
+    width: 100%;
+  }
+  .search-box {
+    flex: 1 1 100%;
+  }
   .search-box input {
-    width: 110px;
+    width: 100%;
   }
   .cat-select {
-    max-width: 130px;
+    max-width: 100%;
+    flex: 1 1 100%;
   }
   .log-row {
     grid-template-columns: 60px minmax(0, 1fr);

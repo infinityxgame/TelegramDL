@@ -32,6 +32,7 @@ body {
     var(--user-bg-base) 42%
   );
   min-height: 100vh;
+  overflow-x: hidden;
 }
 html {
   scroll-behavior: smooth;
@@ -59,6 +60,7 @@ html.theme-light select option {
 .app-shell {
   display: flex;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 .sidebar {
   width: 230px;
@@ -585,7 +587,8 @@ html.theme-light select option {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .disk-monitor {
   display: flex;
@@ -1282,6 +1285,9 @@ footer {
   .content-grid {
     grid-template-columns: 1fr;
   }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
   .mobile-menu-toggle {
     display: grid;
   }
@@ -1294,17 +1300,22 @@ footer {
 @media (max-width: 680px) {
   .main-content {
     padding: 20px 14px;
+    overflow-x: hidden;
   }
   .topbar {
     align-items: flex-start;
     margin-bottom: 20px;
+    flex-direction: column;
+    gap: 8px;
   }
   .topbar h1 {
     font-size: 25px;
   }
   .topbar-meta {
     font-size: 10px;
-    text-align: right;
+    text-align: left;
+    width: 100%;
+    justify-content: space-between;
   }
   .hero-card,
   .panel {
@@ -1331,14 +1342,33 @@ footer {
   .stat-card {
     padding: 14px;
   }
-  .download-row {
+  .panel-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    align-items: center;
+  }
+  .disk-monitor {
     align-items: flex-start;
   }
+  .download-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
   .row-side {
-    min-width: 62px;
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    min-width: 0;
   }
   .recent-row {
     gap: 8px;
+    flex-wrap: wrap;
   }
   .recent-size {
     display: none;
@@ -1353,6 +1383,17 @@ footer {
     left: 14px;
     top: 14px;
     justify-content: center;
+  }
+  .flood-alert-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+  }
+  .flood-alert-timer {
+    width: 100%;
+    align-items: flex-start;
+    box-sizing: border-box;
   }
 }
 @media (max-width: 420px) {

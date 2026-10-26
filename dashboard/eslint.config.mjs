@@ -14,7 +14,8 @@ export default defineConfig([
     '**/dist/**',
     '**/dist-ssr/**',
     '**/coverage/**',
-    '**/wailsjs/**'
+    '**/wailsjs/**',
+    '**/public/**'
   ]),
 
   {

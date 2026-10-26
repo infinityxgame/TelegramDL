@@ -2115,4 +2115,60 @@ html.theme-light .compact-select option {
 .input-search {
   min-width: 360px;
 }
+
+@media (max-width: 680px) {
+  .scanner-search-panel {
+    padding: 18px 16px;
+  }
+  .scanner-row-1 {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+  .field-target {
+    flex: 1 1 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+  }
+  .search-btn.save-button,
+  .clear-btn.clear-history-button,
+  .recents-btn.clear-history-button {
+    flex: 1 1 auto !important;
+    padding: 0 10px !important;
+  }
+  .date-filters-group,
+  .size-filters-group {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+  }
+  .compact-input {
+    width: 100% !important;
+  }
+  .results-heading {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .results-toolbar {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .results-toolbar .btn-compact {
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+    height: 30px !important;
+    flex: 1 1 auto !important;
+    white-space: nowrap !important;
+  }
+  .input-search {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .scanner-table {
+    min-width: 640px !important;
+  }
+  .col-name {
+    min-width: 160px !important;
+  }
+}
 </style>
