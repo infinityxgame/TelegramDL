@@ -2352,8 +2352,10 @@ html.theme-silent-cherry .update-progress-fill {
 }
 
 html.theme-silent-cherry .progress-track {
-  background: color-mix(in srgb, var(--sc-sakura), transparent 50%);
-  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 60%);
+  height: 6px;
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 80%);
+  border: none;
+  border-radius: 8px;
 }
 
 html.theme-silent-cherry .progress-fill,
