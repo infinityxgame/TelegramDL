@@ -334,7 +334,7 @@ onUnmounted(() => {
 <template>
   <section class="logs-view">
     <section class="logs-hero">
-      <div>
+      <div class="logs-hero-info">
         <span class="hero-kicker"
           ><ScrollText :size="13" /> {{ t('logs.kicker') }}</span
         >
@@ -540,6 +540,11 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.5;
 }
+.logs-hero-info {
+  min-width: 0;
+  flex: 1;
+}
+
 .log-path {
   display: block;
   font-size: 11px;
@@ -902,6 +907,10 @@ onUnmounted(() => {
     align-items: flex-start;
     padding: 22px;
   }
+  .logs-hero-info {
+    width: 100%;
+    min-width: 0;
+  }
   .logs-counters {
     width: 100%;
   }
@@ -920,17 +929,59 @@ onUnmounted(() => {
 }
 @media (max-width: 580px) {
   .logs-hero {
-    padding: 18px 16px;
+    padding: 16px;
+    gap: 14px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .logs-hero h2 {
+    font-size: 18px;
+    word-break: break-word;
+  }
+  .logs-hero p {
+    font-size: 12px;
+    word-break: break-word;
+  }
+  .logs-counters {
+    width: 100%;
+    gap: 6px;
+  }
+  .counter {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+  }
+  .counter strong {
+    font-size: 15px;
+  }
+  .counter span {
+    font-size: 9px;
+  }
+  .logs-panel {
+    padding: 14px;
   }
   .logs-toolbar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+  .level-chips {
+    width: 100%;
+    gap: 4px;
+  }
+  .level-chip {
+    padding: 4px 8px;
+    font-size: 9px;
+    flex: 1 1 auto;
+    text-align: center;
   }
   .toolbar-right {
     width: 100%;
+    gap: 6px;
   }
   .search-box {
     flex: 1 1 100%;
+    box-sizing: border-box;
   }
   .search-box input {
     width: 100%;
@@ -939,11 +990,20 @@ onUnmounted(() => {
     max-width: 100%;
     flex: 1 1 100%;
   }
-  .log-row {
-    grid-template-columns: 60px minmax(0, 1fr);
-    font-size: 11px;
+  .tool-button {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 6px 8px;
+    font-size: 10px;
   }
-  .log-level {
+  .log-row {
+    grid-template-columns: 55px minmax(0, 1fr);
+    font-size: 11px;
+    padding: 5px 8px;
+    gap: 6px;
+  }
+  .log-level,
+  .log-category {
     display: none;
   }
 }
