@@ -1762,17 +1762,163 @@ html.theme-light .level-chip.active.warn {
   color: var(--light-amber);
 }
 
+/* --- Chips de nivel activos (Logs) --- */
+html.theme-light .level-chip {
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 60%);
+  color: var(--light-ink);
+}
+
+html.theme-light .level-chip.active.error {
+  background: var(--light-alert-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--light-alert), transparent 60%) !important;
+  color: var(--light-alert) !important;
+}
+
 html.theme-light .level-chip.active.warn {
-  background: var(--light-amber-bg);
+  background: var(--light-amber-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--light-amber), transparent 60%) !important;
+  color: var(--light-amber) !important;
 }
+
 html.theme-light .level-chip.active.success {
-  background: var(--light-ok-bg);
+  background: var(--light-ok-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--light-ok), transparent 60%) !important;
+  color: var(--light-ok) !important;
 }
+
 html.theme-light .level-chip.active.info {
-  background: var(--light-info-bg);
+  background: color-mix(in srgb, #29b6f6, transparent 82%) !important;
+  border: 1px solid color-mix(in srgb, #0288d1, transparent 60%) !important;
+  color: #0277bd !important;
 }
+
 html.theme-light .level-chip.active.debug {
-  background: var(--light-debug-bg);
+  background: var(--light-debug-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--light-ink), transparent 60%) !important;
+  color: var(--light-ink) !important;
+}
+
+/* --- Logs: Filtro Orígenes Dropdown --- */
+html.theme-light .cat-select {
+  background-color: #ffffff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23463a57' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
+  color: var(--light-ink) !important;
+  max-width: 220px !important;
+  border-radius: 9px !important;
+  padding: 7px 30px 7px 10px !important;
+}
+html.theme-light .cat-select option {
+  background-color: #ffffff !important;
+  color: var(--light-ink) !important;
+}
+
+/* --- Histórico / Escáner --- */
+html.theme-light .ghost-button {
+  color: var(--light-ink) !important;
+}
+html.theme-light .ghost-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 75%) !important;
+  color: var(--light-ink) !important;
+}
+html.theme-light .ghost-button:disabled {
+  color: var(--light-ink-soft) !important;
+  opacity: 0.5;
+}
+
+html.theme-light .scanner-table th,
+html.theme-light .scanner-table td,
+html.theme-light .scanner-table .main-name,
+html.theme-light .scanner-table .col-date,
+html.theme-light .scanner-table .col-size {
+  color: var(--light-ink) !important;
+}
+html.theme-light .scanner-table .sub-name {
+  color: var(--light-ink-soft) !important;
+}
+
+html.theme-light .scanner-table .btn-icon {
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 78%) !important;
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
+  color: var(--light-alert) !important;
+}
+html.theme-light .scanner-table .btn-icon:hover:not(:disabled) {
+  background: var(--sc-sakura-deep) !important;
+  color: #111111 !important;
+}
+
+html.theme-light .name-select-button,
+html.theme-light .bulk-name-button {
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 80%) !important;
+  border: 1px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
+  color: var(--light-alert) !important;
+}
+html.theme-light .name-select-button svg,
+html.theme-light .bulk-name-button svg {
+  color: var(--light-alert) !important;
+  stroke: var(--light-alert) !important;
+}
+
+/* --- Histórico: Menú flotante de selección de nombre --- */
+html.theme-light .name-dropdown {
+  background: #ffffff !important;
+  border: 2px solid color-mix(in srgb, var(--sc-sakura-deep), transparent 40%) !important;
+  box-shadow: 0 8px 24px rgba(70, 58, 87, 0.18) !important;
+}
+
+html.theme-light .name-dropdown::before {
+  background: #ffffff !important;
+  border-color: color-mix(in srgb, var(--sc-sakura-deep), transparent 40%) !important;
+}
+
+html.theme-light .name-option {
+  border: 1px solid transparent !important;
+}
+
+html.theme-light .name-option:hover {
+  background: var(--light-ok-bg) !important;
+  border-color: color-mix(in srgb, var(--sc-sakura-deep), transparent 50%) !important;
+}
+
+html.theme-light .name-preview {
+  color: var(--light-ink) !important;
+}
+
+html.theme-light .name-option small {
+  color: var(--light-ink-soft) !important;
+}
+
+/* --- Descargas: Ícono de archivos e interacciones en Pausar / Cancelar --- */
+html.theme-light .file-symbol {
+  background: color-mix(in srgb, var(--sc-sakura-deep), transparent 75%) !important;
+  color: var(--light-alert) !important;
+}
+
+html.theme-light .row-side button {
+  color: var(--light-alert) !important;
+}
+html.theme-light .row-side button:hover {
+  color: #8e1b34 !important;
+  font-weight: 700;
+}
+
+html.theme-light .row-side .pause-action {
+  color: var(--light-amber) !important;
+}
+html.theme-light .row-side .pause-action:hover {
+  color: #634305 !important;
+  font-weight: 700;
+}
+
+html.theme-light .row-side .resume-action {
+  color: var(--light-ok) !important;
+}
+html.theme-light .row-side .resume-action:hover {
+  color: #124d45 !important;
+  font-weight: 700;
 }
 html.theme-light .auth-button.secondary:hover:not(:disabled) {
   background: var(--light-info-bg);
@@ -1878,7 +2024,6 @@ html.theme-light select,
 html.theme-light .speed-row select,
 html.theme-light .compact-select,
 html.theme-light .topic-select,
-html.theme-light .cat-select,
 html.theme-light .pager-select {
   background-image:
     linear-gradient(45deg, transparent 50%, var(--light-ink-soft) 50%),
