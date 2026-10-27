@@ -176,7 +176,7 @@ jobs:
   build-macos:
     name: Build macOS Universal
     needs: test
-    runs-on: macos-13
+    runs-on: macos-14
     # Solo lectura: checkout y subida de artefactos; upload-artifact no necesita más.
     permissions:
       contents: read
