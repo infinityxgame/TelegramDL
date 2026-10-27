@@ -176,7 +176,7 @@ jobs:
   build-macos:
     name: Build macOS Universal
     needs: test
-    runs-on: macos-14
+    runs-on: macos-13
     # Solo lectura: checkout y subida de artefactos; upload-artifact no necesita más.
     permissions:
       contents: read
@@ -215,7 +215,7 @@ jobs:
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform darwin/universal -s -o TelegramDL -webview2 download
+        run: wails build -clean -platform darwin/universal -s -o TelegramDL
 
       - name: Package macOS
         shell: bash
