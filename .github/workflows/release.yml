@@ -180,6 +180,10 @@ jobs:
     # Solo lectura: checkout y subida de artefactos; upload-artifact no necesita más.
     permissions:
       contents: read
+    env:
+      # MACOSX_DEPLOYMENT_TARGET garantiza compatibilidad con versiones antiguas de macOS (Monterey, Big Sur, Catalina) en Macs Intel y Apple Silicon.
+      MACOSX_DEPLOYMENT_TARGET: '10.15'
+      CGO_ENABLED: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
