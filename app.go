@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"git.sr.ht/~jackmordaunt/go-toast/v2/wintoast"
-	"github.com/energye/systray"
 	"github.com/gen2brain/beeep"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -29,9 +28,6 @@ import (
 
 //go:embed build/appicon.png
 var appIconPng []byte
-
-//go:embed build/windows/icon.ico
-var trayIcon []byte
 
 //go:embed dashboard/public/notification.wav
 var notificationWav []byte
@@ -51,9 +47,7 @@ type App struct {
 	assets             fs.FS
 	mu                 sync.Mutex
 	startupURL         string // URL pasada desde línea de comandos al iniciar
-	trayOpenItem       *systray.MenuItem
-	trayExitItem       *systray.MenuItem
-	trayReady          bool
+	tray               trayState
 	lastTrayNotifyTime time.Time
 }
 
@@ -223,9 +217,7 @@ func (a *App) startup(ctx context.Context) {
 // lo que dejaba estados sin guardar y volcados contra una BD ya cerrada.
 func (a *App) shutdown(ctx context.Context) {
 	logbus.Info(logbus.CatSystem, i18n.T("system.closing"), "")
-	if a.trayReady {
-		systray.Quit()
-	}
+	a.quitTray()
 	if a.downloader != nil {
 		// Un error aquí (p. ej. context.DeadlineExceeded) significa que
 		// quedaron trabajos o escrituras sin terminar: se registra para que el
@@ -342,41 +334,6 @@ func (a *App) SetStartupURL(url string) {
 	a.startupURL = url
 }
 
-func (a *App) initSystemTray() {
-	systray.Run(a.onTrayReady, a.onTrayExit)
-}
-
-func (a *App) onTrayReady() {
-	systray.SetTitle("Telegram DL")
-	systray.SetTooltip("Telegram DL")
-	if len(trayIcon) > 0 {
-		systray.SetIcon(trayIcon)
-	}
-
-	a.trayOpenItem = systray.AddMenuItem(i18n.T("tray.open"), "")
-	a.trayOpenItem.Click(func() {
-		a.RestoreWindow()
-	})
-
-	a.trayExitItem = systray.AddMenuItem(i18n.T("tray.exit"), "")
-	a.trayExitItem.Click(func() {
-		a.QuitApp()
-	})
-
-	systray.SetOnClick(func(_ systray.IMenu) {
-		a.RestoreWindow()
-	})
-	systray.SetOnDClick(func(_ systray.IMenu) {
-		a.RestoreWindow()
-	})
-
-	a.trayReady = true
-}
-
-func (a *App) onTrayExit() {
-	a.trayReady = false
-}
-
 func (a *App) RestoreWindow() {
 	if ctx := a.context(); ctx != nil {
 		wailsRuntime.WindowShow(ctx)
@@ -385,35 +342,22 @@ func (a *App) RestoreWindow() {
 }
 
 func (a *App) QuitApp() {
-	if a.trayReady {
-		systray.Quit()
-	}
+	a.quitTray()
 	if ctx := a.context(); ctx != nil {
 		wailsRuntime.Quit(ctx)
 	}
 }
 
 func (a *App) UpdateTrayMenuTitles() {
-	if !a.trayReady {
-		return
-	}
-	if a.trayOpenItem != nil {
-		a.trayOpenItem.SetTitle(i18n.T("tray.open"))
-	}
-	if a.trayExitItem != nil {
-		a.trayExitItem.SetTitle(i18n.T("tray.exit"))
-	}
+	a.updateTrayMenuTitles()
 }
 
-// HideToTray oculta la ventana al system tray, muestra el ícono en la bandeja y envía la notificación nativa
+// HideToTray oculta la ventana al system tray si la plataforma lo soporta
 func (a *App) HideToTray() {
-	if ctx := a.context(); ctx != nil {
-		if len(trayIcon) > 0 {
-			systray.SetIcon(trayIcon)
-		}
-		wailsRuntime.WindowHide(ctx)
-		a.ShowTrayNotification()
+	if !a.isTraySupported() {
+		return
 	}
+	a.hideWindowToTray()
 }
 
 // ShowTrayNotification muestra una notificación nativa del sistema informando que la app sigue en segundo plano
@@ -526,7 +470,7 @@ func (a *App) monitorMinimize() {
 			enabled := a.config.MinimizeToTray
 			a.mu.Unlock()
 
-			if !enabled {
+			if !a.isTraySupported() || !enabled {
 				wasMinimised = false
 				continue
 			}

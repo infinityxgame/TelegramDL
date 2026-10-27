@@ -57,7 +57,7 @@ func (u *AppUpdater) installPlatform(archivePath, tempDir string) (bool, error) 
 	}
 
 	if strings.Contains(currentBundle, appTranslocationMarker) {
-		return true, fmt.Errorf(i18n.T("updater.darwinTranslocation"))
+		return true, fmt.Errorf("%s", i18n.T("updater.darwinTranslocation"))
 	}
 
 	// 1. Extraer con ditto en vez de con el unzip de Go. ditto conserva los
@@ -74,7 +74,7 @@ func (u *AppUpdater) installPlatform(archivePath, tempDir string) (bool, error) 
 
 	newBundle := findAppBundle(stage)
 	if newBundle == "" {
-		return true, fmt.Errorf(i18n.T("updater.darwinNoAppBundle"))
+		return true, fmt.Errorf("%s", i18n.T("updater.darwinNoAppBundle"))
 	}
 
 	// 2. Quitar la marca de cuarentena de la copia recién bajada. Sin esto
