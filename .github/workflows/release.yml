@@ -177,13 +177,8 @@ jobs:
     name: Build macOS Universal
     needs: test
     runs-on: macos-14
-    # Solo lectura: checkout y subida de artefactos; upload-artifact no necesita más.
     permissions:
       contents: read
-    env:
-      # MACOSX_DEPLOYMENT_TARGET garantiza compatibilidad con versiones antiguas de macOS (Monterey, Big Sur, Catalina) en Macs Intel y Apple Silicon.
-      MACOSX_DEPLOYMENT_TARGET: '10.15'
-      CGO_ENABLED: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -215,7 +210,9 @@ jobs:
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform darwin/universal -s -o TelegramDL
+        run: |
+          wails build -clean -platform darwin/universal -s -o TelegramDL -webview2 download
+          chmod +x build/bin/TelegramDL.app/Contents/MacOS/TelegramDL
 
       - name: Package macOS
         shell: bash
@@ -228,7 +225,7 @@ jobs:
           path: TGDown-macOS-Universal-${{ github.ref_name }}.zip
           if-no-files-found: error
           retention-days: 1
-
+          
   release:
     name: Publish Release
     needs: [build-windows, build-linux, build-macos]
