@@ -4202,11 +4202,10 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 			if hasMedia {
 				targetChatID := botUserID
-				targetMsgID := msg.MessageID
-				if msg.ForwardFromChat != nil && msg.ForwardFromChat.ID != 0 && msg.ForwardFromMessageID > 0 {
-					targetChatID = msg.ForwardFromChat.ID
-					targetMsgID = msg.ForwardFromMessageID
+				if targetChatID == 0 {
+					targetChatID = authorizedChatID
 				}
+				targetMsgID := msg.MessageID
 
 				var origName, captName string
 				if s.downloader != nil && s.clientMgr != nil {
