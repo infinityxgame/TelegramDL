@@ -113,6 +113,11 @@ sequenceDiagram
 - **Topic ID (optional)**: If you want notifications sent to a specific topic within a forum supergroup, specify its `message_thread_id`. Leave empty for standard private chats.
 - Click **"Send test"**: TelegramDL sends a test notification to confirm integration is active.
 
+#### Step 5: Configure Received Files Naming Mode
+- **Received files naming mode**: You can choose between **Automatic** and **Manual (choose between caption and original)**.
+  - When sending Telegram links or uploading/forwarding media files (videos, audio, documents, photos) to your bot, it adds them to the download queue.
+  - In **Manual** mode, if the file includes a caption, the bot sends an interactive message with two buttons (`Original name` and `Caption`) so you can select which name to save it as.
+
 #### Quick Toggle from Sidebar
 Once configured, you can turn automatic alerts on or off at any time using the **«Bot alerts»** button (bot icon) in the left sidebar.
 

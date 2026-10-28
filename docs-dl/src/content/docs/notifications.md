@@ -13,15 +13,15 @@ Existen **tres canales independientes de notificación**:
 
 ---
 
-## 1. Notificaciones por Bot de Telegram (Alertas Remotas)
+## 1. Notificaciones por Bot de Telegram (Alertas Remotas y Gestión de Descargas)
 
 ### ¿Qué hace?
 
-Envía mensajes instantáneos a tu cuenta de Telegram (o a un grupo/canal privado) a través de un Bot personalizado de Telegram cuando:
-
-- Se completa una descarga de archivo.
-- Ocurre un error o fallo en la transferencia.
-- Se vacía por completo la cola de descargas.
+- **Alertas del Sistema**: Envía mensajes instantáneos a tu cuenta de Telegram (o a un grupo/canal privado) cuando se completa una descarga, ocurre un fallo o se vacía la cola.
+- **Añadir Descargas desde Telegram**: Puedes enviarle enlaces de Telegram (ej. `https://t.me/c/123456/789`) o **subir/reenviar archivos multimedia** (vídeos, audios, documentos, fotos) directamente al chat del bot para agregarlos automáticamente a la cola de descargas.
+- **Modo de Renombrado de Archivos Recibidos**: En **Ajustes** puedes seleccionar el comportamiento ante archivos recibidos con pie de foto (*caption*):
+  - **Automático**: Agrega la descarga directamente a la cola con el nombre detectado.
+  - **Manual**: Si el archivo trae un pie de foto (*caption*), el bot te enviará un mensaje interactivo con ambos nombres (el nombre original y el caption) para que elijas cuál utilizar mediante botones interactivos antes de agregarlo a la cola.
 
 ### ¿Cómo se configura?
 

@@ -113,6 +113,11 @@ sequenceDiagram
 - **ID del tema (opcional)**: Si deseas recibir las notificaciones en un canal o grupo con temas (topics), puedes especificar el `message_thread_id` en este campo. Para chats privados convencionales, déjalo vacío.
 - Haz clic en **"Enviar prueba"**: TelegramDL enviará un mensaje de prueba a tu chat para confirmar que la integración funciona correctamente.
 
+#### Paso 5: Configurar el Modo de Renombrado de Archivos Recibidos
+- **Nombre de archivos recibidos**: Puedes elegir entre **Automático** y **Manual (seleccionar entre caption y original)**.
+  - Al enviarle enlaces de Telegram o subir/reenviar archivos multimedia (vídeos, audios, documentos, fotos) a tu bot, este los añadirá a la cola de descargas.
+  - En modo **Manual**, si el archivo incluye un pie de foto (*caption*), el bot te enviará un mensaje interactivo con dos botones (`Nombre original` y `Caption`) para que elijas con cuál guardarlo.
+
 #### Control Rápido desde la Barra Lateral
 Una vez configurado el bot en Ajustes, puedes activar o desactivar el envío de alertas automáticas en cualquier momento presionando el botón **«Avisos del bot»** (icono de bot) en la barra lateral izquierda del panel.
 

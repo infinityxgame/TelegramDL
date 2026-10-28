@@ -13,15 +13,15 @@ There are **three independent notification channels**:
 
 ---
 
-## 1. Telegram Bot Notifications (Remote Alerts)
+## 1. Telegram Bot Notifications (Remote Alerts & Download Management)
 
 ### What it does
 
-Sends instant messages to your Telegram account (or a private group/channel) via a custom Telegram Bot when:
-
-- A file download completes.
-- A transfer error or failure occurs.
-- The download queue empties completely.
+- **System Alerts**: Sends instant messages to your Telegram account (or a private group/channel) when a download completes, a failure occurs, or the queue empties.
+- **Add Downloads from Telegram**: You can send Telegram links (e.g. `https://t.me/c/123456/789`) or **upload/forward media files** (videos, audio, documents, photos) directly to the bot chat to add them to the download queue automatically.
+- **Received Files Naming Mode**: In **Settings**, you can choose how files received with captions are handled:
+  - **Automatic**: Adds the file directly to the queue with the detected filename.
+  - **Manual**: If the file includes a caption, the bot sends an interactive message showing both names (original filename and caption) with interactive buttons so you can choose which name to use before adding it to the queue.
 
 ### How to configure
 
