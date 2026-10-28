@@ -499,6 +499,9 @@ export default {
     topicID: 'ID del tema (opcional)',
     topicIDHint:
       'Solo para grupos con temas. Déjalo vacío para el tema principal.',
+    botFileNamingMode: 'Nombre de archivos recibidos',
+    botFileNamingAuto: 'Automático',
+    botFileNamingManual: 'Manual (seleccionar entre caption y original)',
     sendTest: 'Enviar prueba',
     notifySidebarHint:
       'Los avisos de cola terminada y de errores se encienden y apagan con el botón «Avisos del bot» del panel lateral.',

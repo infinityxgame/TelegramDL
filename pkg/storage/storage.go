@@ -669,6 +669,9 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 		// notificaciones que el usuario ya tenía configuradas.
 		cfg.BotNotifications = val == "1" || val == "true"
 	}
+	if val, ok := kv["bot_file_naming_mode"]; ok && val != "" {
+		cfg.BotFileNamingMode = val
+	}
 
 	// Cargar listener_chats
 	chatRows, err := s.db.Query("SELECT chat_id, topic_id, topic_name, name, folder, topic_folder, auto_download, f_photos, f_videos, f_audios, f_docs, f_stickers, name_mode FROM listener_chats ORDER BY chat_id, topic_id")
@@ -785,6 +788,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"notification_bot_token":   cfg.NotificationBotToken,
 		"notification_chat_id":     strconv.FormatInt(cfg.NotificationChatID, 10),
 		"bot_notifications":        strconv.FormatBool(cfg.BotNotifications),
+		"bot_file_naming_mode":     cfg.BotFileNamingMode,
 	}
 
 	if cfg.NotificationTopicID != nil {

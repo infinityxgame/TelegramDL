@@ -229,6 +229,8 @@ type Config struct {
 	// controla el botón del panel lateral; con ella apagada el bot deja de
 	// avisar pero sigue aceptando enlaces para añadir a la cola.
 	BotNotifications bool `json:"bot_notifications"`
+	// BotFileNamingMode define el modo de renombrado para archivos enviados al bot ("auto" o "manual").
+	BotFileNamingMode string `json:"bot_file_naming_mode"`
 }
 
 var (
@@ -531,9 +533,10 @@ func DefaultConfig() Config {
 			Value: 0,
 			Unit:  "MB",
 		},
-		ListenerEnabled: true,
-		ListenerChats:   []ListenerChat{},
-		ListenerChatIDs: []int64{},
+		ListenerEnabled:   true,
+		ListenerChats:     []ListenerChat{},
+		ListenerChatIDs:   []int64{},
+		BotFileNamingMode: "auto",
 	}
 }
 
@@ -666,6 +669,10 @@ func NormalizeConfig(raw Config) Config {
 	raw.NotificationBotToken = strings.TrimSpace(raw.NotificationBotToken)
 	if raw.NotificationTopicID != nil && *raw.NotificationTopicID <= 0 {
 		raw.NotificationTopicID = nil
+	}
+	raw.BotFileNamingMode = strings.ToLower(strings.TrimSpace(raw.BotFileNamingMode))
+	if raw.BotFileNamingMode != "manual" && raw.BotFileNamingMode != "auto" {
+		raw.BotFileNamingMode = "auto"
 	}
 
 	// Dos entradas con el mismo grupo y el mismo tema son la misma cosa: la

@@ -255,6 +255,10 @@ var messagesEN = map[string]string{
 	"notifier.botAddedQueue":      "📥 <b>Download(s) added to queue:</b>\n%s",
 	"notifier.botErrorsHeader":    "\n\n⚠️ <b>Errors:</b>\n%s",
 	"notifier.botProcessError":    "❌ <b>Error processing link(s):</b>\n%s",
+	"notifier.botFilePrompt":      "<b>File received</b>\n\n<b>Original name:</b> <code>%s</code>\n<b>Caption:</b> <code>%s</code>\n\nSelect which name to use for the download:",
+	"notifier.botFileQueued":      "<b>Download added to queue:</b>\n<code>%s</code>",
+	"notifier.botBtnOriginal":     "Original name",
+	"notifier.botBtnCaption":      "Caption",
 
 	// Message resolution on Telegram ([DOWNLOAD FETCH] tag)
 	"fetch.noAccessHashCache":    "Channel %d has no cached accessHash. Querying dialogs...",

@@ -256,6 +256,10 @@ var messagesES = map[string]string{
 	"notifier.botAddedQueue":      "📥 <b>Descarga(s) añadida(s) a la cola:</b>\n%s",
 	"notifier.botErrorsHeader":    "\n\n⚠️ <b>Errores:</b>\n%s",
 	"notifier.botProcessError":    "❌ <b>Error al procesar enlace(s):</b>\n%s",
+	"notifier.botFilePrompt":      "<b>Archivo recibido</b>\n\n<b>Nombre original:</b> <code>%s</code>\n<b>Caption:</b> <code>%s</code>\n\nSelecciona qué nombre usar para la descarga:",
+	"notifier.botFileQueued":      "<b>Descarga añadida a la cola:</b>\n<code>%s</code>",
+	"notifier.botBtnOriginal":     "Nombre original",
+	"notifier.botBtnCaption":      "Caption",
 
 	// Resolución de mensajes en Telegram (tag [DOWNLOAD FETCH])
 	"fetch.noAccessHashCache":    "Canal %d sin accessHash en caché. Consultando dialogs...",

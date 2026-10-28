@@ -1033,6 +1033,28 @@ const sendTestNotification = async () => {
                     </div>
                   </div>
 
+                  <!-- Modo de renombrado de archivos -->
+                  <div class="notif-field">
+                    <label class="notif-label">{{
+                      t('settings.botFileNamingMode')
+                    }}</label>
+                    <div class="notif-input-row">
+                      <select
+                        :value="settings.bot_file_naming_mode || 'auto'"
+                        @change="
+                          patch({ bot_file_naming_mode: $event.target.value })
+                        "
+                      >
+                        <option value="auto">
+                          {{ t('settings.botFileNamingAuto') }}
+                        </option>
+                        <option value="manual">
+                          {{ t('settings.botFileNamingManual') }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
                   <!-- Botones de Acción: Detectar chat y Enviar prueba -->
                   <div class="notif-field notif-actions-col">
                     <div class="settings-actions" style="margin-top: 0">

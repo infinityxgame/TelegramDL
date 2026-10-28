@@ -108,7 +108,7 @@ func (e *Engine) resolveItemMetadata(itemID string) {
 	// sobrescrito. Solo se rellena el nombre cuando está vacío o es un
 	// placeholder «mensaje_<id>», que es como llegan los rangos y las descargas
 	// manuales por ID.
-	if it.Source != "listener" || it.FileName == "" || strings.HasPrefix(strings.ToLower(it.FileName), "mensaje_") {
+	if it.FileName == "" || strings.HasPrefix(strings.ToLower(it.FileName), "mensaje_") {
 		it.FileName = media.FileName
 	}
 	it.Kind = string(media.Kind)
@@ -436,6 +436,11 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		}
 	}
 	return nil
+}
+
+// FetchMessage obtiene un mensaje de Telegram mediante MTProto.
+func (e *Engine) FetchMessage(ctx context.Context, chatID int64, msgID int) (*tg.Message, error) {
+	return e.fetchMessage(ctx, chatID, msgID)
 }
 
 func (e *Engine) fetchMessage(ctx context.Context, chatID int64, msgID int) (*tg.Message, error) {

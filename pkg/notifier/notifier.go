@@ -104,6 +104,128 @@ func (n *Notifier) sendSync(ctx context.Context, text string) error {
 	return nil
 }
 
+// SendMessageWithKeyboardSync envía un mensaje con un teclado en línea (inline_keyboard).
+func (n *Notifier) SendMessageWithKeyboardSync(ctx context.Context, text string, replyMarkup map[string]any) error {
+	if n.token == "" || n.chatID == 0 {
+		return fmt.Errorf("notifier not configured: missing token or chat ID")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.token)
+
+	payload := map[string]any{
+		"chat_id":      n.chatID,
+		"text":         text,
+		"parse_mode":   "HTML",
+		"reply_markup": replyMarkup,
+	}
+
+	if n.topicID != nil && *n.topicID > 0 {
+		payload["message_thread_id"] = *n.topicID
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"description"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !result.OK {
+		return fmt.Errorf("Telegram API error: %s", result.Error)
+	}
+
+	return nil
+}
+
+// AnswerCallbackQuerySync responde a un evento callback query de un botón.
+func (n *Notifier) AnswerCallbackQuerySync(ctx context.Context, callbackQueryID string) error {
+	if n.token == "" {
+		return fmt.Errorf("notifier not configured: missing token")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery", n.token)
+
+	payload := map[string]any{
+		"callback_query_id": callbackQueryID,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+// EditMessageTextSync edita el texto de un mensaje enviado anteriormente por el bot.
+func (n *Notifier) EditMessageTextSync(ctx context.Context, messageID int64, text string) error {
+	if n.token == "" || n.chatID == 0 {
+		return fmt.Errorf("notifier not configured: missing token or chat ID")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", n.token)
+
+	payload := map[string]any{
+		"chat_id":    n.chatID,
+		"message_id": messageID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
 // DetectChatIntententa detectar el chatID usando getUpdates del Bot API.
 // Devuelve el chatID detectado y el nombre del chat (si está disponible).
 func (n *Notifier) DetectChat(ctx context.Context) (int64, string, error) {

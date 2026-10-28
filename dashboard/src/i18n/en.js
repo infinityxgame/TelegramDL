@@ -488,6 +488,9 @@ export default {
     chatID: 'Chat ID',
     topicID: 'Topic ID (optional)',
     topicIDHint: 'Only for groups with topics. Leave empty for the main topic.',
+    botFileNamingMode: 'Received files naming mode',
+    botFileNamingAuto: 'Automatic',
+    botFileNamingManual: 'Manual (choose between caption and original)',
     sendTest: 'Send test',
     notifySidebarHint:
       'Queue-finished and error alerts are switched by the "Bot alerts" button in the sidebar.',

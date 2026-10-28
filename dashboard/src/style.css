@@ -431,7 +431,8 @@ html.theme-light select option {
   align-items: center;
 }
 
-.notif-input-row input {
+.notif-input-row input,
+.notif-input-row select {
   flex: 1;
   min-width: 0;
   background: var(--user-bg-base);

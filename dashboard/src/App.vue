@@ -129,6 +129,7 @@ const settings = reactive({
   minimize_to_tray: false,
   sound_notification: true,
   bot_notifications: false,
+  bot_file_naming_mode: 'auto',
   shutdown_when_done: false,
   language: ''
 })
