@@ -1240,6 +1240,32 @@ func (cm *ClientManager) SendToSavedMessages(ctx context.Context, text string, c
 	return nil
 }
 
+// GetSelfInfo devuelve la ID del usuario de Telegram y su nombre de pantalla si la sesión está activa.
+func (cm *ClientManager) GetSelfInfo(ctx context.Context) (int64, string, error) {
+	cm.mu.RLock()
+	client := cm.client
+	cm.mu.RUnlock()
+
+	if client == nil {
+		return 0, "", errors.New("client not connected")
+	}
+
+	user, err := client.Self(ctx)
+	if err != nil || user == nil {
+		return 0, "", fmt.Errorf("could not get self user: %w", err)
+	}
+
+	name := user.FirstName
+	if user.LastName != "" {
+		name += " " + user.LastName
+	}
+	if user.Username != "" {
+		name += " (@" + user.Username + ")"
+	}
+
+	return user.ID, name, nil
+}
+
 func (cm *ClientManager) Logout(ctx context.Context) error {
 	cm.mu.Lock()
 	client := cm.client

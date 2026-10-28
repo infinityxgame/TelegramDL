@@ -2809,10 +2809,13 @@ func (s *Server) handleNotificationTest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Crear notificador y enviar mensaje de prueba
+	// Crear notificador y enviar mensaje de prueba síncronamente
 	n := notifier.NewNotifier(token, body.ChatID, body.TopicID)
 	testMessage := i18n.T("notifier.testMessage")
-	n.SendMessage(context.Background(), testMessage)
+	if err := n.SendSync(r.Context(), testMessage); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, notifier.RedactError(err, token).Error())
+		return
+	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -2845,15 +2848,10 @@ func (s *Server) handleNotificationDetect(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Crear notificador temporal para detección
+	// Consultar la Bot API getUpdates para detectar el último chat o grupo que habló con el bot
 	n := notifier.NewNotifier(token, 0, nil)
 	chatID, chatName, err := n.DetectChat(context.Background())
 	if err != nil {
-		// SEC-10: DetectChat ya entrega el error con el token redactado
-		// (notifier.RedactError); se vuelve a aplicar aquí con el token en
-		// mano como defensa en profundidad por si el error llega por otro
-		// camino. Si el texto ya está limpio, RedactError devuelve el error
-		// original sin tocarlo.
 		s.errorResponse(w, http.StatusBadRequest, notifier.RedactError(err, token).Error())
 		return
 	}
@@ -4118,6 +4116,8 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			}
 		}
 
+		normAuthChatID := notifier.NormalizeChatID(authorizedChatID, topicID != nil && *topicID > 0)
+
 		for _, up := range res.Result {
 			if up.UpdateID >= offset {
 				offset = up.UpdateID + 1
@@ -4125,10 +4125,17 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 			// Manejo de interacción con botones en línea (Callback Query)
 			if up.CallbackQuery != nil {
-				if up.CallbackQuery.From.ID != authorizedChatID {
+				cb := up.CallbackQuery
+				cbChatID := int64(0)
+				if cb.Message != nil {
+					cbChatID = cb.Message.Chat.ID
+				}
+				normCbChatID := notifier.NormalizeChatID(cbChatID, topicID != nil && *topicID > 0)
+
+				if authorizedChatID != 0 && normCbChatID != normAuthChatID && cbChatID != authorizedChatID && cb.From.ID != authorizedChatID {
 					continue
 				}
-				cb := up.CallbackQuery
+
 				data := cb.Data
 				var replyThreadID *int64
 				if cb.Message != nil && cb.Message.MessageThreadID != nil && *cb.Message.MessageThreadID > 0 {
@@ -4137,7 +4144,7 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 					replyThreadID = topicID
 				}
 
-				n := notifier.NewNotifier(token, authorizedChatID, replyThreadID)
+				n := notifier.NewNotifier(token, normAuthChatID, replyThreadID)
 				_ = n.AnswerCallbackQuerySync(ctx, cb.ID)
 
 				if strings.HasPrefix(data, "fn:orig:") || strings.HasPrefix(data, "fn:capt:") {
@@ -4209,7 +4216,12 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				continue
 			}
 
-			if up.Message == nil || up.Message.Chat.ID != authorizedChatID {
+			if up.Message == nil {
+				continue
+			}
+
+			msgChatID := notifier.NormalizeChatID(up.Message.Chat.ID, topicID != nil && *topicID > 0)
+			if authorizedChatID != 0 && msgChatID != normAuthChatID && up.Message.Chat.ID != authorizedChatID && up.Message.From.ID != authorizedChatID {
 				continue
 			}
 
@@ -4220,7 +4232,7 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				replyThreadID = topicID
 			}
 
-			n := notifier.NewNotifier(token, authorizedChatID, replyThreadID)
+			n := notifier.NewNotifier(token, normAuthChatID, replyThreadID)
 
 			botUserID := parseBotUserID(token)
 			msg := up.Message

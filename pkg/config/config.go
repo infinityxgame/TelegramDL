@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"tgdown/pkg/i18n"
+	"tgdown/pkg/notifier"
 )
 
 const (
@@ -670,6 +671,7 @@ func NormalizeConfig(raw Config) Config {
 	if raw.NotificationTopicID != nil && *raw.NotificationTopicID <= 0 {
 		raw.NotificationTopicID = nil
 	}
+	raw.NotificationChatID = notifier.NormalizeChatID(raw.NotificationChatID, raw.NotificationTopicID != nil && *raw.NotificationTopicID > 0)
 	raw.BotFileNamingMode = strings.ToLower(strings.TrimSpace(raw.BotFileNamingMode))
 	if raw.BotFileNamingMode != "manual" && raw.BotFileNamingMode != "auto" {
 		raw.BotFileNamingMode = "auto"

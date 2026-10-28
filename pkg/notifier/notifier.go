@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,16 +44,44 @@ func (n *Notifier) SendMessage(ctx context.Context, text string) {
 	}()
 }
 
+// SendSync realiza el envío síncrono del mensaje.
+func (n *Notifier) SendSync(ctx context.Context, text string) error {
+	return n.sendSync(ctx, text)
+}
+
+// NormalizeChatID devuelve el chatID sin alterar. Si se ha especificado un topicID
+// positivo (grupos con temas) y el chatID fue introducido como número positivo,
+// le asigna el prefijo de supergrupo (-100...). Los chats personales (positivos sin tema)
+// no se modifican.
+func NormalizeChatID(chatID int64, hasTopic bool) int64 {
+	if chatID <= 0 {
+		return chatID
+	}
+	if hasTopic {
+		s := strconv.FormatInt(chatID, 10)
+		if strings.HasPrefix(s, "100") && len(s) >= 12 {
+			if val, err := strconv.ParseInt("-"+s, 10, 64); err == nil {
+				return val
+			}
+		}
+		if val, err := strconv.ParseInt("-100"+s, 10, 64); err == nil {
+			return val
+		}
+	}
+	return chatID
+}
+
 // sendSync realiza el envío síncrono del mensaje.
 func (n *Notifier) sendSync(ctx context.Context, text string) error {
 	if n.token == "" || n.chatID == 0 {
 		return fmt.Errorf("notifier not configured: missing token or chat ID")
 	}
 
+	chatID := NormalizeChatID(n.chatID, n.topicID != nil && *n.topicID > 0)
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.token)
 
 	payload := map[string]any{
-		"chat_id":    n.chatID,
+		"chat_id":    chatID,
 		"text":       text,
 		"parse_mode": "HTML",
 	}
@@ -69,36 +98,28 @@ func (n *Notifier) sendSync(ctx context.Context, text string) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
 	if err != nil {
-		// SEC-10: el error de url.Parse arrastra la URL completa (con el
-		// token); el texto final es el que acaba en los logs.
 		return RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		// SEC-10: *url.Error incluye la URL con el token y este error se
-		// registra en logbus vía SendMessage; el token solo puede entrar en
-		// un mensaje por la URL (apiURL), así que este y el return anterior
-		// son los dos únicos puntos donde hace falta redactar.
 		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
-	}
-
 	var result struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"description"`
+		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
+		Description string `json:"description"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 
-	if !result.OK {
-		return fmt.Errorf("Telegram API error: %s", result.Error)
+	if resp.StatusCode != http.StatusOK || !result.OK {
+		if result.Description != "" {
+			return fmt.Errorf("Telegram API error (%d): %s", resp.StatusCode, result.Description)
+		}
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
 	}
 
 	return nil
@@ -226,25 +247,22 @@ func (n *Notifier) EditMessageTextSync(ctx context.Context, messageID int64, tex
 	return nil
 }
 
-// DetectChatIntententa detectar el chatID usando getUpdates del Bot API.
-// Devuelve el chatID detectado y el nombre del chat (si está disponible).
+// DetectChat intenta detectar el chatID usando getUpdates del Bot API.
 func (n *Notifier) DetectChat(ctx context.Context) (int64, string, error) {
 	if n.token == "" {
 		return 0, "", fmt.Errorf("token not configured")
 	}
 
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", n.token)
+	// Usar offset = -10 para consultar los eventos más recientes aunque el listener los haya leído
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=-10&limit=10", n.token)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		// SEC-10: url.Parse incluye la URL completa (con el token) en el error.
 		return 0, "", RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
 	}
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		// SEC-10: *url.Error arrastra la URL con el token y este error se
-		// devuelve entero al cliente en handleNotificationDetect.
 		return 0, "", RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
 	}
 	defer resp.Body.Close()
@@ -265,8 +283,23 @@ func (n *Notifier) DetectChat(ctx context.Context) (int64, string, error) {
 					Title     string `json:"title,omitempty"`
 					FirstName string `json:"first_name,omitempty"`
 				} `json:"chat"`
-				Text string `json:"text,omitempty"`
 			} `json:"message,omitempty"`
+			ChannelPost *struct {
+				Chat struct {
+					ID       int64  `json:"id"`
+					Type     string `json:"type"`
+					Username string `json:"username,omitempty"`
+					Title    string `json:"title,omitempty"`
+				} `json:"chat"`
+			} `json:"channel_post,omitempty"`
+			MyChatMember *struct {
+				Chat struct {
+					ID       int64  `json:"id"`
+					Type     string `json:"type"`
+					Username string `json:"username,omitempty"`
+					Title    string `json:"title,omitempty"`
+				} `json:"chat"`
+			} `json:"my_chat_member,omitempty"`
 		} `json:"result"`
 	}
 
@@ -282,28 +315,51 @@ func (n *Notifier) DetectChat(ctx context.Context) (int64, string, error) {
 		return 0, "", fmt.Errorf("no updates found; user must start the conversation first")
 	}
 
-	// Tomar el último mensaje
-	lastUpdate := result.Result[len(result.Result)-1]
-	if lastUpdate.Message == nil {
-		return 0, "", fmt.Errorf("last update has no message")
-	}
-
-	chat := lastUpdate.Message.Chat
-	chatName := chat.Title
-	if chatName == "" {
-		if chat.FirstName != "" {
-			chatName = chat.FirstName
-			if chat.Username != "" {
-				chatName += " (@" + chat.Username + ")"
-			}
-		} else if chat.Username != "" {
-			chatName = "@" + chat.Username
-		} else {
-			chatName = fmt.Sprintf("Chat %d", chat.ID)
+	// Buscar de la más reciente a la más antigua
+	for i := len(result.Result) - 1; i >= 0; i-- {
+		up := result.Result[i]
+		var chat struct {
+			ID        int64  `json:"id"`
+			Type      string `json:"type"`
+			Username  string `json:"username,omitempty"`
+			Title     string `json:"title,omitempty"`
+			FirstName string `json:"first_name,omitempty"`
 		}
+
+		if up.Message != nil {
+			chat = up.Message.Chat
+		} else if up.ChannelPost != nil {
+			chat.ID = up.ChannelPost.Chat.ID
+			chat.Type = up.ChannelPost.Chat.Type
+			chat.Title = up.ChannelPost.Chat.Title
+			chat.Username = up.ChannelPost.Chat.Username
+		} else if up.MyChatMember != nil {
+			chat.ID = up.MyChatMember.Chat.ID
+			chat.Type = up.MyChatMember.Chat.Type
+			chat.Title = up.MyChatMember.Chat.Title
+			chat.Username = up.MyChatMember.Chat.Username
+		} else {
+			continue
+		}
+
+		chatName := chat.Title
+		if chatName == "" {
+			if chat.FirstName != "" {
+				chatName = chat.FirstName
+				if chat.Username != "" {
+					chatName += " (@" + chat.Username + ")"
+				}
+			} else if chat.Username != "" {
+				chatName = "@" + chat.Username
+			} else {
+				chatName = fmt.Sprintf("Chat %d", chat.ID)
+			}
+		}
+
+		return chat.ID, chatName, nil
 	}
 
-	return chat.ID, chatName, nil
+	return 0, "", fmt.Errorf("no valid chat found in recent updates")
 }
 
 // redactedError (SEC-10) conserva el error original en la cadena de Unwrap
