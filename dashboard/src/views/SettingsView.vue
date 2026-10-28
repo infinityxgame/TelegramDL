@@ -418,7 +418,11 @@ const detectChat = async () => {
     const response = await fetch('/api/notifications/detect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ token: props.settings.notification_bot_token })
+      body: JSON.stringify({
+        token: props.settings.notification_bot_token,
+        chat_id: props.settings.notification_chat_id || 0,
+        topic_id: props.settings.notification_topic_id || null
+      })
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {

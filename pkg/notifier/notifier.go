@@ -247,6 +247,93 @@ func (n *Notifier) EditMessageTextSync(ctx context.Context, messageID int64, tex
 	return nil
 }
 
+// GetChatDetails consulta la información de un chat_id específico utilizando getChat de la Bot API.
+func (n *Notifier) GetChatDetails(ctx context.Context, chatID int64, hasTopic bool) (int64, string, error) {
+	if n.token == "" {
+		return 0, "", fmt.Errorf("token not configured")
+	}
+
+	normID := NormalizeChatID(chatID, hasTopic)
+
+	queryGetChat := func(targetID int64) (int64, string, error) {
+		apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat?chat_id=%d", n.token, targetID)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			return 0, "", RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+		}
+
+		resp, err := n.client.Do(req)
+		if err != nil {
+			return 0, "", RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+		}
+		defer resp.Body.Close()
+
+		var result struct {
+			OK          bool   `json:"ok"`
+			Description string `json:"description"`
+			Result      *struct {
+				ID        int64  `json:"id"`
+				Type      string `json:"type"`
+				Title     string `json:"title,omitempty"`
+				Username  string `json:"username,omitempty"`
+				FirstName string `json:"first_name,omitempty"`
+			} `json:"result,omitempty"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return 0, "", fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		if !result.OK || result.Result == nil {
+			if result.Description != "" {
+				return 0, "", fmt.Errorf("Telegram API error: %s", result.Description)
+			}
+			return 0, "", fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+		}
+
+		chat := result.Result
+		chatName := chat.Title
+		if chatName == "" {
+			if chat.FirstName != "" {
+				chatName = chat.FirstName
+				if chat.Username != "" {
+					chatName += " (@" + chat.Username + ")"
+				}
+			} else if chat.Username != "" {
+				chatName = "@" + chat.Username
+			} else {
+				chatName = fmt.Sprintf("Chat %d", chat.ID)
+			}
+		}
+
+		return chat.ID, chatName, nil
+	}
+
+	// 1. Probar con el ID ya normalizado
+	resolvedID, resolvedName, err := queryGetChat(normID)
+	if err == nil {
+		return resolvedID, resolvedName, nil
+	}
+
+	// 2. Si falló y el ID era positivo, probar anteponiendo -100 (por si era un supergrupo pegado sin -100)
+	if normID > 0 {
+		s := strconv.FormatInt(normID, 10)
+		var superID int64
+		if strings.HasPrefix(s, "100") && len(s) >= 12 {
+			superID, _ = strconv.ParseInt("-"+s, 10, 64)
+		} else {
+			superID, _ = strconv.ParseInt("-100"+s, 10, 64)
+		}
+		if superID != 0 {
+			if rID, rName, err2 := queryGetChat(superID); err2 == nil {
+				return rID, rName, nil
+			}
+		}
+	}
+
+	return 0, "", err
+}
+
 // DetectChat intenta detectar el chatID usando getUpdates del Bot API.
 func (n *Notifier) DetectChat(ctx context.Context) (int64, string, error) {
 	if n.token == "" {

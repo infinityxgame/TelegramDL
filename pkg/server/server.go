@@ -122,6 +122,8 @@ type Server struct {
 	shutdownDeadline   time.Time
 	botCancel          context.CancelFunc
 	pendingBotChoices  map[string]botChoiceData
+	lastBotChatID      int64
+	lastBotChatName    string
 }
 
 type botChoiceData struct {
@@ -2828,7 +2830,9 @@ func (s *Server) handleNotificationDetect(w http.ResponseWriter, r *http.Request
 	}
 
 	var body struct {
-		Token string `json:"token"`
+		Token   string `json:"token"`
+		ChatID  int64  `json:"chat_id"`
+		TopicID *int64 `json:"topic_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.invalidData"))
@@ -2848,8 +2852,40 @@ func (s *Server) handleNotificationDetect(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Consultar la Bot API getUpdates para detectar el último chat o grupo que habló con el bot
+	hasTopic := body.TopicID != nil && *body.TopicID > 0
 	n := notifier.NewNotifier(token, 0, nil)
+
+	// 1. Si el usuario introdujo un ChatID en el campo de texto, consultar y validar ese ChatID específico
+	if body.ChatID != 0 {
+		resolvedID, resolvedName, err := n.GetChatDetails(r.Context(), body.ChatID, hasTopic)
+		if err == nil {
+			s.jsonResponse(w, http.StatusOK, map[string]any{
+				"status":    "ok",
+				"chat_id":   resolvedID,
+				"chat_name": resolvedName,
+			})
+			return
+		}
+		s.errorResponse(w, http.StatusBadRequest, notifier.RedactError(err, token).Error())
+		return
+	}
+
+	// 2. Si el campo de ID del chat está vacío, usar la última interacción detectada en segundo plano
+	s.mu.RLock()
+	lastID := s.lastBotChatID
+	lastName := s.lastBotChatName
+	s.mu.RUnlock()
+
+	if lastID != 0 {
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status":    "ok",
+			"chat_id":   lastID,
+			"chat_name": lastName,
+		})
+		return
+	}
+
+	// 3. Consultar la Bot API getUpdates
 	chatID, chatName, err := n.DetectChat(context.Background())
 	if err != nil {
 		s.errorResponse(w, http.StatusBadRequest, notifier.RedactError(err, token).Error())
@@ -4220,6 +4256,26 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				continue
 			}
 
+			// Registrar la interacción reciente para que el botón "Detectar chat" la encuentre al instante
+			chat := up.Message.Chat
+			chatName := chat.Title
+			if chatName == "" {
+				if chat.FirstName != "" {
+					chatName = chat.FirstName
+					if chat.Username != "" {
+						chatName += " (@" + chat.Username + ")"
+					}
+				} else if chat.Username != "" {
+					chatName = "@" + chat.Username
+				} else {
+					chatName = fmt.Sprintf("Chat %d", chat.ID)
+				}
+			}
+			s.mu.Lock()
+			s.lastBotChatID = chat.ID
+			s.lastBotChatName = chatName
+			s.mu.Unlock()
+
 			msgChatID := notifier.NormalizeChatID(up.Message.Chat.ID, topicID != nil && *topicID > 0)
 			if authorizedChatID != 0 && msgChatID != normAuthChatID && up.Message.Chat.ID != authorizedChatID && up.Message.From.ID != authorizedChatID {
 				continue
@@ -4428,7 +4484,11 @@ type botMessagePayload struct {
 		ID int64 `json:"id"`
 	} `json:"from"`
 	Chat struct {
-		ID int64 `json:"id"`
+		ID        int64  `json:"id"`
+		Type      string `json:"type,omitempty"`
+		Title     string `json:"title,omitempty"`
+		Username  string `json:"username,omitempty"`
+		FirstName string `json:"first_name,omitempty"`
 	} `json:"chat"`
 	ForwardFromChat *struct {
 		ID       int64  `json:"id"`
