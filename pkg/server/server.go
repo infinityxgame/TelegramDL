@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/gotd/td/tg"
 	"golang.org/x/net/netutil"
 
 	"tgdown/pkg/config"
@@ -120,6 +121,14 @@ type Server struct {
 	shutdownTimer      *time.Timer
 	shutdownDeadline   time.Time
 	botCancel          context.CancelFunc
+	pendingBotChoices  map[string]botChoiceData
+}
+
+type botChoiceData struct {
+	OrigName string
+	CaptName string
+	ChatID   int64
+	MsgID    int64
 }
 
 type wsClient struct {
@@ -158,8 +167,9 @@ func NewServer(
 		scanner:    scanner.NewScannerService(cm, st, dl),
 		updater:    up,
 		config:     cfg,
-		assets:     assets,
-		wsClients:  make(map[*wsClient]bool),
+		assets:            assets,
+		wsClients:         make(map[*wsClient]bool),
+		pendingBotChoices: make(map[string]botChoiceData),
 		upgrader: websocket.Upgrader{
 			// Antes esto devolvía true siempre. Hoy el token ya frena a un
 			// atacante, pero era la única barrera: cualquier página abierta en
@@ -4137,8 +4147,20 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 						targetChatID, parseChatErr := strconv.ParseInt(parts[2], 10, 64)
 						targetMsgID, parseMsgErr := strconv.ParseInt(parts[3], 10, 64)
 						if parseChatErr == nil && parseMsgErr == nil && targetMsgID > 0 {
+							key := fmt.Sprintf("%d:%d", targetChatID, targetMsgID)
 							var chosenName string
-							if s.downloader != nil && s.clientMgr != nil {
+
+							s.mu.RLock()
+							choice, found := s.pendingBotChoices[key]
+							s.mu.RUnlock()
+
+							if found {
+								if mode == "capt" && choice.CaptName != "" {
+									chosenName = choice.CaptName
+								} else {
+									chosenName = choice.OrigName
+								}
+							} else if s.downloader != nil && s.clientMgr != nil {
 								fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
 								if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
 									tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
@@ -4157,6 +4179,10 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 							}
 
 							if chosenName != "" && s.downloader != nil {
+								s.mu.Lock()
+								delete(s.pendingBotChoices, key)
+								s.mu.Unlock()
+
 								jobID := config.NewID()
 								item := storage.DownloadItem{
 									ID:        config.NewID(),
@@ -4201,26 +4227,64 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			hasMedia := msg.Document != nil || msg.Video != nil || msg.Audio != nil || len(msg.Photo) > 0 || msg.Voice != nil || msg.Animation != nil || msg.VideoNote != nil
 
 			if hasMedia {
-				targetChatID := botUserID
-				if targetChatID == 0 {
-					targetChatID = authorizedChatID
-				}
-				targetMsgID := msg.MessageID
+				var targetChatID int64
+				var targetMsgID int64
+				var tgMsg *tg.Message
 
-				var origName, captName string
-				if s.downloader != nil && s.clientMgr != nil {
-					fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
-					if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
-						tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
-						if err == nil && tgMsg != nil {
-							mediaInfo := downloader.ExtractMediaInfo(tgMsg)
-							if mediaInfo != nil {
-								origName = mediaInfo.OriginalFileName
-								captName = mediaInfo.CaptionFileName
+				// 1. Si el archivo fue reenviado desde un canal/grupo, intentar obtener el mensaje del canal de origen
+				if msg.ForwardFromChat != nil && msg.ForwardFromChat.ID != 0 && msg.ForwardFromMessageID > 0 {
+					fwdChatID := msg.ForwardFromChat.ID
+					fwdMsgID := msg.ForwardFromMessageID
+					if msg.ForwardFromChat.Username != "" && s.clientMgr != nil {
+						fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
+						_, _ = s.clientMgr.ResolveUsername(fetchCtx, msg.ForwardFromChat.Username)
+						fetchCancel()
+					}
+					if s.downloader != nil && s.clientMgr != nil {
+						fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
+						if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
+							fetchedMsg, err := s.downloader.FetchMessage(fetchCtx, fwdChatID, int(fwdMsgID))
+							if err == nil && fetchedMsg != nil {
+								targetChatID = fwdChatID
+								targetMsgID = fwdMsgID
+								tgMsg = fetchedMsg
 							}
+						}
+						fetchCancel()
+					}
+				}
+
+				// 2. Si no fue reenviado de un canal (o no se pudo consultar), resolver el mensaje real en la historia del chat del bot en MTProto
+				if tgMsg == nil {
+					fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
+					if s.clientMgr != nil {
+						_ = s.clientMgr.WaitReady(fetchCtx)
+						fetchedMsg, err := s.resolveBotMediaMsg(fetchCtx, botUserID)
+						if err == nil && fetchedMsg != nil {
+							targetChatID = botUserID
+							targetMsgID = int64(fetchedMsg.ID)
+							tgMsg = fetchedMsg
 						}
 					}
 					fetchCancel()
+				}
+
+				// Fallback de seguridad si MTProto no devolvió el mensaje
+				if targetChatID == 0 {
+					targetChatID = botUserID
+					if targetChatID == 0 {
+						targetChatID = authorizedChatID
+					}
+					targetMsgID = msg.MessageID
+				}
+
+				var origName, captName string
+				if tgMsg != nil {
+					mediaInfo := downloader.ExtractMediaInfo(tgMsg)
+					if mediaInfo != nil {
+						origName = mediaInfo.OriginalFileName
+						captName = mediaInfo.CaptionFileName
+					}
 				}
 
 				if origName == "" {
@@ -4235,6 +4299,16 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				s.mu.RUnlock()
 
 				if namingMode == "manual" && captName != "" && captName != origName {
+					key := fmt.Sprintf("%d:%d", targetChatID, targetMsgID)
+					s.mu.Lock()
+					s.pendingBotChoices[key] = botChoiceData{
+						OrigName: origName,
+						CaptName: captName,
+						ChatID:   targetChatID,
+						MsgID:    targetMsgID,
+					}
+					s.mu.Unlock()
+
 					promptText := i18n.T("notifier.botFilePrompt", html.EscapeString(origName), html.EscapeString(captName))
 					keyboard := map[string]any{
 						"inline_keyboard": [][]map[string]string{
@@ -4345,9 +4419,10 @@ type botMessagePayload struct {
 		ID int64 `json:"id"`
 	} `json:"chat"`
 	ForwardFromChat *struct {
-		ID    int64  `json:"id"`
-		Title string `json:"title,omitempty"`
-		Type  string `json:"type,omitempty"`
+		ID       int64  `json:"id"`
+		Title    string `json:"title,omitempty"`
+		Username string `json:"username,omitempty"`
+		Type     string `json:"type,omitempty"`
 	} `json:"forward_from_chat,omitempty"`
 	ForwardFromMessageID int64               `json:"forward_from_message_id,omitempty"`
 	Text                 string              `json:"text,omitempty"`
@@ -4456,4 +4531,53 @@ func parseBotUserID(token string) int64 {
 		}
 	}
 	return 0
+}
+
+func (s *Server) resolveBotMediaMsg(ctx context.Context, botUserID int64) (*tg.Message, error) {
+	if s.clientMgr == nil {
+		return nil, errors.New("client manager not initialized")
+	}
+	raw := s.clientMgr.RawClient()
+	if raw == nil {
+		return nil, errors.New("client not connected")
+	}
+
+	accessHash, found := s.clientMgr.GetUserAccessHash(botUserID)
+	if !found {
+		_ = s.clientMgr.FetchDialogs(ctx)
+		accessHash, found = s.clientMgr.GetUserAccessHash(botUserID)
+	}
+
+	var peer tg.InputPeerClass
+	if found && accessHash != 0 {
+		peer = &tg.InputPeerUser{UserID: botUserID, AccessHash: accessHash}
+	} else {
+		peer = &tg.InputPeerSelf{}
+	}
+
+	res, err := raw.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+		Peer:  peer,
+		Limit: 10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetHistory error: %w", err)
+	}
+
+	var messages []tg.MessageClass
+	switch m := res.(type) {
+	case *tg.MessagesMessages:
+		messages = m.Messages
+	case *tg.MessagesMessagesSlice:
+		messages = m.Messages
+	case *tg.MessagesChannelMessages:
+		messages = m.Messages
+	}
+
+	for _, mc := range messages {
+		if m, ok := mc.(*tg.Message); ok && m.Media != nil {
+			return m, nil
+		}
+	}
+
+	return nil, errors.New("no media message found in recent history")
 }
