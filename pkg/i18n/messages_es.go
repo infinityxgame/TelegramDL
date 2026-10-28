@@ -251,7 +251,7 @@ var messagesES = map[string]string{
 	"notifier.queueComplete":      "📊 <b>Resumen de Descargas — TelegramDL</b>\n\n✅ <b>Completados:</b> %d\n❌ <b>Fallidos:</b> %d",
 	"notifier.queueCompleteError": "\n\n⚠️ <b>Elementos / Enlaces fallidos:</b>\n%s",
 	"notifier.downloadFailed":     "🚨 <b>Fallo en la descarga</b>\n\n📄 <b>Archivo:</b> <code>%s</code>\n⚠️ <b>Error:</b> <i>%s</i>",
-	"notifier.botStart":           "<b>TelegramDL Bot</b>\n\nEnvíame cualquier enlace de Telegram (ejemplo: <code>https://t.me/c/123456/789</code>) o sube/reenvía archivos directamente a este chat para añadirlos a la cola de descargas.",
+	"notifier.botStart":           " <b>TelegramDL Bot</b>\n\nEnvíame cualquier enlace de Telegram (ejemplo: <code>https://t.me/c/123456/789</code>, rangos <code>https://t.me/c/123456/10-20</code>) para añadirlo a la cola de descargas o envía directamente cualquier archivo a este chat para añadirlos",
 	"notifier.botInvalidLink":     "⚠️ <b>Enlace no reconocido.</b>\nEnvía un enlace válido de Telegram (ej: <code>https://t.me/c/123456/789</code>).",
 	"notifier.botAddedQueue":      "📥 <b>Descarga(s) añadida(s) a la cola:</b>\n%s",
 	"notifier.botErrorsHeader":    "\n\n⚠️ <b>Errores:</b>\n%s",
