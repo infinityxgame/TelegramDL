@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -4032,6 +4033,12 @@ func (s *Server) restartBotListener() {
 }
 
 func (s *Server) runBotListener(ctx context.Context, token string, authorizedChatID int64, topicID *int64) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[BOT LISTENER] panic recovered: %v\n%s", r, debug.Stack())
+		}
+	}()
+
 	client := &http.Client{Timeout: 35 * time.Second}
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", token)
 
@@ -4085,68 +4092,8 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 		}
 
 		var res struct {
-			OK     bool `json:"ok"`
-			Result []struct {
-				UpdateID int `json:"update_id"`
-				Message  *struct {
-					MessageID       int64  `json:"message_id"`
-					MessageThreadID *int64 `json:"message_thread_id,omitempty"`
-					From            struct {
-						ID int64 `json:"id"`
-					} `json:"from"`
-					Chat struct {
-						ID int64 `json:"id"`
-					} `json:"chat"`
-					Text     string `json:"text,omitempty"`
-					Caption  string `json:"caption,omitempty"`
-					Document *struct {
-						FileName string `json:"file_name,omitempty"`
-						MIMEType string `json:"mime_type,omitempty"`
-						FileSize int64  `json:"file_size,omitempty"`
-					} `json:"document,omitempty"`
-					Video *struct {
-						FileName string `json:"file_name,omitempty"`
-						MIMEType string `json:"mime_type,omitempty"`
-						FileSize int64  `json:"file_size,omitempty"`
-					} `json:"video,omitempty"`
-					Audio *struct {
-						FileName  string `json:"file_name,omitempty"`
-						Title     string `json:"title,omitempty"`
-						Performer string `json:"performer,omitempty"`
-						MIMEType  string `json:"mime_type,omitempty"`
-						FileSize  int64  `json:"file_size,omitempty"`
-					} `json:"audio,omitempty"`
-					Photo []struct {
-						FileID   string `json:"file_id"`
-						FileSize int64  `json:"file_size,omitempty"`
-					} `json:"photo,omitempty"`
-					Voice *struct {
-						FileSize int64 `json:"file_size,omitempty"`
-					} `json:"voice,omitempty"`
-					Animation *struct {
-						FileName string `json:"file_name,omitempty"`
-						MIMEType string `json:"mime_type,omitempty"`
-						FileSize int64  `json:"file_size,omitempty"`
-					} `json:"animation,omitempty"`
-					VideoNote *struct {
-						FileSize int64 `json:"file_size,omitempty"`
-					} `json:"video_note,omitempty"`
-				} `json:"message,omitempty"`
-				CallbackQuery *struct {
-					ID   string `json:"id"`
-					From struct {
-						ID int64 `json:"id"`
-					} `json:"from"`
-					Message *struct {
-						MessageID       int64  `json:"message_id"`
-						MessageThreadID *int64 `json:"message_thread_id,omitempty"`
-						Chat            struct {
-							ID int64 `json:"id"`
-						} `json:"chat"`
-					} `json:"message,omitempty"`
-					Data string `json:"data"`
-				} `json:"callback_query,omitempty"`
-			} `json:"result"`
+			OK     bool               `json:"ok"`
+			Result []botUpdatePayload `json:"result"`
 		}
 
 		decodeErr := json.NewDecoder(resp.Body).Decode(&res)
@@ -4185,34 +4132,37 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 				if strings.HasPrefix(data, "fn:orig:") || strings.HasPrefix(data, "fn:capt:") {
 					parts := strings.Split(data, ":")
-					if len(parts) == 3 {
+					if len(parts) == 4 {
 						mode := parts[1]
-						msgID, parseErr := strconv.ParseInt(parts[2], 10, 64)
-						if parseErr == nil && msgID > 0 {
+						targetChatID, parseChatErr := strconv.ParseInt(parts[2], 10, 64)
+						targetMsgID, parseMsgErr := strconv.ParseInt(parts[3], 10, 64)
+						if parseChatErr == nil && parseMsgErr == nil && targetMsgID > 0 {
 							var chosenName string
-							fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
-							if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
-								tgMsg, err := s.downloader.FetchMessage(fetchCtx, authorizedChatID, int(msgID))
-								if err == nil && tgMsg != nil {
-									mediaInfo := downloader.ExtractMediaInfo(tgMsg)
-									if mediaInfo != nil {
-										if mode == "capt" && mediaInfo.CaptionFileName != "" {
-											chosenName = mediaInfo.CaptionFileName
-										} else {
-											chosenName = mediaInfo.OriginalFileName
+							if s.downloader != nil && s.clientMgr != nil {
+								fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+								if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
+									tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
+									if err == nil && tgMsg != nil {
+										mediaInfo := downloader.ExtractMediaInfo(tgMsg)
+										if mediaInfo != nil {
+											if mode == "capt" && mediaInfo.CaptionFileName != "" {
+												chosenName = mediaInfo.CaptionFileName
+											} else {
+												chosenName = mediaInfo.OriginalFileName
+											}
 										}
 									}
 								}
+								fetchCancel()
 							}
-							fetchCancel()
 
-							if chosenName != "" {
+							if chosenName != "" && s.downloader != nil {
 								jobID := config.NewID()
 								item := storage.DownloadItem{
 									ID:        config.NewID(),
 									JobID:     jobID,
-									MessageID: msgID,
-									ChatID:    authorizedChatID,
+									MessageID: targetMsgID,
+									ChatID:    targetChatID,
 									Status:    "queued",
 									Source:    "bot",
 									FileName:  chosenName,
@@ -4246,26 +4196,36 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 			n := notifier.NewNotifier(token, authorizedChatID, replyThreadID)
 
+			botUserID := parseBotUserID(token)
 			msg := up.Message
 			hasMedia := msg.Document != nil || msg.Video != nil || msg.Audio != nil || len(msg.Photo) > 0 || msg.Voice != nil || msg.Animation != nil || msg.VideoNote != nil
 
 			if hasMedia {
+				targetChatID := botUserID
+				targetMsgID := msg.MessageID
+				if msg.ForwardFromChat != nil && msg.ForwardFromChat.ID != 0 && msg.ForwardFromMessageID > 0 {
+					targetChatID = msg.ForwardFromChat.ID
+					targetMsgID = msg.ForwardFromMessageID
+				}
+
 				var origName, captName string
-				fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
-				if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
-					tgMsg, err := s.downloader.FetchMessage(fetchCtx, authorizedChatID, int(msg.MessageID))
-					if err == nil && tgMsg != nil {
-						mediaInfo := downloader.ExtractMediaInfo(tgMsg)
-						if mediaInfo != nil {
-							origName = mediaInfo.OriginalFileName
-							captName = mediaInfo.CaptionFileName
+				if s.downloader != nil && s.clientMgr != nil {
+					fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+					if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
+						tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
+						if err == nil && tgMsg != nil {
+							mediaInfo := downloader.ExtractMediaInfo(tgMsg)
+							if mediaInfo != nil {
+								origName = mediaInfo.OriginalFileName
+								captName = mediaInfo.CaptionFileName
+							}
 						}
 					}
+					fetchCancel()
 				}
-				fetchCancel()
 
 				if origName == "" {
-					origName = extractOrigNameFromBotDoc(msg.MessageID, msg.Document, msg.Video, msg.Audio, len(msg.Photo) > 0, msg.Voice != nil, msg.Animation, msg.VideoNote != nil)
+					origName = extractOrigNameFromBotMsg(msg)
 				}
 				if captName == "" && strings.TrimSpace(msg.Caption) != "" {
 					captName = extractCaptNameFromBotDoc(msg.Caption, origName)
@@ -4280,8 +4240,8 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 					keyboard := map[string]any{
 						"inline_keyboard": [][]map[string]string{
 							{
-								{"text": i18n.T("notifier.botBtnOriginal"), "callback_data": fmt.Sprintf("fn:orig:%d", msg.MessageID)},
-								{"text": i18n.T("notifier.botBtnCaption"), "callback_data": fmt.Sprintf("fn:capt:%d", msg.MessageID)},
+								{"text": i18n.T("notifier.botBtnOriginal"), "callback_data": fmt.Sprintf("fn:orig:%d:%d", targetChatID, targetMsgID)},
+								{"text": i18n.T("notifier.botBtnCaption"), "callback_data": fmt.Sprintf("fn:capt:%d:%d", targetChatID, targetMsgID)},
 							},
 						},
 					}
@@ -4291,21 +4251,23 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 					if captName != "" {
 						chosenName = captName
 					}
-					jobID := config.NewID()
-					item := storage.DownloadItem{
-						ID:        config.NewID(),
-						JobID:     jobID,
-						MessageID: msg.MessageID,
-						ChatID:    authorizedChatID,
-						Status:    "queued",
-						Source:    "bot",
-						FileName:  chosenName,
-					}
-					if s.downloader.QueueItem(item) != "" {
-						s.broadcastState()
-						logbus.Info(logbus.CatDownloads, i18n.T("server.ipcDownloadReceived", chosenName), "Bot Telegram")
-						replyText := i18n.T("notifier.botFileQueued", html.EscapeString(chosenName))
-						n.SendMessage(ctx, replyText)
+					if s.downloader != nil {
+						jobID := config.NewID()
+						item := storage.DownloadItem{
+							ID:        config.NewID(),
+							JobID:     jobID,
+							MessageID: targetMsgID,
+							ChatID:    targetChatID,
+							Status:    "queued",
+							Source:    "bot",
+							FileName:  chosenName,
+						}
+						if s.downloader.QueueItem(item) != "" {
+							s.broadcastState()
+							logbus.Info(logbus.CatDownloads, i18n.T("server.ipcDownloadReceived", chosenName), "Bot Telegram")
+							replyText := i18n.T("notifier.botFileQueued", html.EscapeString(chosenName))
+							n.SendMessage(ctx, replyText)
+						}
 					}
 				}
 				continue
@@ -4360,66 +4322,115 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 	}
 }
 
-func extractOrigNameFromBotDoc(msgID int64, doc, video, audio any, isPhoto, isVoice bool, anim any, isVideoNote bool) string {
+type botMessageFileDoc struct {
+	FileName string `json:"file_name,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+}
+
+type botMessageAudioDoc struct {
+	FileName  string `json:"file_name,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Performer string `json:"performer,omitempty"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	FileSize  int64  `json:"file_size,omitempty"`
+}
+
+type botMessagePayload struct {
+	MessageID       int64  `json:"message_id"`
+	MessageThreadID *int64 `json:"message_thread_id,omitempty"`
+	From            struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Chat struct {
+		ID int64 `json:"id"`
+	} `json:"chat"`
+	ForwardFromChat *struct {
+		ID    int64  `json:"id"`
+		Title string `json:"title,omitempty"`
+		Type  string `json:"type,omitempty"`
+	} `json:"forward_from_chat,omitempty"`
+	ForwardFromMessageID int64               `json:"forward_from_message_id,omitempty"`
+	Text                 string              `json:"text,omitempty"`
+	Caption   string              `json:"caption,omitempty"`
+	Document  *botMessageFileDoc  `json:"document,omitempty"`
+	Video     *botMessageFileDoc  `json:"video,omitempty"`
+	Audio     *botMessageAudioDoc `json:"audio,omitempty"`
+	Photo     []struct {
+		FileID   string `json:"file_id"`
+		FileSize int64  `json:"file_size,omitempty"`
+	} `json:"photo,omitempty"`
+	Voice     *struct {
+		FileSize int64 `json:"file_size,omitempty"`
+	} `json:"voice,omitempty"`
+	Animation *botMessageFileDoc `json:"animation,omitempty"`
+	VideoNote *struct {
+		FileSize int64 `json:"file_size,omitempty"`
+	} `json:"video_note,omitempty"`
+}
+
+type botCallbackQueryPayload struct {
+	ID   string `json:"id"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Message *struct {
+		MessageID       int64  `json:"message_id"`
+		MessageThreadID *int64 `json:"message_thread_id,omitempty"`
+		Chat            struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	} `json:"message,omitempty"`
+	Data string `json:"data"`
+}
+
+type botUpdatePayload struct {
+	UpdateID      int                      `json:"update_id"`
+	Message       *botMessagePayload       `json:"message,omitempty"`
+	CallbackQuery *botCallbackQueryPayload `json:"callback_query,omitempty"`
+}
+
+func extractOrigNameFromBotMsg(msg *botMessagePayload) string {
+	if msg == nil {
+		return "file"
+	}
 	var name string
-	if doc != nil {
-		if d, ok := doc.(*struct {
-			FileName string `json:"file_name,omitempty"`
-			MIMEType string `json:"mime_type,omitempty"`
-			FileSize int64  `json:"file_size,omitempty"`
-		}); ok && d.FileName != "" {
-			name = d.FileName
+	if msg.Document != nil {
+		if msg.Document.FileName != "" {
+			name = msg.Document.FileName
 		} else {
-			name = fmt.Sprintf("doc_%d", msgID)
+			name = fmt.Sprintf("doc_%d", msg.MessageID)
 		}
-	} else if video != nil {
-		if v, ok := video.(*struct {
-			FileName string `json:"file_name,omitempty"`
-			MIMEType string `json:"mime_type,omitempty"`
-			FileSize int64  `json:"file_size,omitempty"`
-		}); ok && v.FileName != "" {
-			name = v.FileName
+	} else if msg.Video != nil {
+		if msg.Video.FileName != "" {
+			name = msg.Video.FileName
 		} else {
-			name = fmt.Sprintf("video_%d.mp4", msgID)
+			name = fmt.Sprintf("video_%d.mp4", msg.MessageID)
 		}
-	} else if audio != nil {
-		if a, ok := audio.(*struct {
-			FileName  string `json:"file_name,omitempty"`
-			Title     string `json:"title,omitempty"`
-			Performer string `json:"performer,omitempty"`
-			MIMEType  string `json:"mime_type,omitempty"`
-			FileSize  int64  `json:"file_size,omitempty"`
-		}); ok {
-			if a.FileName != "" {
-				name = a.FileName
-			} else if a.Performer != "" && a.Title != "" {
-				name = fmt.Sprintf("%s - %s.mp3", a.Performer, a.Title)
-			} else if a.Title != "" {
-				name = fmt.Sprintf("%s.mp3", a.Title)
-			} else {
-				name = fmt.Sprintf("audio_%d.mp3", msgID)
-			}
+	} else if msg.Audio != nil {
+		if msg.Audio.FileName != "" {
+			name = msg.Audio.FileName
+		} else if msg.Audio.Performer != "" && msg.Audio.Title != "" {
+			name = fmt.Sprintf("%s - %s.mp3", msg.Audio.Performer, msg.Audio.Title)
+		} else if msg.Audio.Title != "" {
+			name = fmt.Sprintf("%s.mp3", msg.Audio.Title)
 		} else {
-			name = fmt.Sprintf("audio_%d.mp3", msgID)
+			name = fmt.Sprintf("audio_%d.mp3", msg.MessageID)
 		}
-	} else if isPhoto {
-		name = fmt.Sprintf("photo_%d.jpg", msgID)
-	} else if isVoice {
-		name = fmt.Sprintf("voice_%d.ogg", msgID)
-	} else if anim != nil {
-		if a, ok := anim.(*struct {
-			FileName string `json:"file_name,omitempty"`
-			MIMEType string `json:"mime_type,omitempty"`
-			FileSize int64  `json:"file_size,omitempty"`
-		}); ok && a.FileName != "" {
-			name = a.FileName
+	} else if len(msg.Photo) > 0 {
+		name = fmt.Sprintf("photo_%d.jpg", msg.MessageID)
+	} else if msg.Voice != nil {
+		name = fmt.Sprintf("voice_%d.ogg", msg.MessageID)
+	} else if msg.Animation != nil {
+		if msg.Animation.FileName != "" {
+			name = msg.Animation.FileName
 		} else {
-			name = fmt.Sprintf("animation_%d.mp4", msgID)
+			name = fmt.Sprintf("animation_%d.mp4", msg.MessageID)
 		}
-	} else if isVideoNote {
-		name = fmt.Sprintf("videonote_%d.mp4", msgID)
+	} else if msg.VideoNote != nil {
+		name = fmt.Sprintf("videonote_%d.mp4", msg.MessageID)
 	} else {
-		name = fmt.Sprintf("file_%d", msgID)
+		name = fmt.Sprintf("file_%d", msg.MessageID)
 	}
 	return downloader.SanitizeFileName(name)
 }
@@ -4436,4 +4447,14 @@ func extractCaptNameFromBotDoc(caption, origName string) string {
 		cleanCapt += ext
 	}
 	return cleanCapt
+}
+
+func parseBotUserID(token string) int64 {
+	parts := strings.Split(token, ":")
+	if len(parts) > 0 {
+		if id, err := strconv.ParseInt(parts[0], 10, 64); err == nil && id > 0 {
+			return id
+		}
+	}
+	return 0
 }
