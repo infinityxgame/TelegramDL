@@ -2251,10 +2251,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 15px;
+  min-width: 0;
 }
 .settings-actions {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 22px;
 }
 .settings-actions .clear-history-button,
@@ -2501,6 +2503,13 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
+  .settings-panel-full {
+    padding: 16px 14px;
+  }
+  .reset-button-alt {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
   .save-button.save-fab {
     right: 16px;
     bottom: 16px;

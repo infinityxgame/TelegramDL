@@ -79,6 +79,9 @@ const toggle = () => {
   background: var(--user-bg-base);
   overflow: hidden;
   transition: border-color 0.2s;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 .accordion-block + .accordion-block {
@@ -101,6 +104,7 @@ const toggle = () => {
   text-align: left;
   color: #dbe7f5;
   transition: background 0.2s;
+  box-sizing: border-box;
 }
 .accordion-header:hover {
   background: var(--user-surface-light);
@@ -139,13 +143,18 @@ const toggle = () => {
   padding: 16px 16px 20px;
   border-top: 1px solid var(--user-border);
   animation: accordionOpen 0.18s ease both;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .accordion-body :deep(.settings-columns) {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 34px;
   align-items: start;
+  min-width: 0;
 }
 
 @keyframes accordionOpen {
@@ -168,7 +177,7 @@ const toggle = () => {
     padding: 14px 12px 16px;
   }
   .accordion-body :deep(.settings-columns) {
-    gap: 24px;
+    gap: 20px;
   }
 }
 </style>
