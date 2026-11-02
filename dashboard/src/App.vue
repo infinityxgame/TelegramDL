@@ -1515,13 +1515,15 @@ onUnmounted(() => {
             :settings="settings"
           />
 
-          <ScannerView
-            v-show="activeView === 'scanner'"
-            :active="activeView === 'scanner'"
-            :notify="showMessage"
-            :disk="disk"
-            :settings="settings"
-          />
+          <KeepAlive>
+            <ScannerView
+              v-show="activeView === 'scanner'"
+              :active="activeView === 'scanner'"
+              :notify="showMessage"
+              :disk="disk"
+              :settings="settings"
+            />
+          </KeepAlive>
 
           <LogsView
             v-show="activeView === 'logs'"

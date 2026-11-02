@@ -20,6 +20,7 @@ import { useI18n } from '../i18n'
 
 import AppPagination from '../components/AppPagination.vue'
 import AppInput from '../components/AppInput.vue'
+import AppButton from '../components/AppButton.vue'
 
 const { authHeaders } = useAuthToken()
 const { t } = useI18n()
@@ -639,16 +640,15 @@ const getKindIcon = (kind) => {
           />
         </div>
 
-        <button
-          type="button"
-          class="save-button search-btn"
-          :disabled="loading || !target.trim()"
+        <AppButton
+          :loading="loading"
+          :disabled="!target.trim()"
           @click="onSearch"
         >
           <Loader2 v-if="loading" :size="14" class="spin" />
           <Search v-else :size="14" />
           <span>{{ t('scanner.searchButton') }}</span>
-        </button>
+        </AppButton>
 
         <button
           type="button"
