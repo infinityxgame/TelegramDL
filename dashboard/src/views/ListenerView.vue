@@ -1360,13 +1360,14 @@ onUnmounted(() => {
   margin: 0;
   padding: 0 15px;
 }
+
 .chat-chip {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--user-border);
   padding: 14px 0;
 }
+
 .chat-chip-main {
   display: flex;
   align-items: center;
