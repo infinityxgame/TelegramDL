@@ -21,6 +21,7 @@ import { useI18n } from '../i18n'
 import AppPagination from '../components/AppPagination.vue'
 import AppInput from '../components/AppInput.vue'
 import AppButton from '../components/AppButton.vue'
+import AppSelect from '../components/AppSelect.vue'
 
 const { authHeaders } = useAuthToken()
 const { t } = useI18n()
@@ -164,6 +165,9 @@ const unitMultipliers = {
   MB: 1024 * 1024,
   GB: 1024 * 1024 * 1024
 }
+
+// Unidades ofrecidas en los desplegables de tamaño mínimo y máximo.
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB']
 
 const parseSizeBytes = (val, unit) => {
   if (!val || isNaN(val) || Number(val) <= 0) return 0
@@ -733,12 +737,11 @@ const getKindIcon = (kind) => {
                 class="scanner-input compact-number"
                 placeholder="0"
               />
-              <select v-model="minSizeUnit" class="compact-select">
-                <option value="B">B</option>
-                <option value="KB">KB</option>
-                <option value="MB">MB</option>
-                <option value="GB">GB</option>
-              </select>
+              <AppSelect
+                v-model="minSizeUnit"
+                :options="SIZE_UNITS"
+                class="compact-select"
+              />
             </div>
           </div>
 
@@ -753,12 +756,11 @@ const getKindIcon = (kind) => {
                 class="scanner-input compact-number"
                 placeholder="0"
               />
-              <select v-model="maxSizeUnit" class="compact-select">
-                <option value="B">B</option>
-                <option value="KB">KB</option>
-                <option value="MB">MB</option>
-                <option value="GB">GB</option>
-              </select>
+              <AppSelect
+                v-model="maxSizeUnit"
+                :options="SIZE_UNITS"
+                class="compact-select"
+              />
             </div>
           </div>
         </div>
