@@ -166,11 +166,11 @@ antes de abrir un pull request).
 ¡Gracias a todas las personas que contribuyen a **TelegramDL**!
 
 <!-- CONTRIBUTORS-START -->
+<a href="https://github.com/infinityxgame" title="infinityxgame">
+  <img src="https://avatars.githubusercontent.com/u/38917076?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="infinityxgame" />
+</a>
 <a href="https://github.com/ElJoker63" title="ElJoker63">
   <img src="https://avatars.githubusercontent.com/u/28916466?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="ElJoker63" />
-</a>
-<a href="https://github.com/Tauromachian" title="Tauromachian">
-  <img src="https://avatars.githubusercontent.com/u/54786476?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="Tauromachian" />
 </a>
 <a href="https://github.com/SatellitexOT12" title="SatellitexOT12">
   <img src="https://avatars.githubusercontent.com/u/82134529?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="SatellitexOT12" />
