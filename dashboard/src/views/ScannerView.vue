@@ -1257,21 +1257,6 @@ html.theme-light
   opacity: 0.75 !important;
 }
 
-.search-btn.save-button {
-  width: auto !important;
-  margin-top: 0 !important;
-  height: 42px !important;
-  padding: 0 20px !important;
-  font-size: 13px !important;
-  border-radius: 12px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-}
-
 .clear-btn.clear-history-button {
   width: auto !important;
   margin-top: 0 !important;
@@ -2063,7 +2048,6 @@ html.theme-light .chat-sub {
     min-width: 100% !important;
     max-width: 100% !important;
   }
-  .search-btn.save-button,
   .clear-btn.clear-history-button,
   .recents-btn.clear-history-button {
     flex: 1 1 auto !important;
