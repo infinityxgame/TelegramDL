@@ -99,8 +99,19 @@ const normalizedOptions = computed(() =>
   color: var(--user-text-main, #dbe7f5);
 }
 
-html.theme-light .app-select__control option {
-  background-color: var(--light-surface, #ffffff) !important;
+html.theme-light .app-select__control {
   color: #0f172a !important;
+  background-color: var(--user-bg-base, #ffffff) !important;
+  border-color: var(--light-border, rgba(0, 0, 0, 0.15)) !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--light-ink-soft, #64748b) 50%),
+    linear-gradient(135deg, var(--light-ink-soft, #64748b) 50%, transparent 50%) !important;
+}
+
+html.theme-light .app-select__control option {
+  color: #0f172a !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--light-ink-soft, #64748b) 50%),
+    linear-gradient(135deg, var(--light-ink-soft, #64748b) 50%, transparent 50%) !important;
 }
 </style>
