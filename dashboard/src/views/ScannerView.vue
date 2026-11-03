@@ -737,11 +737,7 @@ const getKindIcon = (kind) => {
                 class="scanner-input compact-number"
                 placeholder="0"
               />
-              <AppSelect
-                v-model="minSizeUnit"
-                :options="SIZE_UNITS"
-                class="compact-select"
-              />
+              <AppSelect v-model="minSizeUnit" :options="SIZE_UNITS" />
             </div>
           </div>
 
@@ -756,11 +752,7 @@ const getKindIcon = (kind) => {
                 class="scanner-input compact-number"
                 placeholder="0"
               />
-              <AppSelect
-                v-model="maxSizeUnit"
-                :options="SIZE_UNITS"
-                class="compact-select"
-              />
+              <AppSelect v-model="maxSizeUnit" :options="SIZE_UNITS" />
             </div>
           </div>
         </div>
@@ -1231,20 +1223,6 @@ const getKindIcon = (kind) => {
   border-color: var(--user-primary);
 }
 
-.compact-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-color: var(--user-bg-base);
-  border: 1px solid var(--user-border-light);
-  color: var(--user-text-main, #dbe7f5);
-  border-radius: 10px;
-  padding: 5px 18px 5px 8px;
-  font-size: 11px;
-  height: 36px;
-  outline: none;
-}
-
 /* Visibilidad clara del icono de calendario en temas oscuros (blanco brillante) */
 .scanner-input[type='date'] {
   color-scheme: dark;
@@ -1262,15 +1240,6 @@ html.theme-light .scanner-input {
   color: #0f172a !important;
   background: var(--light-surface, #ffffff) !important;
   border-color: var(--light-border, rgba(0, 0, 0, 0.15)) !important;
-}
-
-html.theme-light .compact-select {
-  color: #0f172a !important;
-  background-color: var(--light-surface, #ffffff) !important;
-  border-color: var(--light-border, rgba(0, 0, 0, 0.15)) !important;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--light-ink-soft, #64748b) 50%),
-    linear-gradient(135deg, var(--light-ink-soft, #64748b) 50%, transparent 50%) !important;
 }
 
 html.theme-light .compact-label {
@@ -1665,43 +1634,6 @@ html.theme-light .chat-sub {
 .compact-number::-webkit-inner-spin-button {
   -webkit-appearance: none !important;
   margin: 0 !important;
-}
-
-.compact-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-color: var(--user-bg-base);
-  background-image:
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    calc(100% - 10px) 52%,
-    calc(100% - 6px) 52%;
-  background-size:
-    4px 4px,
-    4px 4px;
-  background-repeat: no-repeat;
-  border: 1px solid var(--user-border-light);
-  color: var(--user-text-main, #dbe7f5);
-  border-radius: 8px;
-  padding: 0 18px 0 8px;
-  font-size: 11px;
-  height: 32px;
-  outline: none;
-  box-sizing: border-box;
-  margin: 0;
-  cursor: pointer;
-}
-
-.compact-select option {
-  background-color: var(--user-bg-base);
-  color: var(--user-text-main, #dbe7f5);
-}
-
-html.theme-light .compact-select option {
-  background-color: var(--light-surface, #ffffff) !important;
-  color: #0f172a !important;
 }
 
 .scanner-error {
