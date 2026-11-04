@@ -86,7 +86,7 @@ Compilar la aplicación completa de escritorio con Wails:
 wails3 build
 ```
 
-Wails ejecuta la compilación del panel y del backend según la configuración de `wails.json`. El ejecutable se genera dentro de `build/bin/`. Este proyecto no utiliza PyInstaller.
+Wails ejecuta la compilación del panel y del backend según la configuración de `wails.json`. El ejecutable se genera dentro de `build/bin/`.
 
 `dashboard/dist/` es generado por Vite y debe existir para que `main.go` pueda incrustar el panel durante la compilación; `build/`, `dist/` y `dashboard/node_modules/` son artefactos locales prescindibles.
 

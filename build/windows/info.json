@@ -1,15 +1,10 @@
 {
-	"fixed": {
-		"file_version": "{{.Info.ProductVersion}}"
-	},
-	"info": {
-		"0000": {
-			"ProductVersion": "{{.Info.ProductVersion}}",
-			"CompanyName": "{{.Info.CompanyName}}",
-			"FileDescription": "{{.Info.ProductName}}",
-			"LegalCopyright": "{{.Info.Copyright}}",
-			"ProductName": "{{.Info.ProductName}}",
-			"Comments": "{{.Info.Comments}}"
-		}
-	}
+  "comments": "Telegram Downloader Desktop",
+  "companyName": "Infinityxgame",
+  "fileVersion": "2.6.9.0",
+  "internalName": "TelegramDL",
+  "legalCopyright": "Copyright 2026",
+  "originalFilename": "TelegramDL.exe",
+  "productName": "TelegramDL",
+  "productVersion": "2.6.9.0"
 }
