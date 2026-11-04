@@ -3,7 +3,6 @@
 package i18n
 
 import (
-	"os"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -26,13 +25,5 @@ func DetectSystemLanguage() string {
 		}
 	}
 
-	for _, name := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		if v := strings.ToLower(strings.TrimSpace(os.Getenv(name))); v != "" {
-			if strings.HasPrefix(v, "es") {
-				return LangES
-			}
-			return LangEN
-		}
-	}
-	return LangEN
+	return detectSystemLanguage()
 }
