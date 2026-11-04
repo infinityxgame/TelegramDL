@@ -33,3 +33,4 @@ md_ideas/
 /dashboard/wailsjs
 /dashboard/src/bindings
 /.task/
+node_modules
