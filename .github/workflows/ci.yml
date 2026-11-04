@@ -50,7 +50,7 @@ jobs:
         run: pnpm run build
 
       - name: go vet
-        run: CGO_ENABLED=0 go vet ./...
+        run: go vet ./...
 
       # -race solo se ejecuta en Linux porque ahí el runner trae gcc;
       # en local (Windows sin gcc) el detector de carreras no compila.
