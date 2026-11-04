@@ -22,11 +22,6 @@ jobs:
           go-version: '1.27.x'
           cache: true
 
-      - name: Install Linux Wails dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libsoup-3.0-dev
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -48,7 +43,7 @@ jobs:
         run: pnpm install
 
       - name: Generate Wails bindings
-        run: wails3 generate bindings -d dashboard/src/bindings
+        run: CGO_ENABLED=0 wails3 generate bindings -d dashboard/src/bindings
 
       # El panel se compila antes que go vet: main.go hace
       # //go:embed all:dashboard/dist y necesita esa carpeta con contenido.
@@ -57,10 +52,10 @@ jobs:
         run: pnpm run build
 
       - name: go vet
-        run: go vet ./...
+        run: CGO_ENABLED=0 go vet ./...
 
       - name: go test
-        run: go test ./...
+        run: CGO_ENABLED=0 go test ./...
 
   build-windows:
     name: Build Windows
@@ -280,7 +275,7 @@ jobs:
       #
       # SEC-11: este checksums.txt da integridad, NO autenticidad —se publica
       # desde el mismo origen que los binarios—, así que un runner o token
-      # comprometido podría publicar artefactos y checksums coherentes. La
+      # comprometido podría publicar artefactos del origen legítimo. La
       # firma criptográfica (minisign/sigstore) queda pendiente como decisión
       # abierta. Además, por la misma cadena de suministro: los builds de aquí
       # NO deben llevar nunca `-tags dev` (SEC-39), que desactiva comprobaciones
