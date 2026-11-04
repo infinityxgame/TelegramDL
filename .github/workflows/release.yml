@@ -62,12 +62,17 @@ jobs:
           go-version: '1.27.x'
           cache: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install Wails CLI
         shell: bash
@@ -75,15 +80,15 @@ jobs:
 
       - name: Install dashboard dependencies
         working-directory: dashboard
-        run: npm ci
+        run: pnpm install
 
       - name: Build dashboard
         working-directory: dashboard
-        run: npm run build
+        run: pnpm run build
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform windows/amd64 -s -o TelegramDL -webview2 download
+        run: wails3 build
 
       - name: Package Windows
         shell: bash
@@ -133,12 +138,17 @@ jobs:
           go-version: '1.27.x'
           cache: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install Linux Wails dependencies
         run: |
@@ -151,15 +161,15 @@ jobs:
 
       - name: Install dashboard dependencies
         working-directory: dashboard
-        run: npm ci
+        run: pnpm install
 
       - name: Build dashboard
         working-directory: dashboard
-        run: npm run build
+        run: pnpm run build
 
       - name: Build application with Wails
         shell: bash
-        run: wails build -clean -platform linux/amd64 -s -o TelegramDL -webview2 download
+        run: wails3 build
 
       - name: Package Linux
         shell: bash
@@ -189,12 +199,17 @@ jobs:
           go-version: '1.27.x'
           cache: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install Wails CLI
         shell: bash
@@ -202,16 +217,16 @@ jobs:
 
       - name: Install dashboard dependencies
         working-directory: dashboard
-        run: npm ci
+        run: pnpm install
 
       - name: Build dashboard
         working-directory: dashboard
-        run: npm run build
+        run: pnpm run build
 
       - name: Build application with Wails
         shell: bash
         run: |
-          wails build -clean -platform darwin/universal -s -o TelegramDL -webview2 download
+          wails3 build
           chmod +x build/bin/TelegramDL.app/Contents/MacOS/TelegramDL
 
       - name: Package macOS

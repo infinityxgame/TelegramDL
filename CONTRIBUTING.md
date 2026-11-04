@@ -16,12 +16,12 @@ propongan los cambios.
 
 ## Preparar el entorno de desarrollo
 
-Requisitos: Go 1.27 o superior, Node.js 18 o superior y npm, y la CLI de
+Requisitos: Go 1.27 o superior, Node.js 18 o superior y pnpm, y la CLI de
 Wails:
 
 ```powershell
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-npm --prefix dashboard install
+pnpm --prefix dashboard install
 ```
 
 Para probar la integración con Telegram necesitas un `API ID` y un
@@ -42,7 +42,7 @@ Ejecuta lo siguiente y confirma que todo pasa:
 ```powershell
 go vet ./...
 go test ./...
-npm --prefix dashboard run build
+pnpm --prefix dashboard run build
 ```
 
 El CI del repositorio (`.github/workflows/ci.yml`) corre exactamente estos

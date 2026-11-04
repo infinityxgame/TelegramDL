@@ -34,7 +34,7 @@ TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado c
 ## Requisitos
 
 - Go instalado.
-- Node.js 18 o superior y npm.
+- Node.js 18 o superior y pnpm.
 - Wails CLI:
 
 ```powershell
@@ -65,7 +65,7 @@ TelegramDL guarda la configuración, sesiones y base de datos en una ruta dedica
 Instalar las dependencias del panel:
 
 ```powershell
-npm --prefix dashboard install
+pnpm --prefix dashboard install
 ```
 
 Ejecutar la aplicación con recarga automática:
@@ -77,7 +77,7 @@ wails3 dev
 Compilar el panel por separado:
 
 ```powershell
-npm --prefix dashboard run build
+pnpm --prefix dashboard run build
 ```
 
 Compilar la aplicación completa de escritorio con Wails:
@@ -109,7 +109,7 @@ TelegramDL.exe --help
 ```powershell
 go test ./...
 go vet ./...
-npm --prefix dashboard run build
+pnpm --prefix dashboard run build
 ```
 
 La validación del proyecto se realiza mediante la compilación de Go, `go vet` y la compilación del panel.

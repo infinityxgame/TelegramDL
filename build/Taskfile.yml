@@ -47,11 +47,10 @@ tasks:
       - pnpm-lock.yaml
     generates:
       - node_modules
-    preconditions:
-      - sh: pnpm --version
-        msg: "pnpm not found"
+    status:
+      - test -d node_modules
     cmds:
-      - pnpm install
+      - pnpm install --prefer-offline
 
   install:frontend:deps:yarn:
     dir: dashboard

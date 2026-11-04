@@ -3,7 +3,7 @@ version: '3'
 vars:
   APP_NAME: "TelegramDL"
   BIN_DIR: "build/bin"
-  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  PACKAGE_MANAGER: 'pnpm'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 8080}}'
   # Target OS for build/package/run. Defaults to the host OS, and is overridden
   # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
