@@ -262,7 +262,15 @@ func runDesktopMode() {
 			application.NewService(app),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/api/") {
+					if handler := app.Handler(); handler != nil {
+						handler.ServeHTTP(w, r)
+						return
+					}
+				}
+				application.AssetFileServerFS(assets).ServeHTTP(w, r)
+			}),
 		},
 		Mac: application.MacOptions{
 			ActivationPolicy: application.ActivationPolicyRegular,
