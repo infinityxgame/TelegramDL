@@ -20,22 +20,27 @@ jobs:
           go-version: '1.27.x'
           cache: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: 'dashboard/pnpm-lock.yaml'
 
       - name: Install dashboard dependencies
         working-directory: dashboard
-        run: npm ci
+        run: pnpm install
 
       # El panel se compila antes que go vet: main.go hace
       # //go:embed all:dashboard/dist y necesita esa carpeta con contenido.
       - name: Build dashboard
         working-directory: dashboard
-        run: npm run build
+        run: pnpm run build
 
       - name: go vet
         run: go vet ./...
