@@ -216,7 +216,7 @@ type Config struct {
 	// Language es el idioma del panel ("es" o "en"). Vacío significa que el
 	// usuario todavía no ha elegido ninguno: el panel detecta entonces el
 	// idioma del sistema la primera vez y guarda aquí el resultado.
-	Language string `json:"language"`
+	Language i18n.Lang `json:"language"`
 	// NotificationBotEnabled activa las notificaciones mediante bot de Telegram.
 	NotificationBotEnabled bool `json:"notification_bot_enabled"`
 	// NotificationBotToken es el token del bot de Telegram para notificaciones.
@@ -656,14 +656,6 @@ func NormalizeConfig(raw Config) Config {
 	}
 	if raw.SpeedLimit.Value < 0 {
 		raw.SpeedLimit.Value = 0
-	}
-
-	// Solo se admiten los idiomas que el panel sabe mostrar; cualquier otra
-	// cosa (una petición remota con basura, un valor viejo) vuelve a vacío,
-	// que es el estado "detectar del sistema".
-	raw.Language = strings.ToLower(strings.TrimSpace(raw.Language))
-	if raw.Language != "es" && raw.Language != "en" {
-		raw.Language = ""
 	}
 
 	// Normalizar campos de notificaciones

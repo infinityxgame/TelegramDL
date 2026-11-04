@@ -6,6 +6,6 @@ package i18n
 // Linux y macOS ("es_ES.UTF-8", "en_US"...) y las reduce al idioma del panel:
 // español si empieza por "es", inglés en cualquier otro caso (incluido el
 // vacío, que en un Mac configurado en inglés es lo habitual bajo launchd).
-func DetectSystemLanguage() string {
+func DetectSystemLanguage() Lang {
 	return detectSystemLanguage()
 }

@@ -52,9 +52,7 @@ func RunCLIMode(url string) int {
 	}
 	cfg = config.NormalizeConfig(cfg)
 
-	if cfg.Language != "" {
-		i18n.SetLanguage(cfg.Language)
-	}
+	i18n.SetLanguage(cfg.Language)
 
 	// 5. Verificar credenciales de Telegram
 	apiID, apiHash, _ := st.GetCredentials()

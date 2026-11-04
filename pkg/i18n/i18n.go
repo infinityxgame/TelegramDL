@@ -19,40 +19,27 @@ import (
 	"sync/atomic"
 )
 
-// LangES y LangEN son los únicos idiomas con diccionario.
-const (
-	LangES = "es"
-	LangEN = "en"
-)
-
-// messages junta los dos diccionarios. Se declara aquí y no en los archivos de
-// mensajes para que la referencia quede junto a T().
-var messages = map[string]map[string]string{
-	LangES: messagesES,
-	LangEN: messagesEN,
-}
-
 var current atomic.Value // string; LangES o LangEN
 
 func init() {
-	current.Store(LangES)
+	current.Store(DEFAULT_LANG)
 }
 
 // SetLanguage fija el idioma activo. Cualquier valor que no sea "es" o "en"
 // (vacío incluido) deja el idioma como estaba: es lo que permite que la
 // detección del sistema no sea pisada por una configuración todavía vacía.
-func SetLanguage(lang string) {
-	if lang == LangES || lang == LangEN {
+func SetLanguage(lang Lang) {
+	if lang.Valid() {
 		current.Store(lang)
 	}
 }
 
 // Language devuelve el idioma activo.
-func Language() string {
-	if v, ok := current.Load().(string); ok {
+func Language() Lang {
+	if v, ok := current.Load().(Lang); ok {
 		return v
 	}
-	return LangES
+	return DEFAULT_LANG
 }
 
 // T traduce una clave y la formatea con los argumentos (mismo estilo que
@@ -62,7 +49,7 @@ func T(key string, args ...any) string {
 	lang := Language()
 	text, ok := messages[lang][key]
 	if !ok {
-		text, ok = messages[LangES][key]
+		text, ok = messages[DEFAULT_LANG][key]
 	}
 	if !ok {
 		return key

@@ -2649,7 +2649,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, ok := raw["language"]; ok && v != nil {
 		if sVal, ok := v.(string); ok {
-			cfg.Language = sVal
+			cfg.Language, _ = i18n.LangFromString(sVal)
 		}
 	}
 	if v, ok := raw["speed_limit"].(map[string]any); ok {

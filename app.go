@@ -104,9 +104,7 @@ func NewApp(assets fs.FS) (*App, error) {
 	// que se cargó esta línea, los mensajes salían en el idioma detectado del
 	// sistema (fijado en main), que es lo único disponible antes de abrir la
 	// base de datos.
-	if cfg.Language != "" {
-		i18n.SetLanguage(cfg.Language)
-	}
+	i18n.SetLanguage(cfg.Language)
 
 	cm := telegram.NewClientManager()
 	eng := downloader.NewEngine(cm, st, cfg)

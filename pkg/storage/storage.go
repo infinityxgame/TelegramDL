@@ -642,7 +642,7 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 		cfg.SpeedLimit.Unit = val
 	}
 	if val, ok := kv["language"]; ok && val != "" {
-		cfg.Language = val
+		cfg.Language, _ = i18n.LangFromString(val)
 	}
 	if val, ok := kv["notification_bot_enabled"]; ok {
 		cfg.NotificationBotEnabled = val == "1" || val == "true"
@@ -783,7 +783,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"sound_notification":       strconv.FormatBool(cfg.SoundNotification),
 		"speed_value":              fmt.Sprintf("%f", cfg.SpeedLimit.Value),
 		"speed_unit":               cfg.SpeedLimit.Unit,
-		"language":                 cfg.Language,
+		"language":                 cfg.Language.String(),
 		"notification_bot_enabled": strconv.FormatBool(cfg.NotificationBotEnabled),
 		"notification_bot_token":   cfg.NotificationBotToken,
 		"notification_chat_id":     strconv.FormatInt(cfg.NotificationChatID, 10),

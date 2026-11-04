@@ -120,7 +120,7 @@ func logConfigChanges(before, after config.Config) {
 	}
 	if before.Language != after.Language {
 		changes = append(changes, i18n.T("settings.changeLanguage",
-			langLabel(before.Language), langLabel(after.Language)))
+			before.Language.Label(), after.Language.Label()))
 	}
 
 	if len(changes) > 0 {
@@ -257,20 +257,6 @@ func onOff(v bool) string {
 		return i18n.T("settings.on")
 	}
 	return i18n.T("settings.off")
-}
-
-// langLabel da un nombre legible al código de idioma en el registro ("es →
-// en" se lee mejor como "Español → English"). El vacío (aún sin elegir) queda
-// como el propio código para que se note que no había valor.
-func langLabel(code string) string {
-	switch code {
-	case "es":
-		return "Español"
-	case "en":
-		return "English"
-	default:
-		return code
-	}
 }
 
 func sameIntPtr(a, b *int) bool {
