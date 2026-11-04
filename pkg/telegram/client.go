@@ -58,16 +58,16 @@ type ClientManager struct {
 	client    *telegram.Client
 	rawClient *tg.Client
 	// Grupo de conexiones dedicado a bajar archivos. Ver DownloadConnections.
-	downloadPool         telegram.CloseInvoker
-	downloadClient       *tg.Client
-	downloadPoolNotice   bool
-	primaryDC            int
-	dcPools              map[int]telegram.CloseInvoker
-	dcClients            map[int]*tg.Client
-	sessionPath          string
-	cancelRun            context.CancelFunc
-	runWg                sync.WaitGroup
-	mu                   sync.RWMutex
+	downloadPool       telegram.CloseInvoker
+	downloadClient     *tg.Client
+	downloadPoolNotice bool
+	primaryDC          int
+	dcPools            map[int]telegram.CloseInvoker
+	dcClients          map[int]*tg.Client
+	sessionPath        string
+	cancelRun          context.CancelFunc
+	runWg              sync.WaitGroup
+	mu                 sync.RWMutex
 	// dcMu serializa únicamente la creación de pools por DC (SEC-18). La
 	// llamada de red client.DC() se hace fuera de cm.mu para no bloquear
 	// todo el manejador; este candado corto evita que dos goroutines abran

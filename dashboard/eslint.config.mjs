@@ -15,6 +15,7 @@ export default defineConfig([
     '**/dist-ssr/**',
     '**/coverage/**',
     '**/wailsjs/**',
+    '**/src/bindings/**',
     '**/public/**'
   ]),
 

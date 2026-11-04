@@ -1,6 +1,6 @@
 # TelegramDL (TGDown)
 
-TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado con Go, Wails v2 y Vue 3. Está pensado exclusivamente para recibir, vigilar y descargar contenido multimedia; no es un cliente de mensajería.
+TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado con Go, Wails v3 y Vue 3. Está pensado exclusivamente para recibir, vigilar y descargar contenido multimedia; no es un cliente de mensajería.
 
 > 📖 **Documentación oficial (Español / English)**: [https://infinityxgame.github.io/TelegramDL/](https://infinityxgame.github.io/TelegramDL/)
 
@@ -27,7 +27,7 @@ TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado c
 
 - Go 1.22 o superior.
 - [gotd/td](https://github.com/gotd/td) para MTProto.
-- [Wails v2](https://wails.io/) para la aplicación de escritorio.
+- [Wails v3](https://wails.io/) para la aplicación de escritorio.
 - Vue 3 + Vite para el panel.
 - SQLite mediante `modernc.org/sqlite`, sin CGO.
 
@@ -38,7 +38,7 @@ TelegramDL es un gestor de descargas de Telegram para escritorio, desarrollado c
 - Wails CLI:
 
 ```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 ```
 
 Para usar Telegram también se necesita un `API ID` y un `API HASH` obtenidos desde [my.telegram.org](https://my.telegram.org/).
@@ -71,7 +71,7 @@ npm --prefix dashboard install
 Ejecutar la aplicación con recarga automática:
 
 ```powershell
-wails dev
+wails3 dev
 ```
 
 Compilar el panel por separado:
@@ -83,7 +83,7 @@ npm --prefix dashboard run build
 Compilar la aplicación completa de escritorio con Wails:
 
 ```powershell
-wails build
+wails3 build
 ```
 
 Wails ejecuta la compilación del panel y del backend según la configuración de `wails.json`. El ejecutable se genera dentro de `build/bin/`. Este proyecto no utiliza PyInstaller.

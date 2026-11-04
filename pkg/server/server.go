@@ -49,16 +49,16 @@ type Server struct {
 	config     config.Config
 	assets     fs.FS
 
-	mu           sync.RWMutex
-	mux          *http.ServeMux
-	wsClients    map[*wsClient]bool
-	upgrader     websocket.Upgrader
-	httpServer   *http.Server
-	stopCh       chan struct{}
-	stopOnce     sync.Once
-	latestRel    *updater.ReleaseInfo
-	cachedDisk   *downloader.DiskInfo
-	exitCallback func()
+	mu               sync.RWMutex
+	mux              *http.ServeMux
+	wsClients        map[*wsClient]bool
+	upgrader         websocket.Upgrader
+	httpServer       *http.Server
+	stopCh           chan struct{}
+	stopOnce         sync.Once
+	latestRel        *updater.ReleaseInfo
+	cachedDisk       *downloader.DiskInfo
+	exitCallback     func()
 	broadcastCh      chan struct{}
 	onBroadcast      func(snap map[string]any)
 	apiToken         string
@@ -162,13 +162,13 @@ func NewServer(
 	exitCb func(),
 ) *Server {
 	s := &Server{
-		clientMgr:  cm,
-		storage:    st,
-		downloader: dl,
-		listener:   le,
-		scanner:    scanner.NewScannerService(cm, st, dl),
-		updater:    up,
-		config:     cfg,
+		clientMgr:         cm,
+		storage:           st,
+		downloader:        dl,
+		listener:          le,
+		scanner:           scanner.NewScannerService(cm, st, dl),
+		updater:           up,
+		config:            cfg,
 		assets:            assets,
 		wsClients:         make(map[*wsClient]bool),
 		pendingBotChoices: make(map[string]botChoiceData),
@@ -183,11 +183,11 @@ func NewServer(
 				return origin == "" || isOriginAllowed(origin, r)
 			},
 		},
-		exitCallback:   exitCb,
-		mux:            http.NewServeMux(),
-		stopCh:         make(chan struct{}),
-		broadcastCh:    make(chan struct{}, 1),
-		tokenSendByIP:  make(map[string]time.Time),
+		exitCallback:  exitCb,
+		mux:           http.NewServeMux(),
+		stopCh:        make(chan struct{}),
+		broadcastCh:   make(chan struct{}, 1),
+		tokenSendByIP: make(map[string]time.Time),
 
 		setupRateByOrigin: make(map[string]rateWindow),
 		ipcRateByOrigin:   make(map[string]rateWindow),
@@ -3358,7 +3358,6 @@ func (s *Server) SetFolderPicker(fn func() (string, error)) {
 	s.folderPicker = fn
 }
 
-
 // SetLanguageChangeHandler registra la función que se ejecuta cuando el idioma cambia en ajustes.
 func (s *Server) SetLanguageChangeHandler(fn func()) {
 	s.mu.Lock()
@@ -3699,7 +3698,6 @@ func (s *Server) handleScannerRecentClear(w http.ResponseWriter, r *http.Request
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
-
 
 // Updater
 func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
@@ -4498,15 +4496,15 @@ type botMessagePayload struct {
 	} `json:"forward_from_chat,omitempty"`
 	ForwardFromMessageID int64               `json:"forward_from_message_id,omitempty"`
 	Text                 string              `json:"text,omitempty"`
-	Caption   string              `json:"caption,omitempty"`
-	Document  *botMessageFileDoc  `json:"document,omitempty"`
-	Video     *botMessageFileDoc  `json:"video,omitempty"`
-	Audio     *botMessageAudioDoc `json:"audio,omitempty"`
-	Photo     []struct {
+	Caption              string              `json:"caption,omitempty"`
+	Document             *botMessageFileDoc  `json:"document,omitempty"`
+	Video                *botMessageFileDoc  `json:"video,omitempty"`
+	Audio                *botMessageAudioDoc `json:"audio,omitempty"`
+	Photo                []struct {
 		FileID   string `json:"file_id"`
 		FileSize int64  `json:"file_size,omitempty"`
 	} `json:"photo,omitempty"`
-	Voice     *struct {
+	Voice *struct {
 		FileSize int64 `json:"file_size,omitempty"`
 	} `json:"voice,omitempty"`
 	Animation *botMessageFileDoc `json:"animation,omitempty"`

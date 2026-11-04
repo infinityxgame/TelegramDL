@@ -6,7 +6,6 @@ import (
 	_ "embed"
 
 	"github.com/energye/systray"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tgdown/pkg/i18n"
 )
@@ -78,11 +77,11 @@ func (a *App) updateTrayMenuTitles() {
 }
 
 func (a *App) hideWindowToTray() {
-	if ctx := a.context(); ctx != nil {
+	if win := a.window(); win != nil {
 		if len(trayIcon) > 0 {
 			systray.SetIcon(trayIcon)
 		}
-		wailsRuntime.WindowHide(ctx)
+		win.Hide()
 		a.ShowTrayNotification()
 	}
 }

@@ -20,7 +20,7 @@ Requisitos: Go 1.27 o superior, Node.js 18 o superior y npm, y la CLI de
 Wails:
 
 ```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 npm --prefix dashboard install
 ```
 
@@ -32,7 +32,7 @@ Nunca subas credenciales, archivos de sesión (`*.session`) ni bases de datos
 Ejecutar la app en modo desarrollo (recarga automática del panel):
 
 ```powershell
-wails dev
+wails3 dev
 ```
 
 ## Antes de abrir un pull request

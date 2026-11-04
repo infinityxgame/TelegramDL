@@ -12,11 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"tgdown/pkg/cli"
 	"tgdown/pkg/config"
@@ -259,46 +255,40 @@ func runDesktopMode() {
 		}()
 	}
 
-	err := wails.Run(&options.App{
-		Title:     "Telegram DL",
-		Width:     1280,
-		Height:    720,
-		MinWidth:  950,
-		MinHeight: 680,
-		AssetServer: &assetserver.Options{
-			Assets:  assets,
-			Handler: app.Handler(),
+	wailsApp := application.New(application.Options{
+		Name:        "TelegramDL",
+		Description: "Telegram Downloader Desktop",
+		Services: []application.Service{
+			application.NewService(app),
 		},
-		BackgroundColour: &options.RGBA{R: 7, G: 17, B: 31, A: 255},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		Bind: []any{
-			app,
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		Debug: options.Debug{
-			OpenInspectorOnStartup: false,
+		Mac: application.MacOptions{
+			ActivationPolicy: application.ActivationPolicyRegular,
 		},
-		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-			BackdropType:         windows.None,
-		},
-		Mac: &mac.Options{
-			TitleBar: &mac.TitleBar{
-				TitlebarAppearsTransparent: true,
-				HideTitle:                  false,
-				HideTitleBar:               false,
-				FullSizeContent:            false,
-				UseToolbar:                 false,
-				HideToolbarSeparator:       true,
-			},
-			Appearance:           mac.NSAppearanceNameDarkAqua,
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
+		OnShutdown: func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			app.shutdown(ctx)
 		},
 	})
 
-	if err != nil {
+	win := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Telegram DL",
+		Width:            1280,
+		Height:           720,
+		MinWidth:         950,
+		MinHeight:        680,
+		BackgroundColour: application.NewRGBA(7, 17, 31, 255),
+		Mac: application.MacWindow{
+			TitleBar: application.MacTitleBarHidden,
+		},
+	})
+
+	app.setWindow(win)
+
+	if err := wailsApp.Run(); err != nil {
 		println("Error:", err.Error())
 	}
 }

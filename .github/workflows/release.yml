@@ -71,7 +71,7 @@ jobs:
 
       - name: Install Wails CLI
         shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 
       - name: Install dashboard dependencies
         working-directory: dashboard
@@ -147,7 +147,7 @@ jobs:
 
       - name: Install Wails CLI
         shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 
       - name: Install dashboard dependencies
         working-directory: dashboard
@@ -198,7 +198,7 @@ jobs:
 
       - name: Install Wails CLI
         shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 
       - name: Install dashboard dependencies
         working-directory: dashboard

@@ -248,7 +248,7 @@ func (c blockClient) UploadGetFile(ctx context.Context, request *tg.UploadGetFil
 		// migrations cuenta las migraciones ya hechas en ESTA petición y
 		// visitedDCs recuerda a qué DCs se ha conmutado, para cortar si la
 		// siguiente migración apunta a uno ya visitado (p. ej. DC2→DC3→DC2).
-		migrations  int
+		migrations int
 		visitedDCs = make(map[int]bool)
 	)
 

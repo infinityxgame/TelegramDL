@@ -18,6 +18,7 @@ import AuthWizard from './components/AuthWizard.vue'
 import RemoteLogin from './components/RemoteLogin.vue'
 import { hasStoredToken, useAuthToken } from './composables/useAuthToken'
 import { useConfirmModal } from './composables/useConfirmModal'
+import { Events, Window } from '@wailsio/runtime'
 import { useI18n } from './i18n'
 import {
   applyLoaderTheme,
@@ -954,9 +955,13 @@ const handleStateUpdate = (data) => {
 }
 
 const connectWebSocket = async () => {
-  if (window.runtime && window.runtime.EventsOn) {
+  if (isWailsRuntime()) {
     websocketConnected.value = true
-    window.runtime.EventsOn('tgdl:state', handleStateUpdate)
+    Events.On('tgdl:state', (ev) => {
+      if (ev && ev.data) {
+        handleStateUpdate(ev.data)
+      }
+    })
   }
 
   // El token viaja como subprotocolo, no en la URL. Las URL completas quedan
@@ -988,14 +993,14 @@ const connectWebSocket = async () => {
       }
     }
     socket.onclose = () => {
-      if (!window.runtime) websocketConnected.value = false
+      if (!isWailsRuntime()) websocketConnected.value = false
       if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
     }
     socket.onerror = () => {
       socket?.close()
     }
   } catch {
-    if (!window.runtime) websocketConnected.value = false
+    if (!isWailsRuntime()) websocketConnected.value = false
     if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
   }
 }
@@ -1031,7 +1036,7 @@ const startApp = async () => {
   }
 
   // Procesar URL de inicio si existe (solo en Wails runtime)
-  if (window.runtime && window.go?.main?.App?.GetStartupURL) {
+  if (isWailsRuntime() && window.go?.main?.App?.GetStartupURL) {
     try {
       const startupURL = await window.go.main.App.GetStartupURL()
       if (startupURL) {
@@ -1069,18 +1074,16 @@ const handleMinimizeToTray = () => {
   // Ocultar la ventana al tray (el backend Go maneja la ocultación y la notificación nativa)
   if (window.go?.main?.App?.HideToTray) {
     window.go.main.App.HideToTray()
-  } else if (window.runtime && window.runtime.WindowHide) {
-    window.runtime.WindowHide()
+  } else {
+    Window.Hide()
   }
 }
 
 onMounted(async () => {
   if (isWailsRuntime()) {
-    if (window.runtime && window.runtime.EventsOn) {
-      window.runtime.EventsOn('wails:window:minimise', () => {
-        handleMinimizeToTray()
-      })
-    }
+    Events.On('wails:window:minimise', () => {
+      handleMinimizeToTray()
+    })
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden' && settings.minimize_to_tray) {
         handleMinimizeToTray()

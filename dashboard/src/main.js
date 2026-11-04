@@ -6,6 +6,13 @@ import './style.css'
 // activo, así que con los colores de Telegram no hay ni una regla aplicada.
 import './themes-dl.css'
 import { isWailsRuntime } from './composables/useAuthToken'
+import * as AppBindings from './bindings/tgdown/app.js'
+
+if (typeof window !== 'undefined') {
+  window.go = window.go || {}
+  window.go.main = window.go.main || {}
+  window.go.main.App = AppBindings
+}
 
 // Dentro de la app de escritorio el panel debe comportarse como una ventana
 // nativa y no como una página web (ver .app-nativo en style.css). Se comprueba

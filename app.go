@@ -13,7 +13,7 @@ import (
 
 	"git.sr.ht/~jackmordaunt/go-toast/v2/wintoast"
 	"github.com/gen2brain/beeep"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"tgdown/pkg/config"
 	"tgdown/pkg/downloader"
@@ -33,7 +33,7 @@ var appIconPng []byte
 var notificationWav []byte
 
 type App struct {
-	ctx        context.Context
+	win        *application.WebviewWindow
 	clientMgr  *telegram.ClientManager
 	storage    *storage.Storage
 	downloader *downloader.Engine
@@ -123,8 +123,8 @@ func NewApp(assets fs.FS) (*App, error) {
 	}
 
 	srv := server.NewServer(cm, st, eng, le, up, cfg, assets, func() {
-		if ctx := app.context(); ctx != nil {
-			wailsRuntime.Quit(ctx)
+		if wailsApp := application.Get(); wailsApp != nil {
+			wailsApp.Quit()
 		}
 	})
 	app.server = srv
@@ -141,7 +141,7 @@ func NewApp(assets fs.FS) (*App, error) {
 	// de la aplicación: así el selector es siempre el mismo en local. El
 	// servidor solo atiende esta llamada desde el propio equipo.
 	srv.SetFolderPicker(func() (string, error) {
-		if app.context() == nil {
+		if app.window() == nil {
 			return "", fmt.Errorf("%s", i18n.T("app.windowNotReady"))
 		}
 		return app.SelectDirectory()
@@ -152,6 +152,21 @@ func NewApp(assets fs.FS) (*App, error) {
 
 	// Registrar en el log todo lo que hagan los motores de descarga y escucha.
 	app.attachLogWatchers()
+
+	// Monitorear minimización a la bandeja
+	go app.monitorMinimize()
+
+	// Emitir cambios de estado directamente a la interfaz nativa de Wails
+	eng.OnStateChange(func(item storage.DownloadItem) {
+		if wailsApp := application.Get(); wailsApp != nil && app.server != nil {
+			wailsApp.Event.Emit("tgdl:state", app.server.BuildStateSnapshot())
+		}
+	})
+	le.OnStateChange(func(item listener.ListenerItem) {
+		if wailsApp := application.Get(); wailsApp != nil && app.server != nil {
+			wailsApp.Event.Emit("tgdl:state", app.server.BuildStateSnapshot())
+		}
+	})
 
 	// Iniciar servidor HTTP/WS INMEDIATAMENTE en el puerto configurado (default 8000)
 	port := config.GetServerPort()
@@ -177,35 +192,16 @@ func NewApp(assets fs.FS) (*App, error) {
 // escribe startup (el hilo de la interfaz) y lo leen los observadores de estado
 // de los motores de descarga y escucha, que corren en otras goroutines: sin el
 // candado eso es una carrera de datos, y el campo mu existía sin usarse.
-func (a *App) setContext(ctx context.Context) {
+func (a *App) setWindow(w *application.WebviewWindow) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.ctx = ctx
+	a.win = w
 }
 
-func (a *App) context() context.Context {
+func (a *App) window() *application.WebviewWindow {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.ctx
-}
-
-func (a *App) startup(ctx context.Context) {
-	a.setContext(ctx)
-
-	// Monitorear en segundo plano la minimización de la ventana nativa
-	go a.monitorMinimize()
-
-	// Emitir cambios de estado directamente a la interfaz nativa de Wails
-	a.downloader.OnStateChange(func(item storage.DownloadItem) {
-		if c := a.context(); c != nil && a.server != nil {
-			wailsRuntime.EventsEmit(c, "tgdl:state", a.server.BuildStateSnapshot())
-		}
-	})
-	a.listener.OnStateChange(func(item listener.ListenerItem) {
-		if c := a.context(); c != nil && a.server != nil {
-			wailsRuntime.EventsEmit(c, "tgdl:state", a.server.BuildStateSnapshot())
-		}
-	})
+	return a.win
 }
 
 // shutdown detiene la aplicación en el orden que evita perder estado (SEC-36):
@@ -249,28 +245,26 @@ func (a *App) Handler() http.Handler {
 
 // SelectDirectory abre el diálogo nativo del sistema para seleccionar carpetas
 func (a *App) SelectDirectory() (string, error) {
-	// El caso «ventana no lista» ya queda cubierto aquí: sin contexto de Wails
-	// no hay forma de abrir el diálogo nativo (el folderPicker del servidor
-	// comprueba lo mismo antes de llamarnos).
-	ctx := a.context()
-	if ctx == nil {
-		return "", fmt.Errorf("%s", i18n.T("app.windowNotReady"))
-	}
-	// La fuente de verdad de la configuración es Server.config, que los
-	// handlers de guardado actualizan al vuelo: leerla aquí hace que el
-	// diálogo arranque en la carpeta que el usuario tenga AHORA, no en la de
-	// al abrir la sesión (SEC-40). Sin servidor (o si vino vacía) se cae a la
-	// carpeta por defecto del sistema.
 	defaultDir := config.GetDefaultDownloadFolder()
 	if a.server != nil {
 		if folder := a.server.GetConfig().DownloadFolder; folder != "" {
 			defaultDir = folder
 		}
 	}
-	selected, err := wailsRuntime.OpenDirectoryDialog(ctx, wailsRuntime.OpenDialogOptions{
-		Title:            i18n.T("settings.selectFolderTitle"),
-		DefaultDirectory: defaultDir,
+	wailsApp := application.Get()
+	if wailsApp == nil {
+		return "", fmt.Errorf("%s", i18n.T("app.windowNotReady"))
+	}
+	dialog := wailsApp.Dialog.OpenFileWithOptions(&application.OpenFileDialogOptions{
+		Title:                i18n.T("settings.selectFolderTitle"),
+		Directory:            defaultDir,
+		CanChooseDirectories: true,
+		CanChooseFiles:       false,
 	})
+	if win := a.window(); win != nil {
+		dialog.AttachToWindow(win)
+	}
+	selected, err := dialog.PromptForSingleSelection()
 	if err != nil {
 		return "", err
 	}
@@ -335,16 +329,17 @@ func (a *App) SetStartupURL(url string) {
 }
 
 func (a *App) RestoreWindow() {
-	if ctx := a.context(); ctx != nil {
-		wailsRuntime.WindowShow(ctx)
-		wailsRuntime.WindowUnminimise(ctx)
+	if win := a.window(); win != nil {
+		win.Show()
+		win.UnMinimise()
+		win.Focus()
 	}
 }
 
 func (a *App) QuitApp() {
 	a.quitTray()
-	if ctx := a.context(); ctx != nil {
-		wailsRuntime.Quit(ctx)
+	if wailsApp := application.Get(); wailsApp != nil {
+		wailsApp.Quit()
 	}
 }
 
@@ -458,30 +453,27 @@ func (a *App) monitorMinimize() {
 
 	wasMinimised := false
 
-	for {
-		select {
-		case <-ticker.C:
-			ctx := a.context()
-			if ctx == nil {
-				continue
-			}
+	for range ticker.C {
+		win := a.window()
+		if win == nil {
+			continue
+		}
 
-			a.mu.Lock()
-			enabled := a.config.MinimizeToTray
-			a.mu.Unlock()
+		a.mu.Lock()
+		enabled := a.config.MinimizeToTray
+		a.mu.Unlock()
 
-			if !a.isTraySupported() || !enabled {
-				wasMinimised = false
-				continue
-			}
+		if !a.isTraySupported() || !enabled {
+			wasMinimised = false
+			continue
+		}
 
-			isMinimised := wailsRuntime.WindowIsMinimised(ctx)
-			if isMinimised && !wasMinimised {
-				wasMinimised = true
-				a.HideToTray()
-			} else if !isMinimised {
-				wasMinimised = false
-			}
+		isMinimised := win.IsMinimised()
+		if isMinimised && !wasMinimised {
+			wasMinimised = true
+			a.HideToTray()
+		} else if !isMinimised {
+			wasMinimised = false
 		}
 	}
 }
