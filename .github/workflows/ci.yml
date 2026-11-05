@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Tests, vet y build del panel
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,6 +19,11 @@ jobs:
         with:
           go-version: '1.27.x'
           cache: true
+
+      - name: Install Linux Wails dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev libsoup-3.0-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -41,6 +46,7 @@ jobs:
         run: pnpm install
 
       - name: Generate Wails bindings
+        shell: bash
         run: CGO_ENABLED=0 wails3 generate bindings -d dashboard/src/bindings
 
       # El panel se compila antes que go vet: main.go hace
