@@ -175,6 +175,9 @@ antes de abrir un pull request).
 <a href="https://github.com/SatellitexOT12" title="SatellitexOT12">
   <img src="https://avatars.githubusercontent.com/u/82134529?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="SatellitexOT12" />
 </a>
+<a href="https://github.com/xeraph-dev" title="xeraph-dev">
+  <img src="https://avatars.githubusercontent.com/u/61700204?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="xeraph-dev" />
+</a>
 <!-- CONTRIBUTORS-END -->
 
 ## Licencia
