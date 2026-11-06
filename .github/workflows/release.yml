@@ -265,10 +265,10 @@ jobs:
           plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.dev.plist
           plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.dev.plist
 
-      - name: Build application with Wails
+      - name: Build application with Wails (Universal Binary)
         shell: bash
         run: |
-          wails3 build
+          wails3 task darwin:build:universal
           
           # Garantizar la estructura del bundle .app con Info.plist y recursos
           APP_DIR="build/bin/TelegramDL.app"
