@@ -66,3 +66,8 @@ tasks:
     summary: Builds and runs the Docker image
     cmds:
       - task: common:run:docker
+
+  set-version:
+    summary: Updates application version across all project files
+    cmds:
+      - go run scripts/setversion.go {{.CLI_ARGS}}
