@@ -253,15 +253,45 @@ jobs:
         working-directory: dashboard
         run: pnpm run build
 
+      # Actualiza la versión en Info.plist e Info.dev.plist con el tag del release
+      - name: Update macOS version in Info.plist
+        shell: bash
+        run: |
+          RAW_VERSION="${{ github.ref_name }}"
+          VERSION="${RAW_VERSION#v}"
+          echo "Setting macOS version to: $VERSION"
+          plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.plist
+          plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.plist
+          plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.dev.plist
+          plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.dev.plist
+
       - name: Build application with Wails
         shell: bash
         run: |
           wails3 build
-          if [ -f "build/bin/TelegramDL.app/Contents/MacOS/TelegramDL" ]; then
-            chmod +x build/bin/TelegramDL.app/Contents/MacOS/TelegramDL
-          elif [ -f "build/bin/TelegramDL" ]; then
-            chmod +x build/bin/TelegramDL
+          
+          # Garantizar la estructura del bundle .app con Info.plist y recursos
+          APP_DIR="build/bin/TelegramDL.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          
+          if [ -f "build/bin/TelegramDL" ]; then
+            mv "build/bin/TelegramDL" "$APP_DIR/Contents/MacOS/TelegramDL"
           fi
+          
+          if [ -f "build/darwin/Info.plist" ]; then
+            cp "build/darwin/Info.plist" "$APP_DIR/Contents/Info.plist"
+          fi
+          
+          if [ -f "build/darwin/icons.icns" ]; then
+            cp "build/darwin/icons.icns" "$APP_DIR/Contents/Resources/icons.icns"
+          fi
+          
+          if [ -f "$APP_DIR/Contents/MacOS/TelegramDL" ]; then
+            chmod +x "$APP_DIR/Contents/MacOS/TelegramDL"
+          fi
+
+          codesign --force --deep --sign - "$APP_DIR" || true
 
       - name: Package macOS
         shell: bash
