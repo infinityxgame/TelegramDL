@@ -10,11 +10,11 @@
         <key>CFBundleIdentifier</key>
             <string>com.infinityxgame.telegramdl</string>
         <key>CFBundleVersion</key>
-            <string>2.7.0</string>
+            <string>2.7.1</string>
         <key>CFBundleGetInfoString</key>
             <string>Telegram Downloader Desktop</string>
         <key>CFBundleShortVersionString</key>
-            <string>2.7.0</string>
+            <string>2.7.1</string>
         <key>CFBundleIconFile</key>
             <string>icons</string>
         <key>LSMinimumSystemVersion</key>
