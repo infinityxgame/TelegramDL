@@ -1,0 +1,28 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+            <string>APPL</string>
+        <key>CFBundleName</key>
+            <string>TelegramDL</string>
+        <key>CFBundleExecutable</key>
+            <string>TelegramDL</string>
+        <key>CFBundleIdentifier</key>
+            <string>com.infinityxgame.telegramdl</string>
+        <key>CFBundleVersion</key>
+            <string>2.7.0</string>
+        <key>CFBundleGetInfoString</key>
+            <string>Telegram Downloader Desktop</string>
+        <key>CFBundleShortVersionString</key>
+            <string>2.7.0</string>
+        <key>CFBundleIconFile</key>
+            <string>icons</string>
+        <key>LSMinimumSystemVersion</key>
+            <string>12.0.0</string>
+        <key>NSHighResolutionCapable</key>
+            <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+            <string>Copyright 2026, Infinityxgame</string>
+    </dict>
+</plist>
+
