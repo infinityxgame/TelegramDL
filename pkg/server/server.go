@@ -4721,7 +4721,7 @@ func (s *Server) buildStatusMessageText() string {
 		} else if filled > 20 {
 			filled = 20
 		}
-		bar := strings.Repeat("❯", filled) + strings.Repeat("·", 20-filled)
+		bar := strings.Repeat("⬢", filled) + strings.Repeat("⬡", 20-filled)
 
 		curBytesStr := activeItem.CurrentStr
 		if curBytesStr == "" {
