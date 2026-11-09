@@ -4423,6 +4423,17 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				continue
 			}
 
+			if strings.HasPrefix(text, "/status") {
+				initialText := s.buildStatusMessageText()
+				msgID, err := n.SendMessageGetIDSync(ctx, initialText)
+				if err == nil && msgID > 0 {
+					go s.runStatusUpdater(ctx, token, normAuthChatID, replyThreadID, msgID)
+				} else if err != nil {
+					log.Printf("[BOT LISTENER] %s", i18n.T("notifier.sendError", err))
+				}
+				continue
+			}
+
 			candidates := extractTelegramLinks(text)
 			if len(candidates) == 0 {
 				replyText := i18n.T("notifier.botInvalidLink")
@@ -4650,4 +4661,152 @@ func (s *Server) resolveBotMediaMsg(ctx context.Context, botUserID int64) (*tg.M
 	}
 
 	return nil, errors.New("no media message found in recent history")
+}
+
+func (s *Server) buildStatusMessageText() string {
+	if s.downloader == nil {
+		return i18n.T("notifier.statusNoDownloader")
+	}
+
+	downloads := s.downloader.GetDownloads()
+	if len(downloads) == 0 {
+		return fmt.Sprintf("%s\n\n%s\n\n<b>%s:</b> 0/0",
+			i18n.T("notifier.statusTitle"),
+			i18n.T("notifier.statusNoActive"),
+			i18n.T("notifier.statusFiles"))
+	}
+
+	var activeItem *storage.DownloadItem
+	completedCount := 0
+	totalCount := len(downloads)
+
+	for i := range downloads {
+		item := &downloads[i]
+		if item.Status == "completed" || item.Status == "duplicate" {
+			completedCount++
+		}
+		if activeItem == nil && item.Status == "downloading" {
+			activeItem = item
+		}
+	}
+
+	// Si no hay ninguna en "downloading", buscar la primera en cola ("queued") o pausada ("paused")
+	if activeItem == nil {
+		for i := range downloads {
+			item := &downloads[i]
+			if item.Status == "queued" || item.Status == "paused" {
+				activeItem = item
+				break
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(i18n.T("notifier.statusTitle"))
+	sb.WriteString("\n\n")
+
+	if activeItem != nil {
+		fileName := activeItem.FileName
+		if fileName == "" {
+			fileName = activeItem.OriginalFileName
+		}
+		if fileName == "" {
+			fileName = fmt.Sprintf("Message %d", activeItem.MessageID)
+		}
+
+		pct := activeItem.Progress
+		if pct < 0 {
+			pct = 0
+		} else if pct > 100 {
+			pct = 100
+		}
+
+		filled := int((pct / 100.0) * 10.0)
+		if filled < 0 {
+			filled = 0
+		} else if filled > 10 {
+			filled = 10
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+
+		curBytesStr := activeItem.CurrentStr
+		if curBytesStr == "" {
+			curBytesStr = config.FormatBytes(float64(activeItem.CurrentBytes))
+		}
+		totBytesStr := activeItem.TotalStr
+		if totBytesStr == "" {
+			totBytesStr = config.FormatBytes(float64(activeItem.TotalBytes))
+		}
+
+		statusLabel := i18n.T("notifier.statusDownloading")
+		if activeItem.Status == "paused" {
+			statusLabel = i18n.T("notifier.statusPaused")
+		} else if activeItem.Status == "queued" {
+			statusLabel = i18n.T("notifier.statusQueued")
+		}
+
+		sb.WriteString(fmt.Sprintf("<b>%s:</b> <code>%s</code>\n", statusLabel, html.EscapeString(fileName)))
+		sb.WriteString(fmt.Sprintf("<code>[%s] %.1f%%</code> (%s / %s)\n", bar, pct, curBytesStr, totBytesStr))
+		if activeItem.Speed != "" && activeItem.Status == "downloading" {
+			sb.WriteString(fmt.Sprintf("<b>%s:</b> %s", i18n.T("notifier.statusSpeed"), activeItem.Speed))
+			if activeItem.ETA != "" {
+				sb.WriteString(fmt.Sprintf(" · <b>%s:</b> %s", i18n.T("notifier.statusETA"), activeItem.ETA))
+			}
+			sb.WriteString("\n")
+		}
+	} else {
+		sb.WriteString(i18n.T("notifier.statusNoActive"))
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("<b>%s:</b> %d/%d", i18n.T("notifier.statusFiles"), completedCount, totalCount))
+
+	return sb.String()
+}
+
+func (s *Server) runStatusUpdater(ctx context.Context, token string, chatID int64, topicID *int64, messageID int64) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[BOT STATUS] panic recovered: %v", r)
+		}
+	}()
+
+	n := notifier.NewNotifier(token, chatID, topicID)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	// Mantener la actualización durante 1 minuto (60 segundos)
+	timer := time.NewTimer(60 * time.Second)
+	defer timer.Stop()
+
+	lastText := s.buildStatusMessageText()
+
+	for {
+		select {
+		case <-ctx.Done():
+			delCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = n.DeleteMessageSync(delCtx, messageID)
+			cancel()
+			return
+		case <-timer.C:
+			delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = n.DeleteMessageSync(delCtx, messageID)
+			cancel()
+			return
+		case <-ticker.C:
+			currentText := s.buildStatusMessageText()
+			if currentText != lastText {
+				err := n.EditMessageTextSync(ctx, messageID, currentText)
+				if err != nil {
+					errStr := strings.ToLower(err.Error())
+					if strings.Contains(errStr, "not found") || strings.Contains(errStr, "deleted") {
+						return
+					}
+				} else {
+					lastText = currentText
+				}
+			}
+		}
+	}
 }

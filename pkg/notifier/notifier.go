@@ -212,16 +212,75 @@ func (n *Notifier) AnswerCallbackQuerySync(ctx context.Context, callbackQueryID 
 	return nil
 }
 
+// SendMessageGetIDSync envía un mensaje de texto síncronamente y devuelve el ID del mensaje creado.
+func (n *Notifier) SendMessageGetIDSync(ctx context.Context, text string) (int64, error) {
+	if n.token == "" || n.chatID == 0 {
+		return 0, fmt.Errorf("notifier not configured: missing token or chat ID")
+	}
+
+	chatID := NormalizeChatID(n.chatID, n.topicID != nil && *n.topicID > 0)
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.token)
+
+	payload := map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+
+	if n.topicID != nil && *n.topicID > 0 {
+		payload["message_thread_id"] = *n.topicID
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return 0, RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
+		Description string `json:"description"`
+		Result      struct {
+			MessageID int64 `json:"message_id"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK || !result.OK {
+		if result.Description != "" {
+			return 0, fmt.Errorf("Telegram API error (%d): %s", resp.StatusCode, result.Description)
+		}
+		return 0, fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	return result.Result.MessageID, nil
+}
+
 // EditMessageTextSync edita el texto de un mensaje enviado anteriormente por el bot.
 func (n *Notifier) EditMessageTextSync(ctx context.Context, messageID int64, text string) error {
 	if n.token == "" || n.chatID == 0 {
 		return fmt.Errorf("notifier not configured: missing token or chat ID")
 	}
 
+	chatID := NormalizeChatID(n.chatID, n.topicID != nil && *n.topicID > 0)
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", n.token)
 
 	payload := map[string]any{
-		"chat_id":    n.chatID,
+		"chat_id":    chatID,
 		"message_id": messageID,
 		"text":       text,
 		"parse_mode": "HTML",
@@ -243,6 +302,68 @@ func (n *Notifier) EditMessageTextSync(ctx context.Context, messageID int64, tex
 		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
 	}
 	defer resp.Body.Close()
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
+		Description string `json:"description"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	if resp.StatusCode != http.StatusOK || !result.OK {
+		if result.Description != "" {
+			return fmt.Errorf("Telegram API error (%d): %s", resp.StatusCode, result.Description)
+		}
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// DeleteMessageSync elimina un mensaje del chat utilizando la Bot API.
+func (n *Notifier) DeleteMessageSync(ctx context.Context, messageID int64) error {
+	if n.token == "" || n.chatID == 0 {
+		return fmt.Errorf("notifier not configured: missing token or chat ID")
+	}
+
+	chatID := NormalizeChatID(n.chatID, n.topicID != nil && *n.topicID > 0)
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/deleteMessage", n.token)
+
+	payload := map[string]any{
+		"chat_id":    chatID,
+		"message_id": messageID,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return RedactError(fmt.Errorf("failed to create request: %w", err), n.token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return RedactError(fmt.Errorf("HTTP request failed: %w", err), n.token)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
+		Description string `json:"description"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	if resp.StatusCode != http.StatusOK || !result.OK {
+		if result.Description != "" {
+			return fmt.Errorf("Telegram API error (%d): %s", resp.StatusCode, result.Description)
+		}
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
 
 	return nil
 }

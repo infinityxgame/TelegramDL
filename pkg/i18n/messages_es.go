@@ -260,6 +260,15 @@ var messagesES = map[string]string{
 	"notifier.botFileQueued":      "<b>Descarga añadida a la cola:</b>\n<code>%s</code>",
 	"notifier.botBtnOriginal":     "Nombre original",
 	"notifier.botBtnCaption":      "Caption",
+	"notifier.statusTitle":        "<b>Estado de descargas</b>",
+	"notifier.statusNoActive":     "<i>No hay descargas activas en este momento.</i>",
+	"notifier.statusNoDownloader": "<i>Motor de descargas no disponible.</i>",
+	"notifier.statusDownloading":  "Descargando",
+	"notifier.statusQueued":       "En cola",
+	"notifier.statusPaused":       "Pausado",
+	"notifier.statusSpeed":        "Velocidad",
+	"notifier.statusETA":          "Tiempo restante",
+	"notifier.statusFiles":        "Archivos",
 
 	// Resolución de mensajes en Telegram (tag [DOWNLOAD FETCH])
 	"fetch.noAccessHashCache":    "Canal %d sin accessHash en caché. Consultando dialogs...",

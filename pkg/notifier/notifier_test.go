@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -63,5 +64,50 @@ func TestSendSyncRedactsTokenFromNetworkError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), token) {
 		t.Errorf("el token aparece en el texto del error: %q", err.Error())
+	}
+}
+
+// TestSendMessageGetIDSync verifies that SendMessageGetIDSync extracts message_id correctly.
+func TestSendMessageGetIDSync(t *testing.T) {
+	const token = "1234567890:AAFakeTokenForTests_abcdefghijklmnop"
+	n := NewNotifier(token, 42, nil)
+	n.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if !strings.Contains(r.URL.Path, "sendMessage") {
+			return nil, errors.New("unexpected endpoint")
+		}
+		body := `{"ok":true,"result":{"message_id":998877}}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})}
+
+	msgID, err := n.SendMessageGetIDSync(context.Background(), "status test")
+	if err != nil {
+		t.Fatalf("SendMessageGetIDSync falló: %v", err)
+	}
+	if msgID != 998877 {
+		t.Errorf("message_id esperado 998877, obtenido %d", msgID)
+	}
+}
+
+// TestDeleteMessageSync verifies that DeleteMessageSync succeeds with valid response.
+func TestDeleteMessageSync(t *testing.T) {
+	const token = "1234567890:AAFakeTokenForTests_abcdefghijklmnop"
+	n := NewNotifier(token, 42, nil)
+	n.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if !strings.Contains(r.URL.Path, "deleteMessage") {
+			return nil, errors.New("unexpected endpoint")
+		}
+		body := `{"ok":true,"result":true}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})}
+
+	err := n.DeleteMessageSync(context.Background(), 998877)
+	if err != nil {
+		t.Fatalf("DeleteMessageSync falló: %v", err)
 	}
 }
