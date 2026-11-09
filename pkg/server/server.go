@@ -4715,13 +4715,13 @@ func (s *Server) buildStatusMessageText() string {
 			pct = 100
 		}
 
-		filled := int((pct / 100.0) * 10.0)
+		filled := int((pct / 100.0) * 20.0)
 		if filled < 0 {
 			filled = 0
-		} else if filled > 10 {
-			filled = 10
+		} else if filled > 20 {
+			filled = 20
 		}
-		bar := strings.Repeat("❯", filled) + strings.Repeat("·", 10-filled)
+		bar := strings.Repeat("❯", filled) + strings.Repeat("·", 20-filled)
 
 		curBytesStr := activeItem.CurrentStr
 		if curBytesStr == "" {
