@@ -213,6 +213,7 @@ jobs:
     name: Build macOS Universal
     needs: test
     runs-on: macos-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -265,10 +266,20 @@ jobs:
           plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.dev.plist
           plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.dev.plist
 
-      - name: Build application with Wails (Universal Binary)
+      - name: Build application (Sequential Universal Binary)
         shell: bash
         run: |
-          wails3 task darwin:build:universal
+          mkdir -p build/bin
+          
+          echo "Compilando arquitectura amd64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-amd64
+          
+          echo "Compilando arquitectura arm64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-arm64
+          
+          echo "Uniendo arquitecturas en binario Universal con lipo..."
+          lipo -create -output build/bin/TelegramDL build/bin/TelegramDL-amd64 build/bin/TelegramDL-arm64
+          rm -f build/bin/TelegramDL-amd64 build/bin/TelegramDL-arm64
           
           # Garantizar la estructura del bundle .app con Info.plist y recursos
           APP_DIR="build/bin/TelegramDL.app"
