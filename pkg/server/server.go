@@ -4670,37 +4670,37 @@ func (s *Server) buildStatusMessageText() string {
 
 	downloads := s.downloader.GetDownloads()
 	var activeItems []*storage.DownloadItem
+	var pendingItems []*storage.DownloadItem
 	remainingCount := 0
 
 	for i := range downloads {
 		item := &downloads[i]
 		switch item.Status {
-		case "downloading", "queued", "paused", "pending":
+		case "downloading":
 			remainingCount++
-			if item.Status == "downloading" {
-				activeItems = append(activeItems, item)
-			}
+			activeItems = append(activeItems, item)
+		case "queued", "paused", "pending":
+			remainingCount++
+			pendingItems = append(pendingItems, item)
 		}
 	}
 
-	// Si no hay ninguna tarea en "downloading", tomar la primera en cola o pausada
-	if len(activeItems) == 0 {
-		for i := range downloads {
-			item := &downloads[i]
-			switch item.Status {
-			case "queued", "paused", "pending":
-				activeItems = append(activeItems, item)
-				break
-			}
-		}
+	// Combinar items activos primero, luego en cola/pausados
+	allItems := append(activeItems, pendingItems...)
+	totalActive := len(allItems)
+
+	const maxDisplayed = 3
+	displayedItems := allItems
+	if len(displayedItems) > maxDisplayed {
+		displayedItems = displayedItems[:maxDisplayed]
 	}
 
 	var sb strings.Builder
 	sb.WriteString(i18n.T("notifier.statusTitle"))
 	sb.WriteString("\n\n")
 
-	if len(activeItems) > 0 {
-		for idx, item := range activeItems {
+	if len(displayedItems) > 0 {
+		for idx, item := range displayedItems {
 			if idx > 0 {
 				sb.WriteString("\n")
 			}
@@ -4756,6 +4756,12 @@ func (s *Server) buildStatusMessageText() string {
 					sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusETA"), item.ETA))
 				}
 			}
+		}
+
+		if totalActive > maxDisplayed {
+			sb.WriteString("\n")
+			sb.WriteString(i18n.T("notifier.statusShowingLimit", maxDisplayed, totalActive))
+			sb.WriteString("\n")
 		}
 	} else {
 		sb.WriteString(i18n.T("notifier.statusNoActive"))

@@ -269,6 +269,7 @@ var messagesEN = map[string]string{
 	"notifier.statusSpeed":        "Speed",
 	"notifier.statusETA":          "ETA",
 	"notifier.statusRemaining":    "Remaining files",
+	"notifier.statusShowingLimit": "<i>(Showing %d of %d tasks)</i>",
 
 	// Message resolution on Telegram ([DOWNLOAD FETCH] tag)
 	"fetch.noAccessHashCache":    "Channel %d has no cached accessHash. Querying dialogs...",
