@@ -4669,32 +4669,26 @@ func (s *Server) buildStatusMessageText() string {
 	}
 
 	downloads := s.downloader.GetDownloads()
-	if len(downloads) == 0 {
-		return fmt.Sprintf("%s\n\n%s\n\n<b>%s:</b> 0/0",
-			i18n.T("notifier.statusTitle"),
-			i18n.T("notifier.statusNoActive"),
-			i18n.T("notifier.statusFiles"))
-	}
-
 	var activeItem *storage.DownloadItem
-	completedCount := 0
-	totalCount := len(downloads)
+	remainingCount := 0
 
 	for i := range downloads {
 		item := &downloads[i]
-		if item.Status == "completed" || item.Status == "duplicate" {
-			completedCount++
-		}
-		if activeItem == nil && item.Status == "downloading" {
-			activeItem = item
+		switch item.Status {
+		case "downloading", "queued", "paused", "pending":
+			remainingCount++
+			if activeItem == nil && item.Status == "downloading" {
+				activeItem = item
+			}
 		}
 	}
 
-	// Si no hay ninguna en "downloading", buscar la primera en cola ("queued") o pausada ("paused")
+	// Si no hay ninguna tarea en "downloading", buscar la primera en cola o pausada
 	if activeItem == nil {
 		for i := range downloads {
 			item := &downloads[i]
-			if item.Status == "queued" || item.Status == "paused" {
+			switch item.Status {
+			case "queued", "paused", "pending":
 				activeItem = item
 				break
 			}
@@ -4727,7 +4721,7 @@ func (s *Server) buildStatusMessageText() string {
 		} else if filled > 10 {
 			filled = 10
 		}
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+		bar := strings.Repeat("■", filled) + strings.Repeat("□", 10-filled)
 
 		curBytesStr := activeItem.CurrentStr
 		if curBytesStr == "" {
@@ -4746,13 +4740,16 @@ func (s *Server) buildStatusMessageText() string {
 		}
 
 		sb.WriteString(fmt.Sprintf("<b>%s:</b> <code>%s</code>\n", statusLabel, html.EscapeString(fileName)))
-		sb.WriteString(fmt.Sprintf("<code>[%s] %.1f%%</code> (%s / %s)\n", bar, pct, curBytesStr, totBytesStr))
-		if activeItem.Speed != "" && activeItem.Status == "downloading" {
-			sb.WriteString(fmt.Sprintf("<b>%s:</b> %s", i18n.T("notifier.statusSpeed"), activeItem.Speed))
-			if activeItem.ETA != "" {
-				sb.WriteString(fmt.Sprintf(" · <b>%s:</b> %s", i18n.T("notifier.statusETA"), activeItem.ETA))
+		sb.WriteString(fmt.Sprintf("<code>[%s] %.1f%%</code>\n", bar, pct))
+		sb.WriteString(fmt.Sprintf("<b>%s:</b> %s / %s\n", i18n.T("notifier.statusProgress"), curBytesStr, totBytesStr))
+
+		if activeItem.Status == "downloading" {
+			if activeItem.Speed != "" {
+				sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusSpeed"), activeItem.Speed))
 			}
-			sb.WriteString("\n")
+			if activeItem.ETA != "" {
+				sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusETA"), activeItem.ETA))
+			}
 		}
 	} else {
 		sb.WriteString(i18n.T("notifier.statusNoActive"))
@@ -4760,7 +4757,7 @@ func (s *Server) buildStatusMessageText() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("<b>%s:</b> %d/%d", i18n.T("notifier.statusFiles"), completedCount, totalCount))
+	sb.WriteString(fmt.Sprintf("<b>%s:</b> %d", i18n.T("notifier.statusRemaining"), remainingCount))
 
 	return sb.String()
 }

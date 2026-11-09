@@ -266,9 +266,10 @@ var messagesES = map[string]string{
 	"notifier.statusDownloading":  "Descargando",
 	"notifier.statusQueued":       "En cola",
 	"notifier.statusPaused":       "Pausado",
+	"notifier.statusProgress":     "Progreso",
 	"notifier.statusSpeed":        "Velocidad",
 	"notifier.statusETA":          "Tiempo restante",
-	"notifier.statusFiles":        "Archivos",
+	"notifier.statusRemaining":    "Archivos restantes",
 
 	// Resolución de mensajes en Telegram (tag [DOWNLOAD FETCH])
 	"fetch.noAccessHashCache":    "Canal %d sin accessHash en caché. Consultando dialogs...",
