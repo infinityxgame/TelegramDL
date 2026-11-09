@@ -4721,7 +4721,7 @@ func (s *Server) buildStatusMessageText() string {
 		} else if filled > 10 {
 			filled = 10
 		}
-		bar := strings.Repeat("■", filled) + strings.Repeat("□", 10-filled)
+		bar := strings.Repeat("❯", filled) + strings.Repeat("·", 10-filled)
 
 		curBytesStr := activeItem.CurrentStr
 		if curBytesStr == "" {
@@ -4740,7 +4740,7 @@ func (s *Server) buildStatusMessageText() string {
 		}
 
 		sb.WriteString(fmt.Sprintf("<b>%s:</b> <code>%s</code>\n", statusLabel, html.EscapeString(fileName)))
-		sb.WriteString(fmt.Sprintf("<code>[%s] %.1f%%</code>\n", bar, pct))
+		sb.WriteString(fmt.Sprintf("<code>%s %.1f%%</code>\n", bar, pct))
 		sb.WriteString(fmt.Sprintf("<b>%s:</b> %s / %s\n", i18n.T("notifier.statusProgress"), curBytesStr, totBytesStr))
 
 		if activeItem.Status == "downloading" {
