@@ -4685,12 +4685,20 @@ func (s *Server) buildStatusMessageText() string {
 		}
 	}
 
-	// Combinar items activos primero, luego en cola/pausados
-	allItems := append(activeItems, pendingItems...)
-	totalActive := len(allItems)
+	var displayedItems []*storage.DownloadItem
+	var totalInGroup int
+
+	if len(activeItems) > 0 {
+		// Si hay descargas activas ("downloading"), mostrar ÚNICAMENTE las activas
+		displayedItems = activeItems
+		totalInGroup = len(activeItems)
+	} else {
+		// Si no hay ninguna activa (todas pausadas o en cola), mostrar las pendientes
+		displayedItems = pendingItems
+		totalInGroup = len(pendingItems)
+	}
 
 	const maxDisplayed = 3
-	displayedItems := allItems
 	if len(displayedItems) > maxDisplayed {
 		displayedItems = displayedItems[:maxDisplayed]
 	}
@@ -4758,9 +4766,9 @@ func (s *Server) buildStatusMessageText() string {
 			}
 		}
 
-		if totalActive > maxDisplayed {
+		if totalInGroup > maxDisplayed {
 			sb.WriteString("\n")
-			sb.WriteString(i18n.T("notifier.statusShowingLimit", maxDisplayed, totalActive))
+			sb.WriteString(i18n.T("notifier.statusShowingLimit", maxDisplayed, totalInGroup))
 			sb.WriteString("\n")
 		}
 	} else {
