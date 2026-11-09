@@ -4669,7 +4669,7 @@ func (s *Server) buildStatusMessageText() string {
 	}
 
 	downloads := s.downloader.GetDownloads()
-	var activeItem *storage.DownloadItem
+	var activeItems []*storage.DownloadItem
 	remainingCount := 0
 
 	for i := range downloads {
@@ -4677,19 +4677,19 @@ func (s *Server) buildStatusMessageText() string {
 		switch item.Status {
 		case "downloading", "queued", "paused", "pending":
 			remainingCount++
-			if activeItem == nil && item.Status == "downloading" {
-				activeItem = item
+			if item.Status == "downloading" {
+				activeItems = append(activeItems, item)
 			}
 		}
 	}
 
-	// Si no hay ninguna tarea en "downloading", buscar la primera en cola o pausada
-	if activeItem == nil {
+	// Si no hay ninguna tarea en "downloading", tomar la primera en cola o pausada
+	if len(activeItems) == 0 {
 		for i := range downloads {
 			item := &downloads[i]
 			switch item.Status {
 			case "queued", "paused", "pending":
-				activeItem = item
+				activeItems = append(activeItems, item)
 				break
 			}
 		}
@@ -4699,56 +4699,62 @@ func (s *Server) buildStatusMessageText() string {
 	sb.WriteString(i18n.T("notifier.statusTitle"))
 	sb.WriteString("\n\n")
 
-	if activeItem != nil {
-		fileName := activeItem.FileName
-		if fileName == "" {
-			fileName = activeItem.OriginalFileName
-		}
-		if fileName == "" {
-			fileName = fmt.Sprintf("Message %d", activeItem.MessageID)
-		}
-
-		pct := activeItem.Progress
-		if pct < 0 {
-			pct = 0
-		} else if pct > 100 {
-			pct = 100
-		}
-
-		filled := int((pct / 100.0) * 20.0)
-		if filled < 0 {
-			filled = 0
-		} else if filled > 20 {
-			filled = 20
-		}
-		bar := strings.Repeat("⬢", filled) + strings.Repeat("⬡", 20-filled)
-
-		curBytesStr := activeItem.CurrentStr
-		if curBytesStr == "" {
-			curBytesStr = config.FormatBytes(float64(activeItem.CurrentBytes))
-		}
-		totBytesStr := activeItem.TotalStr
-		if totBytesStr == "" {
-			totBytesStr = config.FormatBytes(float64(activeItem.TotalBytes))
-		}
-
-		statusLabel := i18n.T("notifier.statusDownloading")
-		if activeItem.Status == "paused" {
-			statusLabel = i18n.T("notifier.statusPaused")
-		} else if activeItem.Status == "queued" {
-			statusLabel = i18n.T("notifier.statusQueued")
-		}
-
-		sb.WriteString(fmt.Sprintf("<b>%s:</b> <code>%s</code>\n", statusLabel, html.EscapeString(fileName)))
-		sb.WriteString(fmt.Sprintf("<code>%s %.1f%%</code>\n", bar, pct))
-		sb.WriteString(fmt.Sprintf("<b>%s:</b> %s / %s\n", i18n.T("notifier.statusProgress"), curBytesStr, totBytesStr))
-
-		if activeItem.Status == "downloading" {
-			if activeItem.Speed != "" {
-				sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusSpeed"), activeItem.Speed))
+	if len(activeItems) > 0 {
+		for idx, item := range activeItems {
+			if idx > 0 {
+				sb.WriteString("\n")
 			}
-			if activeItem.ETA != "" {
-				sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusETA"), activeItem.ETA))
+
+			fileName := item.FileName
+			if fileName == "" {
+				fileName = item.OriginalFileName
+			}
+			if fileName == "" {
+				fileName = fmt.Sprintf("Message %d", item.MessageID)
+			}
+
+			pct := item.Progress
+			if pct < 0 {
+				pct = 0
+			} else if pct > 100 {
+				pct = 100
+			}
+
+			filled := int((pct / 100.0) * 20.0)
+			if filled < 0 {
+				filled = 0
+			} else if filled > 20 {
+				filled = 20
+			}
+			bar := strings.Repeat("⬢", filled) + strings.Repeat("⬡", 20-filled)
+
+			curBytesStr := item.CurrentStr
+			if curBytesStr == "" {
+				curBytesStr = config.FormatBytes(float64(item.CurrentBytes))
+			}
+			totBytesStr := item.TotalStr
+			if totBytesStr == "" {
+				totBytesStr = config.FormatBytes(float64(item.TotalBytes))
+			}
+
+			statusLabel := i18n.T("notifier.statusDownloading")
+			if item.Status == "paused" {
+				statusLabel = i18n.T("notifier.statusPaused")
+			} else if item.Status == "queued" {
+				statusLabel = i18n.T("notifier.statusQueued")
+			}
+
+			sb.WriteString(fmt.Sprintf("<b>%s:</b> <code>%s</code>\n", statusLabel, html.EscapeString(fileName)))
+			sb.WriteString(fmt.Sprintf("<code>⌜%s⌟ %.1f%%</code>\n", bar, pct))
+			sb.WriteString(fmt.Sprintf("<b>%s:</b> %s / %s\n", i18n.T("notifier.statusProgress"), curBytesStr, totBytesStr))
+
+			if item.Status == "downloading" {
+				if item.Speed != "" {
+					sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusSpeed"), item.Speed))
+				}
+				if item.ETA != "" {
+					sb.WriteString(fmt.Sprintf("<b>%s:</b> %s\n", i18n.T("notifier.statusETA"), item.ETA))
+				}
 			}
 		}
 	} else {
