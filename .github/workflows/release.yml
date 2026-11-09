@@ -272,10 +272,10 @@ jobs:
           mkdir -p build/bin
           
           echo "Compilando arquitectura amd64..."
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-amd64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags purego,production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-amd64
           
           echo "Compilando arquitectura arm64..."
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-arm64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags purego,production -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/TelegramDL-arm64
           
           echo "Uniendo arquitecturas en binario Universal con lipo..."
           lipo -create -output build/bin/TelegramDL build/bin/TelegramDL-amd64 build/bin/TelegramDL-arm64
