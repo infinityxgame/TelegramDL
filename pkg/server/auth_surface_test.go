@@ -48,6 +48,7 @@ func TestSuperficiePublica(t *testing.T) {
 		publicAPIPath,
 		hasCredentialsAPIPath,
 		tokenSendAPIPath,
+		localTokenAPIPath,
 		"/api/ipc/download",
 	}
 	if len(publicAPIPaths) != len(publicos) {

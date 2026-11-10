@@ -234,6 +234,11 @@ const (
 	// token. Solo devuelve un booleano sin revelar información sensible.
 	hasCredentialsAPIPath = "/api/auth/has-credentials"
 
+	// localTokenAPIPath devuelve el token de acceso local a peticiones de loopback (isLocalRequest).
+	// Permite que la vista web abierta en el navegador local (localhost:8000 o modo --server)
+	// obtenga el token automáticamente sin pedirlo manualmente al usuario.
+	localTokenAPIPath = "/api/auth/local-token"
+
 	// rateWindowDuration es la ventana de las limitaciones de frecuencia de la
 	// puerta de setup y del endpoint IPC: un minuto redondo.
 	rateWindowDuration = time.Minute
@@ -306,6 +311,7 @@ var publicAPIPaths = map[string]bool{
 	publicAPIPath:         true,
 	tokenSendAPIPath:      true,
 	hasCredentialsAPIPath: true,
+	localTokenAPIPath:     true,
 	"/api/ipc/download":   true,
 }
 
@@ -1338,6 +1344,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Token de acceso a la API (acceso remoto)
 	mux.HandleFunc("/api/auth/token", s.handleGetToken)
+	mux.HandleFunc(localTokenAPIPath, s.handleGetLocalToken)
 	mux.HandleFunc("/api/auth/token/regenerate", s.handleRegenerateToken)
 	// Sin token; ver tokenSendAPIPath.
 	mux.HandleFunc(tokenSendAPIPath, s.handleSendTokenToTelegram)
@@ -1884,6 +1891,16 @@ func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
 // que solo sirve para que un cliente ya autenticado confirme su valor
 // (por ejemplo, para mostrarlo en Ajustes).
 func (s *Server) handleGetToken(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, http.StatusOK, map[string]string{"token": s.APIToken()})
+}
+
+// handleGetLocalToken devuelve el token de acceso actual solo a peticiones hechas desde
+// el propio equipo (isLocalRequest).
+func (s *Server) handleGetLocalToken(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		s.errorResponse(w, http.StatusForbidden, i18n.T("server.systemPickerLocalOnly"))
+		return
+	}
 	s.jsonResponse(w, http.StatusOK, map[string]string{"token": s.APIToken()})
 }
 

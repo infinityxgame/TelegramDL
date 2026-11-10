@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ArrowLeft, Check, ChevronRight, Folder, HardDrive, X } from '../icons'
-import { useAuthToken } from '../composables/useAuthToken'
+import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
 import { useI18n } from '../i18n'
 
 const { authHeaders } = useAuthToken()
@@ -61,7 +61,7 @@ const isLocalView = () => {
 // donde no existe ninguna ventana del sistema que mostrar.
 const show = async () => {
   // 1. Dentro de la aplicación de escritorio: puente nativo de Wails.
-  if (window.go?.main?.App?.SelectDirectory) {
+  if (isWailsRuntime() && window.go?.main?.App?.SelectDirectory) {
     try {
       const selected = await window.go.main.App.SelectDirectory()
       if (selected) {
