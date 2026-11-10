@@ -34,3 +34,4 @@ md_ideas/
 /dashboard/src/bindings
 /.task/
 node_modules
+/logs
