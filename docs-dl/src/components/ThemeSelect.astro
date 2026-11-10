@@ -120,9 +120,9 @@ const accessibleLabel = labels?.['themeSelect.accessibleLabel'] || (locale === '
 			super();
 			const button = this.querySelector('button');
 			if (button) {
-				button.addEventListener('click', () => {
+				button.addEventListener('click', (event) => {
 					const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-					this.setTheme(theme);
+					this.toggleTheme(event, theme);
 				});
 			}
 		}
@@ -130,6 +130,75 @@ const accessibleLabel = labels?.['themeSelect.accessibleLabel'] || (locale === '
 		setTheme(theme) {
 			document.documentElement.setAttribute('data-theme', theme);
 			localStorage.setItem('starlight-theme', theme);
+		}
+
+		toggleTheme(event, theme) {
+			const isDark = theme === 'dark';
+
+			// Check for View Transitions API support and user motion preference
+			const isAppearanceTransition =
+				// @ts-ignore
+				document.startViewTransition &&
+				!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+			if (!isAppearanceTransition) {
+				this.setTheme(theme);
+				return;
+			}
+
+			const button = event.currentTarget;
+			const rect = button ? button.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+			const x = event.clientX || (rect.left + rect.width / 2);
+			const y = event.clientY || (rect.top + rect.height / 2);
+
+			const endRadius = Math.ceil(Math.hypot(
+				Math.max(x, window.innerWidth - x),
+				Math.max(y, window.innerHeight - y)
+			)) + 10;
+
+			const root = document.documentElement;
+
+			if (isDark) {
+				root.classList.add('theme-transition-reverse');
+			} else {
+				root.classList.remove('theme-transition-reverse');
+			}
+
+			// @ts-ignore
+			const transition = document.startViewTransition(() => {
+				this.setTheme(theme);
+			});
+
+			transition.ready.then(() => {
+				const clipPath = isDark
+					? [
+							`circle(${endRadius}px at ${x}px ${y}px)`,
+							`circle(0px at ${x}px ${y}px)`
+					  ]
+					: [
+							`circle(0px at ${x}px ${y}px)`,
+							`circle(${endRadius}px at ${x}px ${y}px)`
+					  ];
+
+				document.documentElement.animate(
+					{
+						clipPath: clipPath,
+						opacity: isDark ? [1, 1, 0] : [0, 1, 1]
+					},
+					{
+						duration: 450,
+						easing: 'ease-in-out',
+						pseudoElement: isDark ? '::view-transition-old(root)' : '::view-transition-new(root)',
+						fill: 'both'
+					}
+				);
+			});
+
+			transition.finished.finally(() => {
+				requestAnimationFrame(() => {
+					root.classList.remove('theme-transition-reverse');
+				});
+			});
 		}
 	}
 	customElements.define('starlight-theme-toggle', StarlightThemeToggle);

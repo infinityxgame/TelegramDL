@@ -330,3 +330,34 @@ footer.sl-flex,
     width: 0.9rem !important;
     height: 0.9rem !important;
 }
+
+/* Circular View Transition for Theme Switcher (Telegram Web style) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Dark -> Light: New light theme expands on top */
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* Light -> Dark (Reverse): Old light theme shrinks back into the button, revealing dark underneath */
+.theme-transition-reverse::view-transition-old(root) {
+  z-index: 9999;
+}
+
+.theme-transition-reverse::view-transition-new(root) {
+  z-index: 1;
+}
+
+
+
+
+
+
