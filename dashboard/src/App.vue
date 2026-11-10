@@ -419,7 +419,7 @@ const fetchDownloads = async () => {
     }
     error.value = ''
   } catch {
-    /* No mostramos error en poll constante */
+    websocketConnected.value = false
   }
 }
 
@@ -993,14 +993,14 @@ const connectWebSocket = async () => {
       }
     }
     socket.onclose = () => {
-      if (!isWailsRuntime()) websocketConnected.value = false
+      websocketConnected.value = false
       if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
     }
     socket.onerror = () => {
       socket?.close()
     }
   } catch {
-    if (!isWailsRuntime()) websocketConnected.value = false
+    websocketConnected.value = false
     if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
   }
 }
