@@ -19,9 +19,17 @@ Existen **tres canales independientes de notificación**:
 
 - **Alertas del Sistema**: Envía mensajes instantáneos a tu cuenta de Telegram (o a un grupo/canal privado) cuando se completa una descarga, ocurre un fallo o se vacía la cola.
 - **Añadir Descargas desde Telegram**: Puedes enviarle enlaces de Telegram (ej. `https://t.me/c/123456/789`) o **subir/reenviar archivos multimedia** (vídeos, audios, documentos, fotos) directamente al chat del bot para agregarlos automáticamente a la cola de descargas.
+- **Consulta de Estado en Tiempo Real (`/status`)**: Puedes enviar el comando `/status` al chat del bot en cualquier momento para consultar el estado de las descargas en vivo. El bot responderá con un mensaje interactivo que muestra las descargas activas, una barra de progreso visual (`⬢⬢...⬡⬡...`), porcentaje, velocidad actual, tiempo restante estimado (ETA) y contador de tareas restantes. El mensaje se actualiza automáticamente cada 5 segundos durante 1 minuto (60 segundos) y se elimina por sí solo para mantener limpio el chat.
 - **Modo de Renombrado de Archivos Recibidos**: En **Ajustes** puedes seleccionar el comportamiento ante archivos recibidos con pie de foto (*caption*):
   - **Automático**: Agrega la descarga directamente a la cola con el nombre detectado.
   - **Manual**: Si el archivo trae un pie de foto (*caption*), el bot te enviará un mensaje interactivo con ambos nombres (el nombre original y el caption) para que elijas cuál utilizar mediante botones interactivos antes de agregarlo a la cola.
+
+### Comandos Interactivos del Bot
+
+| Comando | Descripción |
+| :--- | :--- |
+| `/start` o `/help` | Muestra el mensaje de bienvenida e instrucciones iniciales de uso del bot. |
+| `/status` | Muestra la barra de progreso y estado en vivo de las descargas. Se actualiza cada 5s durante 60s y se auto-elimina. |
 
 ### ¿Cómo se configura?
 

@@ -118,6 +118,10 @@ sequenceDiagram
   - Al enviarle enlaces de Telegram o subir/reenviar archivos multimedia (vídeos, audios, documentos, fotos) a tu bot, este los añadirá a la cola de descargas.
   - En modo **Manual**, si el archivo incluye un pie de foto (*caption*), el bot te enviará un mensaje interactivo con dos botones (`Nombre original` y `Caption`) para que elijas con cuál guardarlo.
 
+#### Paso 6: Consultar Estado de Descargas en Vivo (`/status`)
+- En cualquier momento puedes enviar el comando `/status` al chat de tu bot para monitorear el progreso de tus descargas activas o en cola.
+- El bot responderá con una barra visual de progreso, velocidad, tiempo estimado (ETA) y contador de tareas. El mensaje se actualiza en tiempo real cada 5 segundos durante 1 minuto y luego se borra automáticamente para mantener limpio el historial del chat.
+
 #### Control Rápido desde la Barra Lateral
 Una vez configurado el bot en Ajustes, puedes activar o desactivar el envío de alertas automáticas en cualquier momento presionando el botón **«Avisos del bot»** (icono de bot) en la barra lateral izquierda del panel.
 

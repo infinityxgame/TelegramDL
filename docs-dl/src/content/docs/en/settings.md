@@ -118,6 +118,10 @@ sequenceDiagram
   - When sending Telegram links or uploading/forwarding media files (videos, audio, documents, photos) to your bot, it adds them to the download queue.
   - In **Manual** mode, if the file includes a caption, the bot sends an interactive message with two buttons (`Original name` and `Caption`) so you can select which name to save it as.
 
+#### Step 6: Live Download Status Monitoring (`/status`)
+- Send `/status` to your bot chat at any time to monitor active or queued download progress.
+- The bot replies with a visual progress bar, speed, estimated time remaining (ETA), and remaining task counter. The message updates live every 5 seconds for 1 minute (60 seconds) and automatically deletes when finished to keep your chat history clean.
+
 #### Quick Toggle from Sidebar
 Once configured, you can turn automatic alerts on or off at any time using the **«Bot alerts»** button (bot icon) in the left sidebar.
 

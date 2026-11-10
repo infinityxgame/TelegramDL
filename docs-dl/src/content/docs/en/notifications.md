@@ -19,9 +19,17 @@ There are **three independent notification channels**:
 
 - **System Alerts**: Sends instant messages to your Telegram account (or a private group/channel) when a download completes, a failure occurs, or the queue empties.
 - **Add Downloads from Telegram**: You can send Telegram links (e.g. `https://t.me/c/123456/789`) or **upload/forward media files** (videos, audio, documents, photos) directly to the bot chat to add them to the download queue automatically.
+- **Real-Time Status Command (`/status`)**: Send the `/status` command to the bot chat at any time to inspect live download progress. The bot responds with an interactive message displaying active downloads, a visual progress bar (`⬢⬢...⬡⬡...`), percentage, speed, estimated time remaining (ETA), and remaining task count. The message updates automatically every 5 seconds for 1 minute (60 seconds) and auto-deletes when done to keep chat history clean.
 - **Received Files Naming Mode**: In **Settings**, you can choose how files received with captions are handled:
   - **Automatic**: Adds the file directly to the queue with the detected filename.
   - **Manual**: If the file includes a caption, the bot sends an interactive message showing both names (original filename and caption) with interactive buttons so you can choose which name to use before adding it to the queue.
+
+### Interactive Bot Commands
+
+| Command | Description |
+| :--- | :--- |
+| `/start` or `/help` | Displays the welcome message and initial usage instructions. |
+| `/status` | Displays live download progress and status. Updates every 5s for 60s and auto-deletes. |
 
 ### How to configure
 
