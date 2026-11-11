@@ -670,6 +670,18 @@ const openFile = async (item) => {
   }
 }
 
+const openFolder = async (item) => {
+  try {
+    await api('/api/downloads/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id })
+    })
+  } catch (err) {
+    showMessage(err.message, true)
+  }
+}
+
 const {
   version,
   updateInfo,
@@ -1504,6 +1516,7 @@ onUnmounted(() => {
             @retry-download="retryDownload"
             @delete-download="deleteDownload"
             @open-file="openFile"
+            @open-folder="openFolder"
             @pause-all="pauseAllDownloads"
             @resume-all="resumeAllDownloads"
             @cancel-all="cancelAllDownloads"

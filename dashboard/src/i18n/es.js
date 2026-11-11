@@ -119,6 +119,7 @@ export default {
     historyTitle: 'Últimas descargas',
     historyTotal: '{n} en total',
     historyEmpty: 'Todavía no hay descargas terminadas.',
+    openFolder: 'Abrir carpeta',
     openFile: 'Abrir archivo',
     retryDownload: 'Reintentar descarga',
     deleteEntry: 'Eliminar del historial',

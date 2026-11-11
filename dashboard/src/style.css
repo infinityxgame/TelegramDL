@@ -940,7 +940,8 @@ html.theme-light select option {
   background: #48252c;
   color: #ffb0b0;
 }
-.open-button {
+.open-button,
+.open-folder-button {
   display: grid;
   place-items: center;
   border: 0;
@@ -951,7 +952,8 @@ html.theme-light select option {
   border-radius: 8px;
   cursor: pointer;
 }
-.open-button:hover {
+.open-button:hover,
+.open-folder-button:hover {
   background: var(--user-icon-bg);
   color: var(--user-accent);
 }

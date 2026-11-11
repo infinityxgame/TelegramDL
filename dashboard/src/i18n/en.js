@@ -117,6 +117,7 @@ export default {
     historyTitle: 'Recent downloads',
     historyTotal: '{n} in total',
     historyEmpty: 'No finished downloads yet.',
+    openFolder: 'Open folder',
     openFile: 'Open file',
     retryDownload: 'Retry download',
     deleteEntry: 'Remove from history',

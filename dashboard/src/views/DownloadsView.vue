@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileCheck,
   FileDown,
+  Folder,
   Gauge,
   Pause,
   Play,
@@ -65,6 +66,7 @@ const emit = defineEmits([
   'retry-download',
   'delete-download',
   'open-file',
+  'open-folder',
   'pause-all',
   'resume-all',
   'cancel-all'
@@ -464,6 +466,16 @@ const allActivePaused = computed(() => {
               : statusText(item.status)
           }}
         </span>
+        <button
+          v-if="['completed', 'skipped'].includes(item.status)"
+          class="open-folder-button"
+          type="button"
+          :title="t('downloads.openFolder')"
+          :aria-label="t('downloads.openFolder')"
+          @click="emit('open-folder', item)"
+        >
+          <Folder :size="14" />
+        </button>
         <button
           v-if="item.status === 'completed'"
           class="open-button"

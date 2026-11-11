@@ -1365,6 +1365,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/delete", s.handleDeleteDownload)
 	mux.HandleFunc("/api/clear-history", s.handleClearHistory)
 	mux.HandleFunc("/api/open", s.handleOpenDownload)
+	mux.HandleFunc("/api/open-folder", s.handleOpenFolder)
 
 	// Settings
 	mux.HandleFunc("/api/settings", s.handleSettings)
@@ -2414,6 +2415,15 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if subpath == "open-folder" {
+		if r.Method == http.MethodPost {
+			s.handleOpenFolder(w, r)
+			return
+		}
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
 	if subpath == "export" {
 		s.handleExportDownloads(w, r)
 		return
@@ -2574,6 +2584,59 @@ func (s *Server) handleOpenDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go openInSystem(item.FilePath)
+
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleOpenFolder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID     string `json:"id"`
+		ItemID string `json:"item_id"`
+	}
+	decodeOptionalBody(r, &body, "handleOpenFolder")
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		id = strings.TrimSpace(body.ItemID)
+	}
+	item, ok := s.downloader.GetItem(id)
+	if !ok {
+		s.errorResponse(w, http.StatusNotFound, i18n.T("server.fileNotFound"))
+		return
+	}
+
+	var folderPath string
+	if item.FilePath != "" {
+		folderPath = filepath.Dir(item.FilePath)
+	} else if item.SubFolder != "" {
+		s.mu.RLock()
+		baseDir := s.config.DownloadFolder
+		s.mu.RUnlock()
+		if baseDir == "" {
+			baseDir = config.GetDefaultDownloadFolder()
+		}
+		folderPath = filepath.Join(baseDir, item.SubFolder)
+	}
+
+	if folderPath == "" {
+		s.mu.RLock()
+		folderPath = s.config.DownloadFolder
+		s.mu.RUnlock()
+		if folderPath == "" {
+			folderPath = config.GetDefaultDownloadFolder()
+		}
+	}
+
+	// Si la subcarpeta concreta no existe en disco, abrir la carpeta de descargas principal
+	if _, err := os.Stat(folderPath); err != nil {
+		s.mu.RLock()
+		folderPath = s.config.DownloadFolder
+		s.mu.RUnlock()
+		if folderPath == "" {
+			folderPath = config.GetDefaultDownloadFolder()
+		}
+	}
+
+	go openInSystem(folderPath)
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
