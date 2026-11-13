@@ -84,6 +84,7 @@ watch(
       chats.value = (newVal || []).map((chat) => ({
         ...chat,
         auto_download: !!chat.auto_download,
+        listen_self: !!chat.listen_self,
         name_mode: chat.name_mode || 'manual',
         f_photos: chat.f_photos ?? true,
         f_videos: chat.f_videos ?? true,
@@ -227,6 +228,7 @@ const load = async () => {
     chats.value = (settings.chats || []).map((chat) => ({
       ...chat,
       auto_download: !!chat.auto_download,
+      listen_self: !!chat.listen_self,
       name_mode: chat.name_mode || 'manual',
       f_photos: chat.f_photos ?? true,
       f_videos: chat.f_videos ?? true,
@@ -256,6 +258,7 @@ const save = async () => {
       chats.value = data.chats.map((chat) => ({
         ...chat,
         auto_download: !!chat.auto_download,
+        listen_self: !!chat.listen_self,
         name_mode: chat.name_mode || 'manual',
         f_photos: chat.f_photos ?? true,
         f_videos: chat.f_videos ?? true,
@@ -557,7 +560,8 @@ const hasManualNameSelection = (item) => {
         String(c.id) === String(item.chat_id) &&
         Number(c.topic_id || 0) === Number(item.topic_id || 0)
     ) || chats.value.find((c) => String(c.id) === String(item.chat_id))
-  return !!(found && found.name_mode === 'manual')
+  if (!found || found.name_mode !== 'manual') return false
+  return !!(item.caption_file_name && item.caption_file_name.trim())
 }
 
 const nameMenuPosition = ref({
@@ -934,7 +938,7 @@ onUnmounted(() => {
         </div>
         <div v-for="chat in chats" :key="chatKey(chat)" class="chat-chip">
           <div class="chat-chip-main">
-            <MessageCircle :size="14" />
+            <MessageCircle :size="14" class="chat-icon" />
             <div class="chat-details">
               <strong>{{ chatLabel(chat) }}</strong>
               <small>{{ chatMeta(chat) }}</small>
@@ -942,85 +946,129 @@ onUnmounted(() => {
                 ><Folder :size="10" /> {{ chatFolder(chat) }}</small
               >
             </div>
-            <div
-              class="auto-toggle-wrapper"
-              :class="{ active: chat.auto_download }"
-            >
-              <label class="auto-toggle switch" :class="{ disabled: saving }">
-                <input
-                  type="checkbox"
-                  v-model="chat.auto_download"
-                  :disabled="saving"
-                  @change="save"
-                />
-                <span></span>
-              </label>
-              <span class="auto-toggle-text">
-                <span class="line1">{{ t('listener.autoDownloadLine1') }}</span>
-                <span class="line2">{{ t('listener.autoDownloadLine2') }}</span>
-              </span>
-            </div>
-            <div class="chat-name-mode-wrapper">
-              <div
-                class="chat-name-mode-btn-wrapper"
-                :class="{
-                  active: chat.name_mode && chat.name_mode !== 'manual'
-                }"
-              >
+            <div class="chat-chip-controls">
+              <div class="controls-row top-row">
+                <div
+                  class="auto-toggle-wrapper"
+                  :class="{ active: chat.auto_download }"
+                >
+                  <label
+                    class="auto-toggle switch"
+                    :class="{ disabled: saving }"
+                  >
+                    <input
+                      type="checkbox"
+                      v-model="chat.auto_download"
+                      :disabled="saving"
+                      @change="save"
+                    />
+                    <span></span>
+                  </label>
+                  <span class="auto-toggle-text">
+                    <span class="line1">{{
+                      t('listener.autoDownloadLine1')
+                    }}</span>
+                    <span class="line2">{{
+                      t('listener.autoDownloadLine2')
+                    }}</span>
+                  </span>
+                </div>
+                <div class="chat-name-mode-wrapper">
+                  <div
+                    class="chat-name-mode-btn-wrapper"
+                    :class="{
+                      active: chat.name_mode && chat.name_mode !== 'manual'
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="chat-name-mode-btn"
+                      :class="{
+                        active: chat.name_mode && chat.name_mode !== 'manual',
+                        disabled: saving
+                      }"
+                      :disabled="saving"
+                      @click.stop="toggleChatNameModeMenu(chat)"
+                    >
+                      <span class="chat-switch-pill">
+                        <span class="chat-switch-thumb"></span>
+                      </span>
+                    </button>
+                    <span class="chat-name-mode-text">
+                      <span class="line1">{{
+                        t('listener.nameLabelLine')
+                      }}</span>
+                      <span class="line2">{{
+                        nameModeLabel(chat.name_mode)
+                      }}</span>
+                    </span>
+                  </div>
+                  <div
+                    v-if="chatNameModeMenus[chatKey(chat)]"
+                    class="chat-name-mode-dropdown"
+                    @click.stop
+                  >
+                    <div
+                      class="chat-name-mode-item"
+                      :class="{ active: chat.name_mode === 'manual' }"
+                      @click="selectChatNameMode(chat, 'manual')"
+                    >
+                      <span>{{ t('listener.nameModeManual') }}</span>
+                    </div>
+                    <div
+                      class="chat-name-mode-item"
+                      :class="{ active: chat.name_mode === 'original' }"
+                      @click="selectChatNameMode(chat, 'original')"
+                    >
+                      <span>{{ t('listener.nameModeOriginal') }}</span>
+                    </div>
+                    <div
+                      class="chat-name-mode-item"
+                      :class="{ active: chat.name_mode === 'caption' }"
+                      @click="selectChatNameMode(chat, 'caption')"
+                    >
+                      <span>{{ t('listener.nameModeCaption') }}</span>
+                    </div>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  class="chat-name-mode-btn"
-                  :class="{
-                    active: chat.name_mode && chat.name_mode !== 'manual',
-                    disabled: saving
-                  }"
+                  class="chat-delete-btn"
                   :disabled="saving"
-                  @click.stop="toggleChatNameModeMenu(chat)"
+                  @click="removeChat(chat)"
+                  :aria-label="t('listener.removeChatAria')"
                 >
-                  <span class="chat-switch-pill">
-                    <span class="chat-switch-thumb"></span>
-                  </span>
+                  <Trash2 :size="14" />
                 </button>
-                <span class="chat-name-mode-text">
-                  <span class="line1">{{ t('listener.nameLabelLine') }}</span>
-                  <span class="line2">{{ nameModeLabel(chat.name_mode) }}</span>
-                </span>
               </div>
-              <div
-                v-if="chatNameModeMenus[chatKey(chat)]"
-                class="chat-name-mode-dropdown"
-                @click.stop
-              >
+              <div class="controls-row bottom-row">
                 <div
-                  class="chat-name-mode-item"
-                  :class="{ active: chat.name_mode === 'manual' }"
-                  @click="selectChatNameMode(chat, 'manual')"
+                  class="auto-toggle-wrapper"
+                  :class="{ active: chat.listen_self }"
                 >
-                  <span>{{ t('listener.nameModeManual') }}</span>
-                </div>
-                <div
-                  class="chat-name-mode-item"
-                  :class="{ active: chat.name_mode === 'original' }"
-                  @click="selectChatNameMode(chat, 'original')"
-                >
-                  <span>{{ t('listener.nameModeOriginal') }}</span>
-                </div>
-                <div
-                  class="chat-name-mode-item"
-                  :class="{ active: chat.name_mode === 'caption' }"
-                  @click="selectChatNameMode(chat, 'caption')"
-                >
-                  <span>{{ t('listener.nameModeCaption') }}</span>
+                  <label
+                    class="auto-toggle switch"
+                    :class="{ disabled: saving }"
+                  >
+                    <input
+                      type="checkbox"
+                      v-model="chat.listen_self"
+                      :disabled="saving"
+                      @change="save"
+                    />
+                    <span></span>
+                  </label>
+                  <span class="auto-toggle-text">
+                    <span class="line1">{{
+                      t('listener.listenSelfLine1')
+                    }}</span>
+                    <span class="line2">{{
+                      t('listener.listenSelfLine2')
+                    }}</span>
+                  </span>
                 </div>
               </div>
             </div>
-            <button
-              :disabled="saving"
-              @click="removeChat(chat)"
-              :aria-label="t('listener.removeChatAria')"
-            >
-              <Trash2 :size="14" />
-            </button>
           </div>
           <div class="chat-filters">
             <label
@@ -1370,10 +1418,49 @@ onUnmounted(() => {
 
 .chat-chip-main {
   display: flex;
-  align-items: center;
-  gap: 9px;
+  align-items: flex-start;
+  gap: 10px;
   color: var(--user-primary);
   font-size: 12px;
+}
+.chat-icon {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.chat-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chat-delete-btn {
+  border: 0;
+  background: transparent;
+  color: #e58b91;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.chat-delete-btn:hover {
+  color: #ff4d4d;
+}
+.chat-chip-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .chat-filters {
   display: flex;
@@ -1664,7 +1751,8 @@ onUnmounted(() => {
     min-width: 150px;
     flex: 1;
   }
-  .chat-filters {
+  .chat-filters,
+  .chat-chip-controls {
     padding-left: 0;
     gap: 6px;
   }

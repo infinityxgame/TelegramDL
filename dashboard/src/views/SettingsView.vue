@@ -178,6 +178,7 @@ const normalizeChat = (raw) => {
     id,
     name: String(raw.name ?? id),
     auto_download: !!raw.auto_download,
+    listen_self: !!raw.listen_self,
     f_photos: flag(raw.f_photos),
     f_videos: flag(raw.f_videos),
     f_audios: flag(raw.f_audios),

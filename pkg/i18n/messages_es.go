@@ -299,6 +299,7 @@ var messagesES = map[string]string{
 	"listener.chatAdded":         "Chat añadido a la escucha: %s",
 	"listener.chatAddedDetail":   "Descarga automática: %s · Filtros: %s",
 	"listener.changeAuto":        "Descarga automática: %s → %s",
+	"listener.changeListenSelf":  "Mensajes propios: %s → %s",
 	"listener.changeFilters":     "Filtros: %s → %s",
 	"listener.changeName":        "Nombre: %s → %s",
 	"listener.changeTopic":       "Tema: %s",

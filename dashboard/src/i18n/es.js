@@ -181,6 +181,8 @@ export default {
     autoLabel: 'Auto',
     autoDownloadLine1: 'Descarga',
     autoDownloadLine2: 'auto',
+    listenSelfLine1: 'Mis',
+    listenSelfLine2: 'mensajes',
     nameLabel: 'Nombre',
     nameLabelLine: 'Nombre:',
     nameModeManual: 'Manual',

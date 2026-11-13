@@ -1,6 +1,7 @@
 package listener
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gotd/td/tg"
@@ -148,5 +149,40 @@ func TestMatchChatUnmonitoredChat(t *testing.T) {
 
 	if _, ok := le.matchChat(-1009, 0, 0); ok {
 		t.Fatal("unmonitored chat should not match")
+	}
+}
+
+func TestHandleMessageListenSelf(t *testing.T) {
+	ctx := context.Background()
+
+	le := newEngineWithChats(
+		config.ListenerChat{ID: -1001, Name: "Grupo 1", ListenSelf: false, AutoDownload: false, FPhotos: true},
+		config.ListenerChat{ID: -1002, Name: "Grupo 2", ListenSelf: true, AutoDownload: false, FPhotos: true},
+	)
+
+	photoMedia := &tg.MessageMediaPhoto{
+		Photo: &tg.Photo{ID: 123},
+	}
+
+	msg1 := &tg.Message{
+		ID:     101,
+		Out:    true,
+		PeerID: &tg.PeerChannel{ChannelID: 1},
+		Media:  photoMedia,
+	}
+	_ = le.HandleMessage(ctx, tg.Entities{}, msg1)
+	if len(le.GetItems()) != 0 {
+		t.Fatalf("expected 0 items for outgoing message on chat with ListenSelf=false, got %d", len(le.GetItems()))
+	}
+
+	msg2 := &tg.Message{
+		ID:     102,
+		Out:    true,
+		PeerID: &tg.PeerChannel{ChannelID: 2},
+		Media:  photoMedia,
+	}
+	_ = le.HandleMessage(ctx, tg.Entities{}, msg2)
+	if len(le.GetItems()) != 1 {
+		t.Fatalf("expected 1 item for outgoing message on chat with ListenSelf=true, got %d", len(le.GetItems()))
 	}
 }

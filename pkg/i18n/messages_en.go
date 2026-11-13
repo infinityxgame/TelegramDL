@@ -298,6 +298,7 @@ var messagesEN = map[string]string{
 	"listener.chatAdded":         "Chat added to the listener: %s",
 	"listener.chatAddedDetail":   "Auto download: %s · Filters: %s",
 	"listener.changeAuto":        "Auto download: %s → %s",
+	"listener.changeListenSelf":  "Own messages: %s → %s",
 	"listener.changeFilters":     "Filters: %s → %s",
 	"listener.changeName":        "Name: %s → %s",
 	"listener.changeTopic":       "Topic: %s",

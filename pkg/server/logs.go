@@ -168,6 +168,10 @@ func logListenerConfigChanges(before, after config.Config) {
 			details = append(details, i18n.T("listener.changeAuto",
 				onOff(previous.AutoDownload), onOff(chat.AutoDownload)))
 		}
+		if previous.ListenSelf != chat.ListenSelf {
+			details = append(details, i18n.T("listener.changeListenSelf",
+				onOff(previous.ListenSelf), onOff(chat.ListenSelf)))
+		}
 		if describeFilters(previous) != describeFilters(chat) {
 			details = append(details, i18n.T("listener.changeFilters",
 				describeFilters(previous), describeFilters(chat)))

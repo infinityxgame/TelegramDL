@@ -89,6 +89,7 @@ type ListenerChat struct {
 	TopicName    string `json:"topic_name,omitempty"`
 	Name         string `json:"name"`
 	AutoDownload bool   `json:"auto_download"`
+	ListenSelf   bool   `json:"listen_self"`
 	FPhotos      bool   `json:"f_photos"`
 	FVideos      bool   `json:"f_videos"`
 	FAudios      bool   `json:"f_audios"`

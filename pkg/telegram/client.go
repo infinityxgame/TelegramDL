@@ -792,7 +792,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
 			cm.cacheEntities(entities)
 			msg, ok := update.Message.(*tg.Message)
-			if !ok || msg.Out {
+			if !ok {
 				return nil
 			}
 			cm.mu.RLock()
@@ -807,7 +807,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
 			cm.cacheEntities(entities)
 			msg, ok := update.Message.(*tg.Message)
-			if !ok || msg.Out {
+			if !ok {
 				return nil
 			}
 			cm.mu.RLock()
@@ -822,7 +822,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
 			cm.cacheEntities(entities)
 			msg, ok := update.Message.(*tg.Message)
-			if !ok || msg.Out {
+			if !ok {
 				return nil
 			}
 			cm.mu.RLock()
@@ -837,7 +837,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
 			cm.cacheEntities(entities)
 			msg, ok := update.Message.(*tg.Message)
-			if !ok || msg.Out {
+			if !ok {
 				return nil
 			}
 			cm.mu.RLock()

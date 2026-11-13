@@ -643,9 +643,6 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	if !enabled {
 		return nil
 	}
-	if msg.Out {
-		return nil
-	}
 
 	// El tema al que pertenece el mensaje decide si nos interesa: un grupo
 	// vigilado por temas solo acepta los suyos.
@@ -656,6 +653,10 @@ func (le *ListenerEngine) HandleMessage(ctx context.Context, entities tg.Entitie
 	le.mu.RUnlock()
 
 	if !watched {
+		return nil
+	}
+
+	if msg.Out && !chatCfg.ListenSelf {
 		return nil
 	}
 
