@@ -49,6 +49,7 @@ type App struct {
 	startupURL         string // URL pasada desde línea de comandos al iniciar
 	tray               trayState
 	lastTrayNotifyTime time.Time
+	shutdownOnce       sync.Once
 }
 
 func NewApp(assets fs.FS) (*App, error) {
@@ -210,28 +211,30 @@ func (a *App) window() *application.WebviewWindow {
 // Cerrar antes el cliente o la base de datos mientras hay descargas vivas era
 // lo que dejaba estados sin guardar y volcados contra una BD ya cerrada.
 func (a *App) shutdown(ctx context.Context) {
-	logbus.Info(logbus.CatSystem, i18n.T("system.closing"), "")
-	a.quitTray()
-	if a.downloader != nil {
-		// Un error aquí (p. ej. context.DeadlineExceeded) significa que
-		// quedaron trabajos o escrituras sin terminar: se registra para que el
-		// cierre incompleto se vea en los registros, nunca en silencio.
-		if err := a.downloader.Shutdown(ctx); err != nil {
-			logbus.Warn(logbus.CatSystem, "engine shutdown incomplete", err.Error())
+	a.shutdownOnce.Do(func() {
+		logbus.Info(logbus.CatSystem, i18n.T("system.closing"), "")
+		a.quitTray()
+		if a.downloader != nil {
+			// Un error aquí (p. ej. context.DeadlineExceeded) significa que
+			// quedaron trabajos o escrituras sin terminar: se registra para que el
+			// cierre incompleto se vea en los registros, nunca en silencio.
+			if err := a.downloader.Shutdown(ctx); err != nil {
+				logbus.Warn(logbus.CatSystem, "engine shutdown incomplete", err.Error())
+			}
 		}
-	}
-	if a.clientMgr != nil {
-		a.clientMgr.Stop()
-	}
-	if a.server != nil {
-		a.server.Stop()
-	}
-	if a.storage != nil {
-		if err := a.storage.Close(); err != nil {
-			logbus.Error(logbus.CatSystem, "database close failed", err.Error())
+		if a.clientMgr != nil {
+			a.clientMgr.Stop()
 		}
-	}
-	logbus.CloseFile()
+		if a.server != nil {
+			a.server.Stop()
+		}
+		if a.storage != nil {
+			if err := a.storage.Close(); err != nil {
+				logbus.Error(logbus.CatSystem, "database close failed", err.Error())
+			}
+		}
+		logbus.CloseFile()
+	})
 }
 
 func (a *App) Handler() http.Handler {

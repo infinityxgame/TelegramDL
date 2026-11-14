@@ -4,6 +4,7 @@ package main
 
 import (
 	_ "embed"
+	"time"
 
 	"github.com/energye/systray"
 
@@ -59,9 +60,17 @@ func (a *App) onTrayExit() {
 }
 
 func (a *App) quitTray() {
-	if a.tray.ready {
-		systray.Quit()
+	a.mu.Lock()
+	if !a.tray.ready {
+		a.mu.Unlock()
+		return
 	}
+	a.tray.ready = false
+	a.mu.Unlock()
+
+	systray.SetIcon(nil)
+	systray.Quit()
+	time.Sleep(150 * time.Millisecond)
 }
 
 func (a *App) updateTrayMenuTitles() {

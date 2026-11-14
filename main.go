@@ -299,6 +299,10 @@ func runDesktopMode() {
 	if err := wailsApp.Run(); err != nil {
 		println("Error:", err.Error())
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	app.shutdown(shutdownCtx)
 }
 
 func runServerMode() int {
