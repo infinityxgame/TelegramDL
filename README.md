@@ -178,6 +178,9 @@ antes de abrir un pull request).
 <a href="https://github.com/xeraph-dev" title="xeraph-dev">
   <img src="https://avatars.githubusercontent.com/u/61700204?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="xeraph-dev" />
 </a>
+<a href="https://github.com/mcampver" title="mcampver">
+  <img src="https://avatars.githubusercontent.com/u/96101987?v=4" width="48" height="48" style="border-radius: 50%; margin: 3px;" alt="mcampver" />
+</a>
 <!-- CONTRIBUTORS-END -->
 
 ## Licencia
