@@ -27,7 +27,7 @@ on:
           - macos-arm64
         default: all
       app_version:
-        description: "VersiÃ³n personalizada (vacÃ­o = conservar la versiÃ³n de esa rama)"
+        description: "Versión personalizada (vacío = conservar la versión de esa rama)"
         required: false
         type: string
         default: ""
