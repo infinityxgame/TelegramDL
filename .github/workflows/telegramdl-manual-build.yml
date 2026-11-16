@@ -7,18 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       source_repository:
-        description: "Repositorio que contiene la rama"
+        description: "Repository containing the branch"
         required: true
         type: string
         default: "infinityxgame/TelegramDL"
 
       source_branch:
-        description: "Escribe la rama que quieres compilar"
+        description: "Enter the branch you want to compile"
         required: true
         type: string
 
       target_os:
-        description: "Sistema operativo de destino"
+        description: "Target operating system"
         required: true
         type: choice
         options:
@@ -30,7 +30,7 @@ on:
         default: all
 
       app_version:
-        description: "Version personalizada (vacio = conservar la version de esa rama)"
+        description: "Custom version (leave empty to keep the version from that branch)"
         required: false
         type: string
         default: ""
