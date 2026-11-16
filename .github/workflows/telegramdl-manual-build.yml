@@ -1,0 +1,239 @@
+
+name: Manual TelegramDL Build
+
+run-name: "TelegramDL | ${{ inputs.source_branch }} | ${{ inputs.target_os }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: "Repository containing the branch / Repositorio que contiene la rama"
+        required: true
+        type: string
+        default: "infinityxgame/TelegramDL"
+
+      source_branch:
+        description: "Branch you wish to compile / Rama que deseas compilar"
+        required: true
+        type: string
+
+      target_os:
+        description: "Target operating system / Sistema operativo de destino"
+        required: true
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
+          - macos-intel
+          - macos-arm64
+        default: all
+
+      app_version:
+        description: "Custom version (Optional) / Versión personalizada (opcional)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.matrix.outputs.targets }}
+
+    steps:
+      - name: Select target systems
+        id: matrix
+        shell: bash
+        env:
+          TARGET_OS: ${{ inputs.target_os }}
+        run: |
+          case "$TARGET_OS" in
+            all)
+              TARGETS='[
+                {"name":"Windows","runner":"windows-latest","platform":"windows"},
+                {"name":"Linux x86_64","runner":"ubuntu-24.04","platform":"linux"},
+                {"name":"macOS Intel","runner":"macos-15-intel","platform":"macos-intel"},
+                {"name":"macOS Apple Silicon","runner":"macos-15","platform":"macos-arm64"}
+              ]'
+              ;;
+            windows)
+              TARGETS='[{"name":"Windows","runner":"windows-latest","platform":"windows"}]'
+              ;;
+            linux)
+              TARGETS='[{"name":"Linux x86_64","runner":"ubuntu-24.04","platform":"linux"}]'
+              ;;
+            macos-intel)
+              TARGETS='[{"name":"macOS Intel","runner":"macos-15-intel","platform":"macos-intel"}]'
+              ;;
+            macos-arm64)
+              TARGETS='[{"name":"macOS Apple Silicon","runner":"macos-15","platform":"macos-arm64"}]'
+              ;;
+            *)
+              echo "Invalid operating system"
+              exit 1
+              ;;
+          esac
+
+          echo "targets=$(echo "$TARGETS" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.target.name }}
+    needs: prepare
+    runs-on: ${{ matrix.target.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.targets) }}
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Install Linux dependencies
+        if: matrix.target.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libgtk-4-dev \
+            libwebkitgtk-6.0-dev \
+            libsoup-3.0-dev \
+            fuse \
+            libfuse2
+
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      - name: Resolve application version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          CURRENT_VERSION="$(sed -nE 's/^[[:space:]]*AppVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' pkg/config/config.go | head -n 1)"
+
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "Could not detect AppVersion"
+            exit 1
+          fi
+
+          if [ -n "${REQUESTED_VERSION//[[:space:]]/}" ]; then
+            VERSION="${REQUESTED_VERSION#v}"
+
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid version: $REQUESTED_VERSION"
+              exit 1
+            fi
+
+            go run scripts/setversion.go "$VERSION"
+          else
+            VERSION="$CURRENT_VERSION"
+            echo "Keeping branch version: $VERSION"
+          fi
+
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # WINDOWS
+      - name: Build Windows
+        if: matrix.target.platform == 'windows'
+        shell: pwsh
+        run: |
+          wails3 task build
+
+          if (!(Test-Path "build/bin/TelegramDL.exe")) {
+            throw "TelegramDL.exe not found"
+          }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "build/bin/TelegramDL.exe" "dist/TelegramDL.exe"
+
+      # LINUX
+      - name: Build Linux AppImage
+        if: matrix.target.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wails3 task linux:create:appimage
+
+          shopt -s nullglob
+          files=(build/bin/*.AppImage)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No AppImage found"
+            find build/bin -maxdepth 2 -type f -print
+            exit 1
+          fi
+
+          mkdir -p dist
+          cp "${files[0]}" "dist/TelegramDL-Linux-x86_64-${{ steps.version.outputs.value }}.AppImage"
+
+      # MACOS
+      - name: Build macOS DMG
+        if: startsWith(matrix.target.platform, 'macos-')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wails3 task darwin:package:dmg
+
+          shopt -s nullglob
+          files=(build/bin/*.dmg)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No DMG found"
+            find build/bin -maxdepth 2 -type f -print
+            exit 1
+          fi
+
+          if [ "${{ matrix.target.platform }}" = "macos-intel" ]; then
+            LABEL="Intel"
+          else
+            LABEL="Apple-Silicon"
+          fi
+
+          mkdir -p dist
+          cp "${files[0]}" "dist/TelegramDL-macOS-${LABEL}-${{ steps.version.outputs.value }}.dmg"
+
+      # UPLOAD
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TelegramDL-${{ matrix.target.platform }}-${{ steps.version.outputs.value }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
