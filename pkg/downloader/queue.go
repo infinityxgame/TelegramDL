@@ -401,6 +401,77 @@ func (e *Engine) startDownloadJob(itemID string) (relaunch bool) {
 	return
 }
 
+// reorderEpsilon separa los CreatedAt reasignados cuando varias tareas
+// compartían el mismo valor (p. ej. las de un mismo rango). Es mucho mayor que
+// la resolución de un float64 con valores de época (~2e-7), así que el orden
+// resultante es estricto, y mucho menor que cualquier hueco real entre tareas.
+const reorderEpsilon = 1e-4
+
+// ReorderDownloads fija la prioridad de las tareas no terminales según el
+// orden de ids (la primera es la siguiente en descargarse). La prioridad de la
+// cola es CreatedAt ascendente (ver shouldGoBefore), así que se reparten entre
+// las tareas indicadas los mismos CreatedAt que ya tenían, ordenados. De ese
+// modo las tareas que no vienen en ids conservan su posición relativa. Las
+// que ya están descargando no se interrumpen: el nuevo orden decide quién
+// ocupa el siguiente hueco libre. Devuelve cuántas tareas se reordenaron.
+func (e *Engine) ReorderDownloads(ids []string) int {
+	e.mu.Lock()
+
+	// Se descartan duplicados, IDs desconocidos y tareas ya terminadas.
+	seen := make(map[string]bool, len(ids))
+	valid := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if it, ok := e.downloads[id]; ok && !isTerminalStatus(it.Status) {
+			valid = append(valid, id)
+		}
+	}
+	if len(valid) < 2 {
+		e.mu.Unlock()
+		return 0
+	}
+
+	slots := make([]float64, len(valid))
+	for i, id := range valid {
+		slots[i] = e.downloads[id].CreatedAt
+	}
+	sort.Float64s(slots)
+	for i := 1; i < len(slots); i++ {
+		if slots[i] <= slots[i-1] {
+			slots[i] = slots[i-1] + reorderEpsilon
+		}
+	}
+
+	nowNano := float64(time.Now().UnixNano()) / 1e9
+	changed := make([]storage.DownloadItem, 0, len(valid))
+	for i, id := range valid {
+		it := e.downloads[id]
+		if it.CreatedAt == slots[i] {
+			continue
+		}
+		it.CreatedAt = slots[i]
+		it.UpdatedAt = nowNano
+		changed = append(changed, *it)
+	}
+	e.mu.Unlock()
+
+	for _, cp := range changed {
+		if e.storage != nil {
+			if err := e.storage.UpdateDownloadCreatedAt(cp.ID, cp.CreatedAt); err != nil {
+				log.Printf("[DOWNLOADER] %s", i18n.T("downloader.saveStateError", err))
+			}
+		}
+		e.notifyState(cp)
+	}
+
+	// Las tareas en espera reevalúan su turno con el nuevo orden.
+	e.activeCond.Broadcast()
+	return len(valid)
+}
+
 func (e *Engine) isNextInQueue(itemID string) bool {
 	item, ok := e.downloads[itemID]
 	if !ok || (item.Status != "queued" && item.Status != "downloading") || e.pauseStates[itemID] {

@@ -95,6 +95,7 @@ The following endpoints can be accessed without authentication:
 
 - `POST /api/downloads/pause-all`: Pause all active transfers.
 - `POST /api/downloads/resume-all`: Resume all paused transfers.
+- `POST /api/downloads/reorder`: Set the queue priority. Takes `{"ids": [...]}`; the first ID is the next one to download.
 - `POST /api/downloads/cancel-all`: Cancel all active and queued transfers.
 - `POST /api/clear-history`: Clear completed, failed, and cancelled records from history.
 

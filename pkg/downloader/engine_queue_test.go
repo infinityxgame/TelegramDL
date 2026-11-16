@@ -274,3 +274,82 @@ func TestHistoryCeilingPurgesOldestTerminalItems(t *testing.T) {
 		t.Error("chatMsgMap debe quedar sin la entrada del ítem purgado")
 	}
 }
+
+// ReorderDownloads reparte los CreatedAt ya existentes entre las tareas no
+// terminales según el orden pedido, rompe los empates y no toca ni las tareas
+// terminadas ni las que no vienen en la lista.
+func TestReorderDownloadsReassignsCreatedAt(t *testing.T) {
+	cm := telegram.NewClientManager()
+	t.Cleanup(cm.Stop)
+
+	cfg := config.DefaultConfig()
+	cfg.DownloadFolder = t.TempDir()
+	eng := NewEngine(cm, nil, cfg)
+
+	eng.mu.Lock()
+	eng.downloads["a"] = &storage.DownloadItem{ID: "a", Status: "paused", CreatedAt: 100}
+	eng.downloads["b"] = &storage.DownloadItem{ID: "b", Status: "paused", CreatedAt: 200}
+	// c y d comparten CreatedAt (rango encolado de golpe): el empate debe romperse.
+	eng.downloads["c"] = &storage.DownloadItem{ID: "c", Status: "paused", CreatedAt: 300}
+	eng.downloads["d"] = &storage.DownloadItem{ID: "d", Status: "paused", CreatedAt: 300}
+	eng.downloads["done"] = &storage.DownloadItem{ID: "done", Status: "completed", CreatedAt: 50}
+	eng.downloads["other"] = &storage.DownloadItem{ID: "other", Status: "paused", CreatedAt: 900}
+	eng.mu.Unlock()
+
+	// "d" al tope; "done" (terminal), "ghost" (inexistente) y el duplicado se ignoran.
+	n := eng.ReorderDownloads([]string{"d", "a", "ghost", "done", "c", "b", "a"})
+	if n != 4 {
+		t.Fatalf("reordered = %d, want 4", n)
+	}
+
+	eng.mu.RLock()
+	defer eng.mu.RUnlock()
+	order := []string{"d", "a", "c", "b"}
+	for i := 1; i < len(order); i++ {
+		prev, cur := eng.downloads[order[i-1]], eng.downloads[order[i]]
+		if !eng.shouldGoBefore(prev, cur) {
+			t.Errorf("%s debería ir antes que %s (CreatedAt %v vs %v)", order[i-1], order[i], prev.CreatedAt, cur.CreatedAt)
+		}
+	}
+	if eng.downloads["done"].CreatedAt != 50 {
+		t.Errorf("una tarea terminada no debe cambiar: CreatedAt = %v", eng.downloads["done"].CreatedAt)
+	}
+	if eng.downloads["other"].CreatedAt != 900 {
+		t.Errorf("una tarea fuera de la lista no debe cambiar: CreatedAt = %v", eng.downloads["other"].CreatedAt)
+	}
+}
+
+// Una tarea movida al tope de la cola debe ser la que tome el siguiente hueco
+// libre, aunque se hubiera encolado la última.
+func TestReorderDownloadsChangesNextInQueue(t *testing.T) {
+	cm := telegram.NewClientManager()
+	if err := cm.InitClient("1234567", "0123456789abcdef0123456789abcdef"); err != nil {
+		t.Fatalf("InitClient: %v", err)
+	}
+	t.Cleanup(cm.Stop)
+
+	cfg := config.DefaultConfig()
+	cfg.DownloadFolder = t.TempDir()
+	cfg.MaxConcurrentDownloads = 1
+	eng := NewEngine(cm, nil, cfg)
+
+	eng.QueueItem(storage.DownloadItem{ID: "a", ChatID: 10, MessageID: 1, FileName: "a.bin"})
+	waitForCondition(t, "a en curso", func() bool { return eng.statusOf("a") == "downloading" })
+	eng.QueueItem(storage.DownloadItem{ID: "b", ChatID: 10, MessageID: 2, FileName: "b.bin"})
+	eng.QueueItem(storage.DownloadItem{ID: "c", ChatID: 10, MessageID: 3, FileName: "c.bin"})
+
+	// c pasa por delante de b.
+	if n := eng.ReorderDownloads([]string{"a", "c", "b"}); n != 3 {
+		t.Fatalf("reordered = %d, want 3", n)
+	}
+
+	if err := eng.CancelDownload("a"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCondition(t, "c toma el hueco antes que b", func() bool {
+		return eng.statusOf("c") == "downloading"
+	})
+	if got := eng.statusOf("b"); got != "queued" {
+		t.Errorf("b debería seguir en cola, está %q", got)
+	}
+}

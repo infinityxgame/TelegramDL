@@ -1357,6 +1357,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/downloads/cancel-all", s.handleCancelAllDownloads)
 	mux.HandleFunc("/api/downloads/pause-all", s.handlePauseAllDownloads)
 	mux.HandleFunc("/api/downloads/resume-all", s.handleResumeAllDownloads)
+	mux.HandleFunc("/api/downloads/reorder", s.handleReorderDownloads)
 	mux.HandleFunc("/api/download", s.handleStartDownload)
 	mux.HandleFunc("/api/cancel", s.handleCancelDownload)
 	mux.HandleFunc("/api/pause", s.handlePauseDownload)
@@ -2355,6 +2356,24 @@ func (s *Server) handleCancelAllDownloads(w http.ResponseWriter, r *http.Request
 func (s *Server) handlePauseAllDownloads(w http.ResponseWriter, r *http.Request) {
 	s.downloader.PauseAll()
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleReorderDownloads fija la prioridad de la cola de descargas según el
+// orden de los IDs recibidos (el primero se descarga antes).
+func (s *Server) handleReorderDownloads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	n := s.downloader.ReorderDownloads(body.IDs)
+	s.jsonResponse(w, http.StatusOK, map[string]any{"status": "ok", "reordered": n})
 }
 
 func (s *Server) handleResumeAllDownloads(w http.ResponseWriter, r *http.Request) {

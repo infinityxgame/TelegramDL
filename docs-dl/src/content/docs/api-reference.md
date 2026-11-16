@@ -94,6 +94,7 @@ Los siguientes endpoints pueden ser accedidos sin autenticación:
 
 - `POST /api/downloads/pause-all`: Pausa todas las descargas activas.
 - `POST /api/downloads/resume-all`: Reanuda todas las descargas pausadas.
+- `POST /api/downloads/reorder`: Fija la prioridad de la cola. Recibe `{"ids": [...]}`; el primer ID es el siguiente en descargarse.
 - `POST /api/downloads/cancel-all`: Cancela todas las descargas activas y en cola.
 - `POST /api/clear-history`: Elimina del historial las descargas completadas, fallidas o canceladas.
 
