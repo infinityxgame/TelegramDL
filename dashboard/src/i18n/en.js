@@ -117,6 +117,17 @@ export default {
     historyTitle: 'Recent downloads',
     historyTotal: '{n} in total',
     historyEmpty: 'No finished downloads yet.',
+    reorderTip: 'Drag to change priority',
+    sortLabel: 'Sort history',
+    sort: {
+      newest: 'Newest first',
+      oldest: 'Oldest first',
+      nameAsc: 'Name (A-Z)',
+      nameDesc: 'Name (Z-A)',
+      sizeDesc: 'Size (largest)',
+      sizeAsc: 'Size (smallest)',
+      status: 'Status'
+    },
     openFolder: 'Open folder',
     openFile: 'Open file',
     retryDownload: 'Retry download',

@@ -619,6 +619,22 @@ const resumeAllDownloads = async () => {
   }
 }
 
+// Fija la prioridad de la cola según el orden de IDs recibido. Al terminar se
+// vuelve a pedir la lista para mostrar el orden que quedó en el servidor.
+const reorderDownloads = async (ids) => {
+  try {
+    await api('/api/downloads/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    })
+  } catch (err) {
+    console.error(t('console.saveOrderError'), err)
+    showMessage(err.message, true)
+  }
+  await fetchDownloads()
+}
+
 const cancelAllDownloads = async () => {
   openConfirm({
     title: t('downloads.cancelAllTitle'),
@@ -1520,6 +1536,7 @@ onUnmounted(() => {
             @pause-all="pauseAllDownloads"
             @resume-all="resumeAllDownloads"
             @cancel-all="cancelAllDownloads"
+            @reorder-downloads="reorderDownloads"
           />
 
           <ListenerView

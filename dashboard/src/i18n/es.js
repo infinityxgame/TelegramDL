@@ -119,6 +119,17 @@ export default {
     historyTitle: 'Últimas descargas',
     historyTotal: '{n} en total',
     historyEmpty: 'Todavía no hay descargas terminadas.',
+    reorderTip: 'Arrastrar para cambiar la prioridad',
+    sortLabel: 'Ordenar historial',
+    sort: {
+      newest: 'Más recientes',
+      oldest: 'Más antiguas',
+      nameAsc: 'Nombre (A-Z)',
+      nameDesc: 'Nombre (Z-A)',
+      sizeDesc: 'Tamaño (mayor)',
+      sizeAsc: 'Tamaño (menor)',
+      status: 'Estado'
+    },
     openFolder: 'Abrir carpeta',
     openFile: 'Abrir archivo',
     retryDownload: 'Reintentar descarga',

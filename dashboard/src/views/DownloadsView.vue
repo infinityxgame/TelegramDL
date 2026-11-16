@@ -10,6 +10,7 @@ import {
   FileDown,
   Folder,
   Gauge,
+  Menu,
   Pause,
   Play,
   RotateCcw,
@@ -69,7 +70,8 @@ const emit = defineEmits([
   'open-folder',
   'pause-all',
   'resume-all',
-  'cancel-all'
+  'cancel-all',
+  'reorder-downloads'
 ])
 
 const inputUrl = ref('')
@@ -116,6 +118,51 @@ const monitorDownloads = computed(() =>
     ['downloading', 'paused', 'pending', 'queued'].includes(item.status)
   )
 )
+
+// --- Reordenar la cola por arrastre -------------------------------------------
+// El orden de la lista es la prioridad real de descarga: el servidor ordena la
+// cola por fecha de creación, así que al soltar se manda el nuevo orden de IDs
+// y es el padre quien lo aplica (esta vista no muta las props).
+const draggedId = ref(null)
+const dragOverId = ref(null)
+
+const onQueueDragStart = (id, event) => {
+  draggedId.value = id
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', id)
+  }
+}
+
+const onQueueDragOver = (id, event) => {
+  if (draggedId.value === null) return
+  event.preventDefault()
+  dragOverId.value = id
+}
+
+const onQueueDragLeave = (id) => {
+  if (dragOverId.value === id) dragOverId.value = null
+}
+
+const onQueueDragEnd = () => {
+  draggedId.value = null
+  dragOverId.value = null
+}
+
+const onQueueDrop = (targetId) => {
+  const sourceId = draggedId.value
+  onQueueDragEnd()
+  if (sourceId === null || sourceId === targetId) return
+
+  const ids = monitorDownloads.value.map((item) => item.id)
+  const from = ids.indexOf(sourceId)
+  const to = ids.indexOf(targetId)
+  if (from === -1 || to === -1) return
+
+  ids.splice(from, 1)
+  ids.splice(to, 0, sourceId)
+  emit('reorder-downloads', ids)
+}
 
 const handleStart = () => {
   const url = inputUrl.value.trim()
@@ -167,10 +214,56 @@ watch(pageSize, (size) => {
   }
 })
 
+// --- Orden del historial ----------------------------------------------------
+// El orden por defecto es el más reciente primero. El elegido se recuerda en
+// el navegador y se valida contra la lista, igual que el tamaño de página.
+const HISTORY_SORTS = {
+  newest: (a, b) => (b.updated_at || 0) - (a.updated_at || 0),
+  oldest: (a, b) => (a.updated_at || 0) - (b.updated_at || 0),
+  nameAsc: (a, b) =>
+    (a.file_name || '').localeCompare(b.file_name || '', undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    }),
+  nameDesc: (a, b) => HISTORY_SORTS.nameAsc(b, a),
+  sizeDesc: (a, b) => (b.total_bytes || 0) - (a.total_bytes || 0),
+  sizeAsc: (a, b) => (a.total_bytes || 0) - (b.total_bytes || 0),
+  status: (a, b) =>
+    (a.status || '').localeCompare(b.status || '') ||
+    (b.updated_at || 0) - (a.updated_at || 0)
+}
+const HISTORY_SORT_KEYS = Object.keys(HISTORY_SORTS)
+const DEFAULT_HISTORY_SORT = 'newest'
+const HISTORY_SORT_STORAGE_KEY = 'tgdl_historial_orden'
+
+const readSavedHistorySort = () => {
+  try {
+    const saved = localStorage.getItem(HISTORY_SORT_STORAGE_KEY)
+    return HISTORY_SORT_KEYS.includes(saved) ? saved : DEFAULT_HISTORY_SORT
+  } catch {
+    return DEFAULT_HISTORY_SORT
+  }
+}
+
+const historySort = ref(readSavedHistorySort())
+
+// Al cambiar el orden la página actual deja de significar lo mismo: se vuelve
+// a la primera, y se persiste la elección.
+watch(historySort, (sort) => {
+  historyPage.value = 1
+  try {
+    localStorage.setItem(HISTORY_SORT_STORAGE_KEY, sort)
+  } catch (e) {
+    console.error(e)
+  }
+})
+
 const historyDownloads = computed(() =>
-  orderedDownloads.value.filter((item) =>
-    ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)
-  )
+  orderedDownloads.value
+    .filter((item) =>
+      ['completed', 'skipped', 'failed', 'cancelled'].includes(item.status)
+    )
+    .sort(HISTORY_SORTS[historySort.value])
 )
 
 const recentDownloads = computed(() => {
@@ -375,7 +468,25 @@ const allActivePaused = computed(() => {
           v-for="item in monitorDownloads"
           :key="item.id"
           class="download-row"
+          :class="{
+            'is-dragging': draggedId === item.id,
+            'is-drag-over': dragOverId === item.id
+          }"
+          @dragover="onQueueDragOver(item.id, $event)"
+          @dragleave="onQueueDragLeave(item.id)"
+          @drop="onQueueDrop(item.id)"
         >
+          <div
+            v-if="monitorDownloads.length > 1"
+            class="queue-drag-handle"
+            draggable="true"
+            :title="t('downloads.reorderTip')"
+            :aria-label="t('downloads.reorderTip')"
+            @dragstart="onQueueDragStart(item.id, $event)"
+            @dragend="onQueueDragEnd"
+          >
+            <Menu :size="14" />
+          </div>
           <div class="file-symbol"><FileDown :size="16" /></div>
           <div class="file-info">
             <strong :title="item.file_name">{{ item.file_name }}</strong>
@@ -396,38 +507,45 @@ const allActivePaused = computed(() => {
             </div>
           </div>
           <div class="row-side">
-            <b>{{ progress(item).toFixed(0) }}%</b>
-            <span
-              v-if="
-                floodWaitCountdown > 0 &&
-                ['downloading', 'queued'].includes(item.status)
-              "
-              class="flood-status-pill"
-            >
-              FLOOD_WAIT ({{ floodWaitCountdown }}s)
-            </span>
-            <span v-else>{{ statusText(item.status) }}</span>
-            <AppButton
-              v-if="['downloading', 'queued'].includes(item.status)"
-              variant="text"
-              tone="warning"
-              class="pause-action"
-              @click="emit('pause-download', item.id)"
-            >
-              <Gauge :size="12" /> {{ t('downloads.pause') }}
-            </AppButton>
-            <AppButton
-              v-if="item.status === 'paused'"
-              variant="text"
-              tone="success"
-              class="resume-action"
-              @click="emit('resume-download', item.id)"
-            >
-              <ArrowUpRight :size="12" /> {{ t('downloads.resume') }}
-            </AppButton>
-            <AppButton variant="text" @click="emit('cancel-download', item.id)">
-              <X :size="12" /> {{ t('downloads.cancel') }}
-            </AppButton>
+            <div class="row-progress">
+              <b>{{ progress(item).toFixed(0) }}%</b>
+              <span
+                v-if="
+                  floodWaitCountdown > 0 &&
+                  ['downloading', 'queued'].includes(item.status)
+                "
+                class="flood-status-pill"
+              >
+                FLOOD_WAIT ({{ floodWaitCountdown }}s)
+              </span>
+              <span v-else>{{ statusText(item.status) }}</span>
+            </div>
+            <div class="row-actions">
+              <AppButton
+                v-if="['downloading', 'queued'].includes(item.status)"
+                variant="text"
+                tone="warning"
+                class="pause-action"
+                @click="emit('pause-download', item.id)"
+              >
+                <Gauge :size="12" /> {{ t('downloads.pause') }}
+              </AppButton>
+              <AppButton
+                v-if="item.status === 'paused'"
+                variant="text"
+                tone="success"
+                class="resume-action"
+                @click="emit('resume-download', item.id)"
+              >
+                <ArrowUpRight :size="12" /> {{ t('downloads.resume') }}
+              </AppButton>
+              <AppButton
+                variant="text"
+                @click="emit('cancel-download', item.id)"
+              >
+                <X :size="12" /> {{ t('downloads.cancel') }}
+              </AppButton>
+            </div>
           </div>
         </div>
       </section>
@@ -441,6 +559,16 @@ const allActivePaused = computed(() => {
           <h2>{{ t('downloads.historyTitle') }}</h2>
         </div>
         <div class="header-actions">
+          <select
+            v-model="historySort"
+            class="pager-select"
+            :title="t('downloads.sortLabel')"
+            :aria-label="t('downloads.sortLabel')"
+          >
+            <option v-for="key in HISTORY_SORT_KEYS" :key="key" :value="key">
+              {{ t('downloads.sort.' + key) }}
+            </option>
+          </select>
           <AppPill>
             {{ t('downloads.historyTotal', { n: historyDownloads.length }) }}
           </AppPill>
