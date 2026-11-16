@@ -1,3 +1,4 @@
+
 name: Manual TelegramDL Build
 
 run-name: "TelegramDL | ${{ inputs.source_branch }} | ${{ inputs.target_os }}"
@@ -6,15 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       source_repository:
-        description: "Repositorio que contiene la rama que se va a compilar"
+        description: "Repositorio que contiene la rama"
         required: true
         type: string
-        default: "mcampver/TelegramDL"
+        default: "infinityxgame/TelegramDL"
+
       source_branch:
-        description: "Rama que se va a compilar"
+        description: "Escribe la rama que quieres compilar"
         required: true
         type: string
-        default: "feat/downloads-history-sort"
+
       target_os:
         description: "Sistema operativo de destino"
         required: true
@@ -26,8 +28,9 @@ on:
           - macos-intel
           - macos-arm64
         default: all
+
       app_version:
-        description: "Versión personalizada (vacío = conservar la versión de esa rama)"
+        description: "Version personalizada (vacio = conservar la version de esa rama)"
         required: false
         type: string
         default: ""
@@ -41,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.matrix.outputs.targets }}
+
     steps:
       - name: Select target systems
         id: matrix
@@ -70,7 +74,7 @@ jobs:
               TARGETS='[{"name":"macOS Apple Silicon","runner":"macos-15","platform":"macos-arm64"}]'
               ;;
             *)
-              echo "Sistema operativo no vÃ¡lido: $TARGET_OS"
+              echo "Invalid operating system"
               exit 1
               ;;
           esac
@@ -81,13 +85,14 @@ jobs:
     name: Build ${{ matrix.target.name }}
     needs: prepare
     runs-on: ${{ matrix.target.runner }}
+
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.prepare.outputs.targets) }}
 
     steps:
-      - name: Checkout selected source branch
+      - name: Checkout selected branch
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.source_repository }}
@@ -113,7 +118,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/pnpm-lock.yaml
 
-      - name: Install Linux build dependencies
+      - name: Install Linux dependencies
         if: matrix.target.platform == 'linux'
         run: |
           sudo apt-get update
@@ -131,7 +136,7 @@ jobs:
         run: |
           CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 
-      - name: Resolve and optionally set application version
+      - name: Resolve application version
         id: version
         shell: bash
         env:
@@ -142,7 +147,7 @@ jobs:
           CURRENT_VERSION="$(sed -nE 's/^[[:space:]]*AppVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' pkg/config/config.go | head -n 1)"
 
           if [ -z "$CURRENT_VERSION" ]; then
-            echo "No se pudo detectar AppVersion en pkg/config/config.go"
+            echo "Could not detect AppVersion"
             exit 1
           fi
 
@@ -150,57 +155,67 @@ jobs:
             VERSION="${REQUESTED_VERSION#v}"
 
             if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-              echo "VersiÃ³n no vÃ¡lida: $REQUESTED_VERSION"
-              echo "Usa un formato como 2.7.5 o 2.7.5-beta.1"
+              echo "Invalid version: $REQUESTED_VERSION"
               exit 1
             fi
 
-            echo "Aplicando versiÃ³n personalizada: $VERSION"
             go run scripts/setversion.go "$VERSION"
           else
             VERSION="$CURRENT_VERSION"
-            echo "No se indicÃ³ versiÃ³n. Se conserva la versiÃ³n de la rama: $VERSION"
+            echo "Keeping branch version: $VERSION"
           fi
 
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "La compilaciÃ³n usarÃ¡ TelegramDL $VERSION"
 
-      - name: Build Windows ZIP
+      # WINDOWS
+      - name: Build Windows
         if: matrix.target.platform == 'windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
           wails3 task build
-          test -f build/bin/TelegramDL.exe
-          mkdir -p dist
-          cp build/bin/TelegramDL.exe dist/
-          7z a "TelegramDL-Windows-${{ steps.version.outputs.value }}.zip" ./dist/TelegramDL.exe
 
+          if (!(Test-Path "build/bin/TelegramDL.exe")) {
+            throw "TelegramDL.exe not found"
+          }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "build/bin/TelegramDL.exe" "dist/TelegramDL.exe"
+
+      # LINUX
       - name: Build Linux AppImage
         if: matrix.target.platform == 'linux'
         shell: bash
         run: |
           set -euo pipefail
+
           wails3 task linux:create:appimage
+
           shopt -s nullglob
           files=(build/bin/*.AppImage)
+
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No se encontrÃ³ ningÃºn AppImage en build/bin"
-            find build/bin -maxdepth 1 -type f -print
+            echo "No AppImage found"
+            find build/bin -maxdepth 2 -type f -print
             exit 1
           fi
-          cp "${files[0]}" "TelegramDL-Linux-x86_64-${{ steps.version.outputs.value }}.AppImage"
 
+          mkdir -p dist
+          cp "${files[0]}" "dist/TelegramDL-Linux-x86_64-${{ steps.version.outputs.value }}.AppImage"
+
+      # MACOS
       - name: Build macOS DMG
         if: startsWith(matrix.target.platform, 'macos-')
         shell: bash
         run: |
           set -euo pipefail
+
           wails3 task darwin:package:dmg
+
           shopt -s nullglob
           files=(build/bin/*.dmg)
+
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No se encontrÃ³ ningÃºn DMG en build/bin"
+            echo "No DMG found"
             find build/bin -maxdepth 2 -type f -print
             exit 1
           fi
@@ -211,15 +226,14 @@ jobs:
             LABEL="Apple-Silicon"
           fi
 
-          cp "${files[0]}" "TelegramDL-macOS-${LABEL}-${{ steps.version.outputs.value }}.dmg"
+          mkdir -p dist
+          cp "${files[0]}" "dist/TelegramDL-macOS-${LABEL}-${{ steps.version.outputs.value }}.dmg"
 
+      # UPLOAD
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: TelegramDL-${{ matrix.target.platform }}-${{ steps.version.outputs.value }}
-          path: |
-            TelegramDL-*.zip
-            TelegramDL-*.AppImage
-            TelegramDL-*.dmg
+          path: dist/*
           if-no-files-found: error
           retention-days: 7
