@@ -31,6 +31,13 @@ export default defineConfig({
 					link: '/',
 				},
 				{
+					label: 'Descargar',
+					translations: {
+						en: 'Download',
+					},
+					link: '/download',
+				},
+				{
 					label: 'Guía de Inicio',
 					translations: {
 						en: 'Getting Started',
