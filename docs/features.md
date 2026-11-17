@@ -68,7 +68,18 @@ Desde la interfaz o a través de la API REST, puedes controlar cualquier tarea e
 - :material-stop: **Cancelar**: Cancela el contexto de red activo y marca la tarea como cancelada.
 - :material-refresh: **Reintentar**: Vuelve a poner en cola una descarga que haya fallado o sido cancelada.
 - :material-delete: **Borrar**: Permite eliminar el registro de la base de datos y, opcionalmente, borrar el archivo físico del disco.
+- :material-file-eye: **Abrir archivo**: Abre el archivo descargado directamente con la aplicación predeterminada de tu sistema operativo.
+- :material-folder-open: **Abrir carpeta**: Abre el explorador de archivos del sistema (Explorador de Windows, macOS Finder o gestor de archivos de Linux) directo en la carpeta donde se descargó el archivo.
 - :material-broom: **Limpiar Historial**: Limpia los registros completados, fallidos o cancelados sin tocar los archivos descargados.
+
+---
+
+## :material-drag-vertical: Reordenamiento de la Cola de Descargas
+
+En la lista de descargas activas y en cola, no estás limitado al orden inicial en el que agregaste los enlaces. Puedes ajustar la prioridad de descarga en cualquier momento:
+
+- **Arrastrar y soltar (Drag & Drop)**: Mantén pulsado el icono de agarre (asidero de reordenación) situado a la izquierda de cualquier tarea en cola y arrástrala a la nueva posición deseada.
+- **Prioridad en tiempo real**: Al soltar el elemento en su nueva posición, el sistema notifica al servidor (`POST /api/downloads/reorder`), reorganizando la secuencia de ejecución para que el primer elemento de la cola sea el siguiente en descargarse.
 
 ---
 

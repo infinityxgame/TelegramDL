@@ -13,8 +13,10 @@ flowchart TD
     Update[Nuevo Mensaje MTProto] --> CheckEnabled{¿Escucha Activada?}
     CheckEnabled -- No --> Ignore[Ignorar Mensaje]
     CheckEnabled -- Sí --> CheckOwn{¿Es Mensaje Propio?}
-    CheckOwn -- Sí --> Ignore
-    CheckOwn -- No --> CheckChat{¿Chat está en Lista de Vigilados?}
+    CheckOwn -- Sí --> CheckOwnEnabled{¿"Mis Mensajes" Activado?}
+    CheckOwnEnabled -- No --> Ignore
+    CheckOwnEnabled -- Sí --> CheckChat{¿Chat está en Lista de Vigilados?}
+    CheckOwn -- No --> CheckChat
     CheckChat -- No --> Ignore
     CheckChat -- Sí --> FilterCheck{¿Pasa Filtros Multimedia?}
     FilterCheck -- No --> Ignore
@@ -44,6 +46,11 @@ Cualquier archivo entrante que cumpla con los filtros seleccionados se envía in
 
 ### 2. Detección Manual (`AutoDownload = false`)
 Los archivos se registran en la pestaña **"Multimedia Detectada"** con estado disponible. Podrás revisar la lista con vista previa, tamaño y título, y decidir con un solo clic si deseas descargar elementos específicos o pulsar **"Descargar Todo"**.
+
+### 3. Captura de Mensajes Propios («Mis mensajes» / `listen_self`)
+Por defecto, TelegramDL ignora los mensajes salientes o enviados por tu propia cuenta (`out: true`) para evitar la descarga de archivos subidos por ti mismo. Sin embargo, para cada chat vigilado puedes activar el interruptor **«Mis mensajes»**:
+- **Desactivado (por defecto)**: Ignora cualquier archivo multimedia enviado desde tu propio usuario.
+- **Activado**: Procesa y descarga el contenido multimedia de los mensajes que envíes tú mismo. Esta función es ideal para canales o chats de **Mensajes guardados**, permitiéndote usar Telegram como canal personal para enviar archivos desde tu teléfono o cliente web y descargarlos automáticamente en tu ordenador.
 
 ---
 

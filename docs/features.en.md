@@ -68,7 +68,18 @@ From either the UI or the REST API, you can control any task at any time:
 - :material-stop: **Cancel**: Aborts active network context and marks the item as cancelled.
 - :material-refresh: **Retry**: Re-queues any failed or cancelled downloads.
 - :material-delete: **Delete**: Removes database records and optionally purges the file from disk.
+- :material-file-eye: **Open File**: Opens the downloaded file directly with your system's default application.
+- :material-folder-open: **Open Folder**: Opens your system file manager (Windows Explorer, macOS Finder, or Linux file manager) in the destination directory where the file was saved.
 - :material-broom: **Clear History**: Purges completed, failed, or cancelled records while preserving downloaded files.
+
+---
+
+## :material-drag-vertical: Download Queue Reordering
+
+In the active downloads list, you are not restricted to the initial order in which links were added. You can easily adjust download priority at any time:
+
+- **Drag & Drop**: Click and hold the grab handle (reorder icon) on the left side of any queued download and drag it to your preferred position in the list.
+- **Real-Time Priority Update**: Releasing the item immediately updates the queue on the server (`POST /api/downloads/reorder`), ensuring the top item in the queue is processed next.
 
 ---
 

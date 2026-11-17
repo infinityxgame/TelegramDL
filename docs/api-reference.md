@@ -54,11 +54,13 @@ Excepciones sin token: los públicos `/api/theme`, `/api/auth/has-credentials` y
   "delete_file": false
 }
 ```
-- **Abrir en Explorador**: `POST /api/open` con `{"id": "<uuid>"}`
+- **Abrir Archivo**: `POST /api/open` o `POST /api/downloads/open` con `{"id": "<uuid>"}`
+- **Abrir Carpeta**: `POST /api/downloads/open-folder` con `{"id": "<uuid>"}`
 
 ### 4. Control Masivo
 - `POST /api/downloads/pause-all`: Pausa todas las descargas activas.
 - `POST /api/downloads/resume-all`: Reanuda todas las descargas pausadas.
+- `POST /api/downloads/reorder`: Fija la prioridad de la cola. Recibe `{"ids": [...]}`; el primer ID es el siguiente en descargarse.
 - `POST /api/downloads/cancel-all`: Cancela todas las descargas activas y en cola.
 - `POST /api/clear-history`: Elimina del historial las descargas completadas, fallidas o canceladas.
 
@@ -68,7 +70,7 @@ Excepciones sin token: los públicos `/api/theme`, `/api/auth/has-credentials` y
 
 - **`GET /api/listener/items`**: Obtiene la lista de archivos detectados pendientes de descarga.
 - **`GET /api/listener/settings`**: Devuelve la configuración de chats vigilados y filtros activos.
-- **`POST /api/listener/settings`**: Actualiza los chats vigilados y sus filtros multimedia (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`).
+- **`POST /api/listener/settings`**: Actualiza los chats vigilados y sus filtros multimedia (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`, `listen_self`).
 - **`POST /api/listener/download`**: Encola un elemento detectado para descargarlo `{ "id": "<id>" }`.
 - **`POST /api/listener/clear`**: Limpia la lista de multimedia detectada.
 - **`POST /api/listener/resolve-chat`**: Resuelve un canal o grupo por su nombre de usuario o enlace `{ "query": "nombrecanal" }`.

@@ -54,7 +54,8 @@ Los siguientes endpoints pueden ser accedidos sin autenticación:
 ### 2. Rutas Adicionales de Descargas
 
 - **`DELETE /api/downloads/history`**: Elimina del historial las descargas completadas, fallidas o canceladas (alias para `/api/clear-history`).
-- **`POST /api/downloads/open`**: Abre una descarga en el explorador de archivos (alias para `/api/open`).
+- **`POST /api/downloads/open`**: Abre el archivo descargado con la aplicación predeterminada del sistema (alias para `/api/open`).
+- **`POST /api/downloads/open-folder`**: Abre la carpeta de destino en el explorador de archivos del sistema.
 - **`DELETE /api/downloads/{id}`**: Elimina una descarga específica por ID. Soporta parámetro `?delete_file=true` para borrar también el archivo físico.
 
 ### 3. Añadir Descarga (o Rango)
@@ -88,7 +89,8 @@ Los siguientes endpoints pueden ser accedidos sin autenticación:
 }
 ```
 
-- **Abrir en Explorador**: `POST /api/open` con `{"id": "<uuid>"}`
+- **Abrir Archivo**: `POST /api/open` o `POST /api/downloads/open` con `{"id": "<uuid>"}`
+- **Abrir Carpeta**: `POST /api/downloads/open-folder` con `{"id": "<uuid>"}`
 
 ### 5. Control Masivo
 
@@ -104,7 +106,7 @@ Los siguientes endpoints pueden ser accedidos sin autenticación:
 
 - **`GET /api/listener/items`**: Obtiene la lista de archivos detectados pendientes de descarga.
 - **`GET /api/listener/settings`**: Devuelve la configuración de chats vigilados y filtros activos.
-- **`POST /api/listener/settings`**: Actualiza los chats vigilados y sus filtros multimedia (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`).
+- **`POST /api/listener/settings`**: Actualiza los chats vigilados y sus filtros multimedia (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`, `listen_self`).
 - **`POST /api/listener/download`**: Encola un elemento detectado para descargarlo `{ "id": "<id>" }`.
 - **`POST /api/listener/clear`**: Limpia la lista de multimedia detectada.
 - **`POST /api/listener/delete`**: Elimina un elemento detectado `{ "id": "<id>" }`.

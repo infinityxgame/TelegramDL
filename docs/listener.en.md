@@ -13,8 +13,10 @@ flowchart TD
     Update[Incoming MTProto Message] --> CheckEnabled{Is Listener Enabled?}
     CheckEnabled -- No --> Ignore[Ignore Message]
     CheckEnabled -- Yes --> CheckOwn{Is Outgoing Own Message?}
-    CheckOwn -- Yes --> Ignore
-    CheckOwn -- No --> CheckChat{Is Chat in Monitored List?}
+    CheckOwn -- Yes --> CheckOwnEnabled{Is "Own Messages" Enabled?}
+    CheckOwnEnabled -- No --> Ignore
+    CheckOwnEnabled -- Yes --> CheckChat{Is Chat in Monitored List?}
+    CheckOwn -- No --> CheckChat
     CheckChat -- No --> Ignore
     CheckChat -- Yes --> FilterCheck{Matches Media Filters?}
     FilterCheck -- No --> Ignore
@@ -44,6 +46,11 @@ Any incoming media matching your filter criteria is immediately enqueued into th
 
 ### 2. Manual Detection (`AutoDownload = false`)
 Files are staged under the **"Detected Media"** tab with status `available`. You can inspect names, thumbnails, and file sizes, and selectively download items or click **"Download All"**.
+
+### 3. Monitoring Own Messages (`listen_self`)
+By default, TelegramDL ignores outgoing messages sent from your own account (`out: true`) to avoid re-downloading media you uploaded yourself. However, for each monitored chat you can enable the **«Mis mensajes» / "Own messages"** switch:
+- **Disabled (default)**: Ignores any media sent from your own logged-in account.
+- **Enabled**: Processes and downloads media attached to messages sent by yourself. This is ideal for personal channels or **Saved Messages**, allowing you to use Telegram as a drop zone to send files from your phone or web client and download them automatically on your computer.
 
 ---
 

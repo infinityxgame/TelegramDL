@@ -54,7 +54,8 @@ The following endpoints can be accessed without authentication:
 ### 2. Additional Download Routes
 
 - **`DELETE /api/downloads/history`**: Clear completed, failed, and cancelled records from history (alias for `/api/clear-history`).
-- **`POST /api/downloads/open`**: Open a download in file explorer (alias for `/api/open`).
+- **`POST /api/downloads/open`**: Open a downloaded file using system default application (alias for `/api/open`).
+- **`POST /api/downloads/open-folder`**: Open the destination folder in the system file manager.
 - **`DELETE /api/downloads/{id}`**: Delete a specific download by ID. Supports `?delete_file=true` parameter to also delete the physical file.
 
 ### 3. Add Download (or Range)
@@ -89,7 +90,8 @@ The following endpoints can be accessed without authentication:
 
 ```
 
-- **Open in File Explorer**: `POST /api/open` with `{"id": "<uuid>"}`
+- **Open File**: `POST /api/open` or `POST /api/downloads/open` with `{"id": "<uuid>"}`
+- **Open Folder**: `POST /api/downloads/open-folder` with `{"id": "<uuid>"}`
 
 ### 5. Batch Operations
 
@@ -105,7 +107,7 @@ The following endpoints can be accessed without authentication:
 
 - **`GET /api/listener/items`**: List pending detected media items.
 - **`GET /api/listener/settings`**: Fetch monitored chat rules and active media filters.
-- **`POST /api/listener/settings`**: Update monitored chats and filter flags (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`).
+- **`POST /api/listener/settings`**: Update monitored chats and filter flags (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`, `listen_self`).
 - **`POST /api/listener/download`**: Enqueue detected item `{ "id": "<id>" }`.
 - **`POST /api/listener/clear`**: Clear all detected media records.
 - **`POST /api/listener/delete`**: Delete a detected item `{ "id": "<id>" }`.

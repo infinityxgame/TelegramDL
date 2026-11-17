@@ -54,11 +54,13 @@ Exceptions without a token: the public `/api/theme`, `/api/auth/has-credentials`
   "delete_file": false
 }
 ```
-- **Open in File Explorer**: `POST /api/open` with `{"id": "<uuid>"}`
+- **Open File**: `POST /api/open` or `POST /api/downloads/open` with `{"id": "<uuid>"}`
+- **Open Folder**: `POST /api/downloads/open-folder` with `{"id": "<uuid>"}`
 
 ### 4. Batch Operations
 - `POST /api/downloads/pause-all`: Pause all active transfers.
 - `POST /api/downloads/resume-all`: Resume all paused transfers.
+- `POST /api/downloads/reorder`: Set the queue priority. Takes `{"ids": [...]}`; the first ID is the next one to download.
 - `POST /api/downloads/cancel-all`: Cancel all active and queued transfers.
 - `POST /api/clear-history`: Clear completed, failed, and cancelled records from history.
 
@@ -68,7 +70,7 @@ Exceptions without a token: the public `/api/theme`, `/api/auth/has-credentials`
 
 - **`GET /api/listener/items`**: List pending detected media items.
 - **`GET /api/listener/settings`**: Fetch monitored chat rules and active media filters.
-- **`POST /api/listener/settings`**: Update monitored chats and filter flags (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`).
+- **`POST /api/listener/settings`**: Update monitored chats and filter flags (`f_photos`, `f_videos`, `f_audios`, `f_docs`, `f_stickers`, `auto_download`, `listen_self`).
 - **`POST /api/listener/download`**: Enqueue detected item `{ "id": "<id>" }`.
 - **`POST /api/listener/clear`**: Clear all detected media records.
 - **`POST /api/listener/resolve-chat`**: Resolve channel or group by username or link `{ "query": "channelname" }`.
