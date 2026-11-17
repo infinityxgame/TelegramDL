@@ -110,6 +110,8 @@ func printUsage() {
 	fmt.Println(i18n.T("cli.usageUpdate"))
 	fmt.Println(i18n.T("cli.usageDownload"))
 	fmt.Println(i18n.T("cli.usageUrlArg"))
+	fmt.Println(i18n.T("cli.usageWS"))
+	fmt.Println(i18n.T("cli.usageNoIPv6"))
 }
 
 // getTelegramURLArgument detecta si algún argumento es una URL de Telegram

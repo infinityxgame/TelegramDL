@@ -65,3 +65,45 @@ func TestHaySesionGuardada(t *testing.T) {
 		t.Error("un ClientManager nil debe devolver false")
 	}
 }
+
+func TestShouldEnableWebSocket(t *testing.T) {
+	os.Unsetenv("TGDL_USE_WS")
+	os.Unsetenv("TGDL_WEBSOCKET")
+
+	if shouldEnableWebSocket() {
+		t.Error("shouldEnableWebSocket() debe ser false cuando no se pasa flag ni env var")
+	}
+
+	os.Setenv("TGDL_USE_WS", "1")
+	if !shouldEnableWebSocket() {
+		t.Error("shouldEnableWebSocket() debe ser true con TGDL_USE_WS=1")
+	}
+	os.Unsetenv("TGDL_USE_WS")
+
+	os.Setenv("TGDL_WEBSOCKET", "true")
+	if !shouldEnableWebSocket() {
+		t.Error("shouldEnableWebSocket() debe ser true con TGDL_WEBSOCKET=true")
+	}
+	os.Unsetenv("TGDL_WEBSOCKET")
+}
+
+func TestShouldDisableIPv6(t *testing.T) {
+	os.Unsetenv("TGDL_NO_IPV6")
+	os.Unsetenv("TGDL_DISABLE_IPV6")
+
+	if shouldDisableIPv6() {
+		t.Error("shouldDisableIPv6() debe ser false cuando no se pasa flag ni env var")
+	}
+
+	os.Setenv("TGDL_NO_IPV6", "1")
+	if !shouldDisableIPv6() {
+		t.Error("shouldDisableIPv6() debe ser true con TGDL_NO_IPV6=1")
+	}
+	os.Unsetenv("TGDL_NO_IPV6")
+
+	os.Setenv("TGDL_DISABLE_IPV6", "true")
+	if !shouldDisableIPv6() {
+		t.Error("shouldDisableIPv6() debe ser true con TGDL_DISABLE_IPV6=true")
+	}
+	os.Unsetenv("TGDL_DISABLE_IPV6")
+}

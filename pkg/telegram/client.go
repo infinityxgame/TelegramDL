@@ -22,6 +22,7 @@ import (
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 
@@ -868,6 +869,19 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		},
 	}
 
+	useNoIPv6 := shouldDisableIPv6()
+	if useNoIPv6 {
+		log.Printf("[TG CLIENT] %s", i18n.T("telegram.ipv6Disabled"))
+	}
+
+	useWS := shouldEnableWebSocket()
+	if useWS {
+		opts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
+		log.Printf("[TG CLIENT] %s", i18n.T("telegram.websocketEnabled"))
+	} else if useNoIPv6 {
+		opts.Resolver = dcs.Plain(dcs.PlainOptions{PreferIPv6: false})
+	}
+
 	client := telegram.NewClient(cm.apiID, cm.apiHash, opts)
 	cm.client = client
 	cm.rawClient = client.API()
@@ -882,42 +896,73 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		// Sin el API_ID: el registro se comparte en capturas y el identificador
 		// de la aplicación no aporta nada para diagnosticar.
 		log.Printf("[TG CLIENT] %s", i18n.T("telegram.connecting"))
-		err := client.Run(ctx, func(runCtx context.Context) error {
-			readyOnce.Do(func() {
-				close(readyChan)
-				go func() {
-					time.Sleep(300 * time.Millisecond)
-					_ = cm.FetchDialogs(context.Background())
-				}()
+
+		runClient := func(c *telegram.Client) error {
+			return c.Run(ctx, func(runCtx context.Context) error {
+				readyOnce.Do(func() {
+					close(readyChan)
+					go func() {
+						time.Sleep(300 * time.Millisecond)
+						_ = cm.FetchDialogs(context.Background())
+					}()
+				})
+
+				log.Printf("[TG CLIENT] %s", i18n.T("telegram.connected"))
+
+				// Los bloques de archivo salen por su propio grupo de conexiones.
+				// Se abre aquí, con la sesión ya conectada, y se cierra al salir de
+				// Run, que es cuando se cae la conexión o se cierra el programa.
+				cm.openDownloadPool()
+				defer cm.closeDownloadPool()
+
+				// Bucle de espera de autenticación para iniciar el manejador de actualizaciones (gaps)
+				for {
+					self, err := c.Self(runCtx)
+					if err == nil && self != nil {
+						log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
+						return gaps.Run(runCtx, c.API(), self.ID, updates.AuthOptions{
+							IsBot: false,
+						})
+					}
+
+					log.Printf("[TG CLIENT] %s", i18n.T("telegram.waitingAuth"))
+					select {
+					case <-runCtx.Done():
+						return runCtx.Err()
+					case <-time.After(5 * time.Second):
+						// Reintentar check de Self()
+					}
+				}
 			})
+		}
 
-			log.Printf("[TG CLIENT] %s", i18n.T("telegram.connected"))
+		err := runClient(client)
 
-			// Los bloques de archivo salen por su propio grupo de conexiones.
-			// Se abre aquí, con la sesión ya conectada, y se cierra al salir de
-			// Run, que es cuando se cae la conexión o se cierra el programa.
-			cm.openDownloadPool()
-			defer cm.closeDownloadPool()
-
-			// Bucle de espera de autenticación para iniciar el manejador de actualizaciones (gaps)
-			for {
-				self, err := client.Self(runCtx)
-				if err == nil && self != nil {
-					log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
-					return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{
-						IsBot: false,
-					})
-				}
-
-				log.Printf("[TG CLIENT] %s", i18n.T("telegram.waitingAuth"))
-				select {
-				case <-runCtx.Done():
-					return runCtx.Err()
-				case <-time.After(5 * time.Second):
-					// Reintentar check de Self()
-				}
+		// Fallback automático: si la conexión inicial falló sin haber logrado conectar y WebSocket
+		// no estaba activado explícitamente, se intenta conectar usando WebSocket transport (DPI bypass).
+		if err != nil && !errors.Is(err, context.Canceled) && !useWS {
+			isReady := false
+			select {
+			case <-readyChan:
+				isReady = true
+			default:
 			}
-		})
+
+			if !isReady && ctx.Err() == nil {
+				log.Printf("[TG CLIENT] %s", i18n.T("telegram.fallbackWebsocket", err))
+				fallbackOpts := opts
+				fallbackOpts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
+
+				cm.mu.Lock()
+				fallbackClient := telegram.NewClient(cm.apiID, cm.apiHash, fallbackOpts)
+				cm.client = fallbackClient
+				cm.rawClient = fallbackClient.API()
+				cm.mu.Unlock()
+
+				err = runClient(fallbackClient)
+			}
+		}
+
 		if err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("[TG CLIENT ERROR] %s", i18n.T("telegram.runError", err))
 		}
@@ -1282,4 +1327,42 @@ func (cm *ClientManager) Logout(ctx context.Context) error {
 	_ = os.Remove(cm.sessionPath)
 
 	return nil
+}
+
+// shouldEnableWebSocket comprueba si el usuario solicitó el transporte WebSocket
+// mediante argumentos de línea de comandos (--ws, --use-ws, --websocket) o variables
+// de entorno (TGDL_USE_WS=1, TGDL_WEBSOCKET=1).
+func shouldEnableWebSocket() bool {
+	if v := strings.TrimSpace(os.Getenv("TGDL_USE_WS")); v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") {
+		return true
+	}
+	if v := strings.TrimSpace(os.Getenv("TGDL_WEBSOCKET")); v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") {
+		return true
+	}
+	for _, arg := range os.Args[1:] {
+		a := strings.ToLower(strings.TrimSpace(arg))
+		if a == "--ws" || a == "-ws" || a == "/ws" || a == "--use-ws" || a == "--websocket" {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldDisableIPv6 comprueba si el usuario solicitó desactivar IPv6 mediante
+// argumentos de línea de comandos (--no-ipv6, --disable-ipv6) o variables de entorno
+// (TGDL_NO_IPV6=1, TGDL_DISABLE_IPV6=1).
+func shouldDisableIPv6() bool {
+	if v := strings.TrimSpace(os.Getenv("TGDL_NO_IPV6")); v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") {
+		return true
+	}
+	if v := strings.TrimSpace(os.Getenv("TGDL_DISABLE_IPV6")); v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") {
+		return true
+	}
+	for _, arg := range os.Args[1:] {
+		a := strings.ToLower(strings.TrimSpace(arg))
+		if a == "--no-ipv6" || a == "-no-ipv6" || a == "/no-ipv6" || a == "--disable-ipv6" {
+			return true
+		}
+	}
+	return false
 }
