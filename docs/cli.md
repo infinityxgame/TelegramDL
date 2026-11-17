@@ -22,6 +22,8 @@ TelegramDL.exe [opciones|URL]
 | `<URL>` | — | **Añadir Descarga Directa**: Pasa una URL de Telegram directamente. Si la app está abierta, se añade a la cola activa; si está cerrada, se abre e inicia la descarga. |
 | `--download <URL>` | `-d` | **Modo Descarga CLI Pura**: Ejecuta la descarga en la propia consola en modo texto sin abrir la interfaz gráfica. |
 | `--server` | `-s`, `/server` | **Modo Servidor Headless**: Inicia el servidor REST y WebSocket sin abrir ninguna ventana gráfica. |
+| **`--ws`** | `-ws`, `--use-ws` | **Bypass de Cortafuegos (WebSocket)**: Fuerza la conexión MTProto con Telegram mediante transporte WebSocket sobre HTTPS/WSS (puerto 443). |
+| **`--no-ipv6`** | `-no-ipv6`, `--disable-ipv6` | **Desactivar IPv6**: Desactiva las conexiones IPv6 a los servidores de Telegram, forzando tráfico IPv4 únicamente. |
 | `--update` | `-u`, `/update` | Comprueba si existe una versión más reciente en GitHub y la instala automáticamente. |
 | `--help` | `-h`, `/?` | Muestra el mensaje de ayuda con la sintaxis de uso en consola. |
 
@@ -103,3 +105,40 @@ TelegramDL implementa un mecanismo de bloqueo inteligente y comunicación entre 
 - Si intentas abrir una segunda instancia sin argumentos, el sistema detecta que la aplicación ya está abierta y finaliza ordenadamente.
 - Si pasas una URL como argumento mientras la app está abierta, la segunda instancia no se abre duplicada: se limita a enviar la descarga a la instancia activa vía IPC HTTP local y termina su ejecución notificando el éxito en consola.
 - Al actualizarse, el nuevo proceso espera hasta 8 segundos para que el proceso anterior libere el bloqueo antes de tomar el relevo.
+
+---
+
+## :material-shield-network: Bypass de Cortafuegos y Opciones de Red (WebSocket / IPv6)
+
+En entornos de red restrictivos (empresas, universidades o redes corporativas), los cortafuegos con inspección profunda de paquetes (DPI) suelen bloquear las conexiones binarias MTProto estándar. Para solucionar esto, TelegramDL incluye soporte nativo para transporte WebSocket y desactivación de IPv6:
+
+### Opciones por Consola:
+
+```bash
+# Forzar conexión por WebSocket (puerto 443 HTTPS/WSS)
+TelegramDL.exe --ws
+
+# Desactivar conexiones IPv6 (usar solo IPv4)
+TelegramDL.exe --no-ipv6
+
+# Combinar ambos flags
+TelegramDL.exe --ws --no-ipv6
+```
+
+### Variables de Entorno y `.env`:
+
+```env
+# Activar transporte WebSocket para saltar cortafuegos DPI
+TGDL_USE_WS=1
+
+# Desactivar IPv6 para evitar timeouts en redes con IPv6 mal configurado
+TGDL_NO_IPV6=1
+```
+
+### Fallback Automático:
+
+Si ejecutas TelegramDL sin ningún flag especial en una red corporativa que bloquee MTProto plano:
+1. El programa intentará primero la conexión MTProto estándar.
+2. Si la conexión falla o sufre un *timeout* por bloqueo DPI, TelegramDL captura el error automáticamente.
+3. Se reintenta de forma transparente la conexión mediante transporte WebSocket (`dcs.Websocket`), permitiendo iniciar sesión y descargar sin intervención manual ni tener que volver a loguearse.
+

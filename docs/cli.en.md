@@ -20,6 +20,8 @@ TelegramDL.exe [options]
 | :--- | :--- | :--- |
 | *(no arguments)* | — | Starts the full desktop application with the Wails GUI window. |
 | `--server` | `-s`, `/server` | **Headless Server Mode**: Starts the REST and WebSocket service without opening a window. |
+| **`--ws`** | `-ws`, `--use-ws` | **Firewall Bypass (WebSocket)**: Forces MTProto connection over encrypted WebSocket transport via HTTPS/WSS (port 443). |
+| **`--no-ipv6`** | `-no-ipv6`, `--disable-ipv6` | **Disable IPv6**: Disables IPv6 connections to Telegram servers, forcing IPv4 only. |
 | `--update` | `-u`, `/update` | Checks for newer releases on GitHub and self-updates the binary. |
 | `--help` | `-h`, `/?` | Prints usage information and exit. |
 
@@ -66,3 +68,40 @@ TelegramDL implements single-instance mutual exclusion to ensure database and so
 
 - Launching a second instance while one is already running triggers an alert and exits gracefully without corrupting SQLite or failing on port collisions.
 - During self-updates, the spawned replacement binary waits up to 8 seconds for the parent process to relinquish the instance lock before binding.
+
+---
+
+## :material-shield-network: Firewall Bypass & Network Options (WebSocket / IPv6)
+
+In restrictive network environments (corporate offices, universities, or public Wi-Fi), firewalls with Deep Packet Inspection (DPI) often drop standard binary MTProto packets. TelegramDL features built-in WebSocket transport and IPv6 control to bypass these restrictions seamlessly:
+
+### Command Line Flags:
+
+```bash
+# Force WebSocket transport over HTTPS/WSS (port 443)
+TelegramDL.exe --ws
+
+# Disable IPv6 connections (IPv4 only)
+TelegramDL.exe --no-ipv6
+
+# Combine both options
+TelegramDL.exe --ws --no-ipv6
+```
+
+### Environment Variables & `.env`:
+
+```env
+# Enable WebSocket transport for DPI firewall bypass
+TGDL_USE_WS=1
+
+# Disable IPv6 to prevent network timeouts
+TGDL_NO_IPV6=1
+```
+
+### Automatic Fallback:
+
+If you launch TelegramDL without flags in a network where direct MTProto is blocked:
+1. The app first attempts a standard MTProto connection.
+2. If the connection times out due to DPI blocking, TelegramDL automatically catches the network error.
+3. It transparently retries connecting via WebSocket (`dcs.Websocket`), restoring full session connectivity without requiring manual flags or re-login.
+

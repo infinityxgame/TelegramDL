@@ -25,6 +25,8 @@ TelegramDL.exe [options|URL]
 | `<URL>` | — | **Direct Download**: Pass a Telegram link directly. If the app is open, it enqueues to the active instance; if closed, it launches the app and queues the download. |
 | `--download <URL>` | `-d` | **Pure CLI Download Mode**: Downloads the link directly in terminal text mode without launching a GUI or web server. |
 | `--server` | `-s`, `/server` | **Headless Server Mode**: Starts the REST and WebSocket service without opening a window. |
+| **`--ws`** | `-ws`, `--use-ws` | **Firewall Bypass (WebSocket)**: Forces MTProto connection over encrypted WebSocket transport via HTTPS/WSS (port 443). |
+| **`--no-ipv6`** | `-no-ipv6`, `--disable-ipv6` | **Disable IPv6**: Disables IPv6 connections to Telegram servers, forcing IPv4 only. |
 | `--update` | `-u`, `/update` | Checks for newer releases on GitHub and self-updates the binary. |
 | `--help` | `-h`, `/?` | Prints usage information and exit. |
 
@@ -109,3 +111,42 @@ TelegramDL implements single-instance mutual exclusion and inter-process communi
 - Launching a second instance without arguments detects the active application and exits gracefully.
 - Passing a URL argument while the app is open sends the download payload to the active instance via local HTTP IPC and exits after confirming success in the console.
 - During self-updates, the spawned replacement binary waits up to 8 seconds for the parent process to relinquish the instance lock before binding.
+
+---
+
+## Firewall Bypass & Network Options (WebSocket / IPv6)
+
+In restrictive network environments (corporate offices, universities, or public Wi-Fi), firewalls with Deep Packet Inspection (DPI) often drop standard binary MTProto packets. TelegramDL features built-in WebSocket transport and IPv6 control to bypass these restrictions seamlessly:
+
+### Command Line Flags
+
+```bash
+# Force WebSocket transport over HTTPS/WSS (port 443)
+TelegramDL.exe --ws
+
+# Disable IPv6 connections (IPv4 only)
+TelegramDL.exe --no-ipv6
+
+# Combine both options
+TelegramDL.exe --ws --no-ipv6
+```
+
+### Environment Variables & `.env`
+
+You can also enable these options persistently using environment variables or adding them to your `.env` file in the data folder (`~/.tgdown/.env`):
+
+```env
+# Enable WebSocket transport for DPI firewall bypass
+TGDL_USE_WS=1
+
+# Disable IPv6 to prevent network timeouts
+TGDL_NO_IPV6=1
+```
+
+### Automatic Fallback
+
+If you launch TelegramDL without flags in a network where direct MTProto is blocked:
+1. The app first attempts a standard MTProto connection.
+2. If the connection times out due to DPI blocking, TelegramDL automatically catches the network error.
+3. It transparently retries connecting via WebSocket (`dcs.Websocket`), restoring full session connectivity without requiring manual flags or re-login.
+
