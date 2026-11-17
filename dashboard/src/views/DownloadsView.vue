@@ -522,7 +522,9 @@ const allActivePaused = computed(() => {
             </div>
             <div class="row-actions">
               <AppButton
-                v-if="['downloading', 'queued'].includes(item.status)"
+                v-if="
+                  ['downloading', 'queued', 'pending'].includes(item.status)
+                "
                 variant="text"
                 tone="warning"
                 class="pause-action"
@@ -541,6 +543,7 @@ const allActivePaused = computed(() => {
               </AppButton>
               <AppButton
                 variant="text"
+                class="cancel-action"
                 @click="emit('cancel-download', item.id)"
               >
                 <X :size="12" /> {{ t('downloads.cancel') }}

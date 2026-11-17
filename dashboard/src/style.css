@@ -680,7 +680,7 @@ html.theme-light select option {
   border-radius: 4px;
   color: var(--user-text-dim);
   cursor: grab;
-  opacity: 0.6;
+  opacity: 0;
   user-select: none;
   transition:
     opacity 0.2s ease,
@@ -791,6 +791,8 @@ html.theme-light select option {
   padding: 6px 10px;
   border-radius: 8px;
   white-space: nowrap;
+  min-width: 88px;
+  justify-content: center;
 }
 .download-row .row-actions button:hover {
   background: var(--user-surface-light);
