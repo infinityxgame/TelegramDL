@@ -35,6 +35,7 @@ export default {
     tagline: 'Personal download center',
     soundLabel: 'App sound',
     botLabel: 'Bot alerts',
+    closeLabel: 'Close when done',
     stateOn: 'Enabled',
     stateOff: 'Disabled',
     shutdownLabel: 'Power off when done',

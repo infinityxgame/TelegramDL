@@ -132,6 +132,7 @@ const settings = reactive({
   bot_notifications: false,
   bot_file_naming_mode: 'auto',
   shutdown_when_done: false,
+  close_when_done: false,
   language: ''
 })
 
@@ -249,7 +250,8 @@ const syncSettings = async (nextSettings) => {
   // anterior a que el autoguardado suba el valor nuevo.
   if (userChangingSidebar) {
     // eslint-disable-next-line no-unused-vars
-    const { sound_notification, bot_notifications, ...rest } = nextSettings
+    const { sound_notification, bot_notifications, close_when_done, ...rest } =
+      nextSettings
     Object.assign(settings, rest)
   } else {
     Object.assign(settings, nextSettings)
@@ -1372,9 +1374,8 @@ onUnmounted(() => {
         </div>
 
         <div class="sidebar-footer">
-          <!-- Notificaciones: dos botones de solo icono, uno junto al otro (el
-               sidebar no da para texto). El hover explica qué es cada uno y en
-               qué estado está, y el color de acento marca el encendido. -->
+          <!-- Notificaciones y acciones rápidas: tres botones de solo icono en una misma línea.
+               El hover explica qué es cada uno y en qué estado está, y el color de acento marca el encendido. -->
           <div class="sidebar-notifications">
             <button
               type="button"
@@ -1407,6 +1408,22 @@ onUnmounted(() => {
               @click="toggleSidebarSetting('bot_notifications')"
             >
               <Bot :size="16" />
+            </button>
+            <button
+              type="button"
+              class="sidebar-toggle"
+              :class="{ armed: settings.close_when_done }"
+              :title="
+                sidebarToggleTip(
+                  t('sidebar.closeLabel'),
+                  settings.close_when_done
+                )
+              "
+              :aria-label="t('sidebar.closeLabel')"
+              :aria-pressed="settings.close_when_done"
+              @click="toggleSidebarSetting('close_when_done')"
+            >
+              <LogOut :size="16" />
             </button>
           </div>
 
@@ -2203,7 +2220,7 @@ onUnmounted(() => {
    tarjeta de apagado armada. El tooltip (title) dice qué es y si está activo. */
 .sidebar-notifications {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 14px;
 }
 .sidebar-toggle {

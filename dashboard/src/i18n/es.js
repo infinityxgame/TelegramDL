@@ -36,6 +36,7 @@ export default {
     tagline: 'Centro de descargas personal',
     soundLabel: 'Sonido de la app',
     botLabel: 'Avisos del bot',
+    closeLabel: 'Cerrar al terminar',
     stateOn: 'Activado',
     stateOff: 'Desactivado',
     shutdownLabel: 'Apagar al terminar',

@@ -15,6 +15,8 @@ var messagesES = map[string]string{
 	"system.shutdownCancelledActivity": "La cola de descargas volvió a tener actividad",
 	"system.shutdownScheduled":         "Cola de descargas terminada: el equipo se apagará en %d segundos",
 	"system.shutdownScheduledHint":     "Desactiva el interruptor «Apagar al terminar» para cancelarlo",
+	"system.closeScheduled":            "Cola de descargas terminada",
+	"system.closeScheduledDetail":      "Cerrando la aplicación por ajuste «Cerrar al terminar»",
 	"system.shuttingDown":              "Apagando el equipo",
 	"system.shuttingDownDetail":        "La cola de descargas terminó con el apagado automático armado",
 	"system.shutdownError":             "No se pudo apagar el equipo",

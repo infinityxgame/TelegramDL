@@ -14,6 +14,8 @@ var messagesEN = map[string]string{
 	"system.shutdownCancelledActivity": "The download queue has activity again",
 	"system.shutdownScheduled":         "Download queue finished: the computer will shut down in %d seconds",
 	"system.shutdownScheduledHint":     `Turn off the "Power off when done" switch to cancel it`,
+	"system.closeScheduled":            "Download queue finished",
+	"system.closeScheduledDetail":      `Closing application due to "Close when done" setting`,
 	"system.shuttingDown":              "Shutting the computer down",
 	"system.shuttingDownDetail":        "The download queue finished with the automatic shutdown armed",
 	"system.shutdownError":             "Could not shut down the computer",

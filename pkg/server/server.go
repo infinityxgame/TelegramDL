@@ -2717,6 +2717,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.ShutdownWhenDone = b
 		}
 	}
+	if v, ok := raw["close_when_done"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.CloseWhenDone = b
+		}
+	}
 	if v, ok := raw["download_folder"]; ok && v != nil {
 		if sVal, ok := v.(string); ok && strings.TrimSpace(sVal) != "" {
 			// Se descarta en silencio una carpeta prohibida en vez de aplicarla:
@@ -3996,9 +4001,10 @@ func (s *Server) watchShutdownWhenDone(item storage.DownloadItem) {
 func (s *Server) maybeScheduleShutdown() {
 	s.mu.RLock()
 	armed := s.config.ShutdownWhenDone
+	closeWhenDone := s.config.CloseWhenDone
 	botNotifications := s.config.BotNotifications
 	s.mu.RUnlock()
-	if !armed && !botNotifications {
+	if !armed && !closeWhenDone && !botNotifications {
 		return
 	}
 
@@ -4043,7 +4049,24 @@ func (s *Server) maybeScheduleShutdown() {
 		s.mu.Lock()
 	}
 
-	if armed {
+	if closeWhenDone && !armed {
+		s.config.CloseWhenDone = false
+		s.mu.Unlock()
+
+		logbus.Warn(logbus.CatSystem,
+			i18n.T("system.closeScheduled"),
+			i18n.T("system.closeScheduledDetail"))
+		s.triggerBroadcast()
+
+		go func() {
+			time.Sleep(1500 * time.Millisecond)
+			if s.exitCallback != nil {
+				s.exitCallback()
+			} else {
+				os.Exit(0)
+			}
+		}()
+	} else if armed {
 		s.shutdownDeadline = time.Now().Add(shutdownDelay)
 		s.shutdownTimer = time.AfterFunc(shutdownDelay, s.executeScheduledShutdown)
 		s.mu.Unlock()
