@@ -4050,7 +4050,6 @@ func (s *Server) maybeScheduleShutdown() {
 	}
 
 	if closeWhenDone && !armed {
-		s.config.CloseWhenDone = false
 		s.mu.Unlock()
 
 		logbus.Warn(logbus.CatSystem,

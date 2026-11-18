@@ -206,7 +206,7 @@ type Config struct {
 	ShutdownWhenDone bool `json:"shutdown_when_done"`
 	// CloseWhenDone es el interruptor «Cerrar al terminar»: con él armado, al
 	// quedarse la cola de descargas vacía el servidor cierra la aplicación.
-	// Es un ajuste de sesión: no se persiste en SQLite.
+	// Esta configuración se persiste en SQLite.
 	CloseWhenDone bool `json:"close_when_done"`
 	// SoundNotification controla si suena un sonido al terminar una descarga.
 	// A diferencia de ShutdownWhenDone, esta configuración sí se persiste y
