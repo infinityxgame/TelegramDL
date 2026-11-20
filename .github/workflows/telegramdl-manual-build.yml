@@ -182,25 +182,22 @@ jobs:
           Copy-Item "build/bin/TelegramDL.exe" "dist/TelegramDL.exe"
 
       # LINUX
-      - name: Build Linux AppImage
+      - name: Build Linux
         if: matrix.target.platform == 'linux'
         shell: bash
         run: |
           set -euo pipefail
 
-          wails3 task linux:create:appimage
+          wails3 task build
 
-          shopt -s nullglob
-          files=(build/bin/*.AppImage)
-
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No AppImage found"
+          if [ ! -f "build/bin/TelegramDL" ]; then
+            echo "Binary not found in build/bin/TelegramDL"
             find build/bin -maxdepth 2 -type f -print
             exit 1
           fi
 
           mkdir -p dist
-          cp "${files[0]}" "dist/TelegramDL-Linux-x86_64-${{ steps.version.outputs.value }}.AppImage"
+          tar -czf "dist/TelegramDL-Linux-x86_64-${{ steps.version.outputs.value }}.tar.gz" -C build/bin TelegramDL
 
       # MACOS
       - name: Build macOS DMG
