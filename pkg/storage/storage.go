@@ -678,6 +678,29 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 	if val, ok := kv["bot_file_naming_mode"]; ok && val != "" {
 		cfg.BotFileNamingMode = val
 	}
+	if val, ok := kv["proxy_enabled"]; ok {
+		cfg.ProxyEnabled = val == "1" || val == "true"
+	}
+	if val, ok := kv["proxy_type"]; ok && val != "" {
+		cfg.ProxyType = val
+	}
+	if val, ok := kv["proxy_host"]; ok {
+		cfg.ProxyHost = val
+	}
+	if val, ok := kv["proxy_port"]; ok {
+		if n, err := strconv.Atoi(val); err == nil {
+			cfg.ProxyPort = n
+		}
+	}
+	if val, ok := kv["proxy_username"]; ok {
+		cfg.ProxyUsername = val
+	}
+	if val, ok := kv["proxy_password"]; ok {
+		cfg.ProxyPassword = val
+	}
+	if val, ok := kv["proxy_secret"]; ok {
+		cfg.ProxySecret = val
+	}
 
 	// Cargar listener_chats
 	chatRows, err := s.db.Query("SELECT chat_id, topic_id, topic_name, name, folder, topic_folder, auto_download, listen_self, f_photos, f_videos, f_audios, f_docs, f_stickers, name_mode FROM listener_chats ORDER BY chat_id, topic_id")
@@ -797,6 +820,13 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"notification_chat_id":     strconv.FormatInt(cfg.NotificationChatID, 10),
 		"bot_notifications":        strconv.FormatBool(cfg.BotNotifications),
 		"bot_file_naming_mode":     cfg.BotFileNamingMode,
+		"proxy_enabled":            strconv.FormatBool(cfg.ProxyEnabled),
+		"proxy_type":               cfg.ProxyType,
+		"proxy_host":               cfg.ProxyHost,
+		"proxy_port":               strconv.Itoa(cfg.ProxyPort),
+		"proxy_username":           cfg.ProxyUsername,
+		"proxy_password":           cfg.ProxyPassword,
+		"proxy_secret":             cfg.ProxySecret,
 	}
 
 	if cfg.NotificationTopicID != nil {

@@ -1372,6 +1372,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/settings/speed", s.handleSpeedLimit)
 	mux.HandleFunc("/api/settings/speed-limit", s.handleSpeedLimit)
+	mux.HandleFunc("/api/proxy/test", s.handleProxyTest)
 
 	// Notifications
 	mux.HandleFunc("/api/notifications/test", s.handleNotificationTest)
@@ -2818,6 +2819,39 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.BotFileNamingMode = sVal
 		}
 	}
+	if v, ok := raw["proxy_enabled"]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			cfg.ProxyEnabled = b
+		}
+	}
+	if v, ok := raw["proxy_type"]; ok && v != nil {
+		if sVal, ok := v.(string); ok {
+			cfg.ProxyType = sVal
+		}
+	}
+	if v, ok := raw["proxy_host"]; ok && v != nil {
+		if sVal, ok := v.(string); ok {
+			cfg.ProxyHost = sVal
+		}
+	}
+	if v, ok := raw["proxy_port"]; ok && v != nil {
+		cfg.ProxyPort = int(config.ParseInt64(v))
+	}
+	if v, ok := raw["proxy_username"]; ok && v != nil {
+		if sVal, ok := v.(string); ok {
+			cfg.ProxyUsername = sVal
+		}
+	}
+	if v, ok := raw["proxy_password"]; ok && v != nil {
+		if sVal, ok := v.(string); ok {
+			cfg.ProxyPassword = sVal
+		}
+	}
+	if v, ok := raw["proxy_secret"]; ok && v != nil {
+		if sVal, ok := v.(string); ok {
+			cfg.ProxySecret = sVal
+		}
+	}
 
 	cfg = config.NormalizeConfig(cfg)
 
@@ -2855,6 +2889,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.downloader.UpdateConfig(cfg)
 	s.listener.UpdateConfig(cfg)
+	if s.clientMgr != nil {
+		s.clientMgr.SetProxyConfig(cfg)
+	}
 	s.restartBotListener()
 	s.broadcastState()
 	if s.onConfigChange != nil {
@@ -2870,6 +2907,74 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, map[string]any{
 		"status":   "ok",
 		"settings": maskedCfg,
+	})
+}
+
+// handleProxyTest comprueba la conectividad y latencia de un proxy
+func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	var req struct {
+		ProxyType     string `json:"proxy_type"`
+		ProxyHost     string `json:"proxy_host"`
+		ProxyPort     int    `json:"proxy_port"`
+		ProxyUsername string `json:"proxy_username"`
+		ProxyPassword string `json:"proxy_password"`
+		ProxySecret   string `json:"proxy_secret"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		s.errorResponse(w, http.StatusUnprocessableEntity, i18n.T("server.invalidConfig"))
+		return
+	}
+
+	// Si los campos vienen vacíos, usar los de la configuración guardada
+	s.mu.RLock()
+	pType := req.ProxyType
+	if pType == "" {
+		pType = s.config.ProxyType
+	}
+	pHost := req.ProxyHost
+	if pHost == "" {
+		pHost = s.config.ProxyHost
+	}
+	pPort := req.ProxyPort
+	if pPort == 0 {
+		pPort = s.config.ProxyPort
+	}
+	pUser := req.ProxyUsername
+	if pUser == "" {
+		pUser = s.config.ProxyUsername
+	}
+	pPass := req.ProxyPassword
+	if pPass == "" {
+		pPass = s.config.ProxyPassword
+	}
+	pSec := req.ProxySecret
+	if pSec == "" {
+		pSec = s.config.ProxySecret
+	}
+	s.mu.RUnlock()
+
+	active, pingMs, err := telegram.TestProxy(pType, pHost, pPort, pUser, pPass, pSec)
+	if err != nil {
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status":  "ok",
+			"active":  false,
+			"ping_ms": 0,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]any{
+		"status":  "ok",
+		"active":  active,
+		"ping_ms": pingMs,
+		"error":   "",
 	})
 }
 

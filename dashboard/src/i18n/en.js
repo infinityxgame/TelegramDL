@@ -515,7 +515,25 @@ export default {
     detectError:
       'Could not detect the chat. Make sure to send /start to your bot.',
     testError: 'Could not send the test message.',
-    invalidToken: 'Invalid token. It must be in format id:hash.'
+    invalidToken: 'Invalid token. It must be in format id:hash.',
+    proxyTitle: 'Proxy Settings',
+    proxySub: 'Connect through a SOCKS5, MTProto, or HTTP proxy',
+    proxyEnabled: 'Use Proxy',
+    proxyType: 'Proxy Type',
+    proxyHost: 'Server / Host',
+    proxyPort: 'Port',
+    proxyUsername: 'Username (optional)',
+    proxyPassword: 'Password (optional)',
+    proxySecret: 'Secret',
+    proxyTest: 'Check availability',
+    proxyTesting: 'Checking…',
+    proxyActive: 'Available ({ping} ms)',
+    proxyInactive: 'Unreachable',
+    proxyModalTitle: 'Proxy Settings',
+    proxyModalSub: 'Configure a proxy for Telegram connection',
+    proxyModalSave: 'Save & Apply',
+    proxyDisabled: 'Proxy disabled',
+    proxySaved: 'Proxy settings saved'
   },
 
   folder: {
@@ -571,6 +589,9 @@ export default {
     connectedAs: 'Connected as',
     successFallback: 'Your Telegram session is ready and active.',
     goDashboard: 'Go to Dashboard',
+    proxyBtn: 'Proxy',
+    proxyActiveTooltip: 'Proxy active ({ping} ms)',
+    proxyInactiveTooltip: 'Proxy unreachable',
     errFillBoth: 'Please fill in both the API ID and the API HASH',
     errApiIdFormat: 'The API ID must contain only digits (e.g. 12345678)',
     errApiHashFormat:

@@ -9,8 +9,10 @@ import {
   ArrowRight,
   ArrowLeft,
   Loader2,
-  Info
+  Info,
+  Radio
 } from '../icons'
+import ProxyModal from './ProxyModal.vue'
 import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
 import { openExternal } from '../composables/useExternalLink'
 import { useI18n } from '../i18n'
@@ -28,10 +30,16 @@ const props = defineProps({
   authStatus: {
     type: Object,
     required: true
+  },
+  settings: {
+    type: Object,
+    default: () => ({})
   }
 })
 
-const emit = defineEmits(['auth-success'])
+const emit = defineEmits(['auth-success', 'update:settings', 'save-settings'])
+
+const showProxyModal = ref(false)
 
 // Paso que dicta el servidor segun el estado real de la sesion de Telegram.
 const serverStep = computed(() => {
@@ -314,29 +322,43 @@ const cancelBack = () => {
           <h2>{{ t('auth.title') }}</h2>
           <p>{{ t('auth.subtitle') }}</p>
         </div>
-        <label
-          class="lang-switch-toggle"
-          :title="locale === 'es' ? 'Switch to English' : 'Cambiar a Español'"
-        >
-          <input
-            type="checkbox"
-            :checked="locale === 'en'"
-            @change="setLocale(locale === 'es' ? 'en' : 'es')"
-          />
-          <span class="lang-switch-track">
-            <span
-              class="lang-switch-label left"
-              :class="{ active: locale === 'es' }"
-              >ES</span
-            >
-            <span
-              class="lang-switch-label right"
-              :class="{ active: locale === 'en' }"
-              >EN</span
-            >
-            <span class="lang-switch-thumb"></span>
-          </span>
-        </label>
+        <div class="header-controls">
+          <button
+            type="button"
+            class="proxy-badge-btn"
+            :class="{ enabled: settings?.proxy_enabled }"
+            :title="t('settings.proxyModalTitle')"
+            @click="showProxyModal = true"
+          >
+            <Radio :size="15" />
+            <span>{{ t('auth.proxyBtn') }}</span>
+            <span v-if="settings?.proxy_enabled" class="status-dot"></span>
+          </button>
+
+          <label
+            class="lang-switch-toggle"
+            :title="locale === 'es' ? 'Switch to English' : 'Cambiar a Español'"
+          >
+            <input
+              type="checkbox"
+              :checked="locale === 'en'"
+              @change="setLocale(locale === 'es' ? 'en' : 'es')"
+            />
+            <span class="lang-switch-track">
+              <span
+                class="lang-switch-label left"
+                :class="{ active: locale === 'es' }"
+                >ES</span
+              >
+              <span
+                class="lang-switch-label right"
+                :class="{ active: locale === 'en' }"
+                >EN</span
+              >
+              <span class="lang-switch-thumb"></span>
+            </span>
+          </label>
+        </div>
       </div>
 
       <!-- Stepper -->
@@ -668,6 +690,14 @@ const cancelBack = () => {
         </button>
       </div>
     </div>
+
+    <ProxyModal
+      :show="showProxyModal"
+      :settings="settings"
+      @close="showProxyModal = false"
+      @update:settings="(p) => emit('update:settings', p)"
+      @save="(p) => emit('save-settings', p)"
+    />
   </div>
 </template>
 
@@ -699,6 +729,48 @@ const cancelBack = () => {
   align-items: center;
   gap: 12px;
   margin-bottom: 24px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.proxy-badge-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--user-text-muted, #9ca3af);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.proxy-badge-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--user-text, #ffffff);
+  border-color: var(--user-accent, #3b82f6);
+}
+
+.proxy-badge-btn.enabled {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.proxy-badge-btn .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #34d399;
+  box-shadow: 0 0 6px #34d399;
 }
 
 .auth-title-box {

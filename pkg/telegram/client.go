@@ -6,10 +6,12 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,6 +27,7 @@ import (
 	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
+	"golang.org/x/net/proxy"
 
 	"tgdown/pkg/config"
 	"tgdown/pkg/i18n"
@@ -84,6 +87,14 @@ type ClientManager struct {
 	chatNames            map[int64]string
 	chatUsernames        map[int64]string
 	onGenericMessage     func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
+
+	proxyEnabled  bool
+	proxyType     string
+	proxyHost     string
+	proxyPort     int
+	proxyUsername string
+	proxyPassword string
+	proxySecret   string
 }
 
 // maxAccessHashEntries acota el tamaño de los mapas de access hash de
@@ -394,6 +405,34 @@ func NewClientManager() *ClientManager {
 		dcClients:           make(map[int]*tg.Client),
 	}
 	return cm
+}
+
+func (cm *ClientManager) SetProxyConfig(cfg config.Config) {
+	cm.mu.Lock()
+	changed := cm.proxyEnabled != cfg.ProxyEnabled ||
+		cm.proxyType != cfg.ProxyType ||
+		cm.proxyHost != cfg.ProxyHost ||
+		cm.proxyPort != cfg.ProxyPort ||
+		cm.proxyUsername != cfg.ProxyUsername ||
+		cm.proxyPassword != cfg.ProxyPassword ||
+		cm.proxySecret != cfg.ProxySecret
+
+	cm.proxyEnabled = cfg.ProxyEnabled
+	cm.proxyType = cfg.ProxyType
+	cm.proxyHost = cfg.ProxyHost
+	cm.proxyPort = cfg.ProxyPort
+	cm.proxyUsername = cfg.ProxyUsername
+	cm.proxyPassword = cfg.ProxyPassword
+	cm.proxySecret = cfg.ProxySecret
+
+	apiID := cm.apiID
+	apiHash := cm.apiHash
+	cm.mu.Unlock()
+
+	if changed && apiID != 0 && apiHash != "" {
+		log.Printf("[TG CLIENT] Reconfigurando cliente por cambio de proxy...")
+		_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+	}
 }
 
 func GetPyrogramCredentials() (string, error) {
@@ -869,17 +908,74 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		},
 	}
 
-	useNoIPv6 := shouldDisableIPv6()
-	if useNoIPv6 {
-		log.Printf("[TG CLIENT] %s", i18n.T("telegram.ipv6Disabled"))
-	}
-
 	useWS := shouldEnableWebSocket()
-	if useWS {
-		opts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
-		log.Printf("[TG CLIENT] %s", i18n.T("telegram.websocketEnabled"))
-	} else if useNoIPv6 {
-		opts.Resolver = dcs.Plain(dcs.PlainOptions{PreferIPv6: false})
+
+	pEnabled := cm.proxyEnabled
+	pType := cm.proxyType
+	pHost := cm.proxyHost
+	pPort := cm.proxyPort
+	pUser := cm.proxyUsername
+	pPass := cm.proxyPassword
+	pSec := cm.proxySecret
+
+	if pEnabled && strings.TrimSpace(pHost) != "" && pPort > 0 {
+		proxyAddr := net.JoinHostPort(strings.TrimSpace(pHost), strconv.Itoa(pPort))
+		switch strings.ToLower(strings.TrimSpace(pType)) {
+		case "socks5":
+			var auth *proxy.Auth
+			if pUser != "" || pPass != "" {
+				auth = &proxy.Auth{User: pUser, Password: pPass}
+			}
+			dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: 10 * time.Second})
+			if err == nil {
+				var dialFunc dcs.DialFunc
+				if cd, ok := dialer.(proxy.ContextDialer); ok {
+					dialFunc = cd.DialContext
+				} else {
+					dialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+						return dialer.Dial(network, addr)
+					}
+				}
+				opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: dialFunc, PreferIPv6: false})
+				log.Printf("[TG CLIENT] Proxy SOCKS5 activado: %s", proxyAddr)
+			} else {
+				log.Printf("[TG CLIENT ERROR] Error al configurar proxy SOCKS5: %v", err)
+			}
+		case "http":
+			dialFunc := buildHTTPProxyDialer(proxyAddr, pUser, pPass)
+			opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: dialFunc, PreferIPv6: false})
+			log.Printf("[TG CLIENT] Proxy HTTP activado: %s", proxyAddr)
+		case "mtproto":
+			cleanSecret := strings.TrimSpace(pSec)
+			if len(cleanSecret) > 2 && (strings.HasPrefix(cleanSecret, "ee") || strings.HasPrefix(cleanSecret, "dd")) {
+				cleanSecret = cleanSecret[2:]
+			}
+			secretBytes, err := hex.DecodeString(cleanSecret)
+			if err == nil && len(secretBytes) > 0 {
+				res, err := dcs.MTProxy(proxyAddr, secretBytes, dcs.MTProxyOptions{})
+				if err == nil {
+					opts.Resolver = res
+					log.Printf("[TG CLIENT] Proxy MTProto activado: %s", proxyAddr)
+				} else {
+					log.Printf("[TG CLIENT ERROR] Error al crear resolver MTProxy: %v", err)
+				}
+			} else {
+				log.Printf("[TG CLIENT ERROR] Secreto MTProto invalido: %s", pSec)
+			}
+		}
+	} else {
+		useNoIPv6 := shouldDisableIPv6()
+		if useNoIPv6 {
+			log.Printf("[TG CLIENT] %s", i18n.T("telegram.ipv6Disabled"))
+		}
+
+		useWS := shouldEnableWebSocket()
+		if useWS {
+			opts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
+			log.Printf("[TG CLIENT] %s", i18n.T("telegram.websocketEnabled"))
+		} else if useNoIPv6 {
+			opts.Resolver = dcs.Plain(dcs.PlainOptions{PreferIPv6: false})
+		}
 	}
 
 	client := telegram.NewClient(cm.apiID, cm.apiHash, opts)

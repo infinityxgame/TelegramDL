@@ -237,6 +237,14 @@ type Config struct {
 	BotNotifications bool `json:"bot_notifications"`
 	// BotFileNamingMode define el modo de renombrado para archivos enviados al bot ("auto" o "manual").
 	BotFileNamingMode string `json:"bot_file_naming_mode"`
+	// Configuración de Proxy (socks5, mtproto, http)
+	ProxyEnabled  bool   `json:"proxy_enabled"`
+	ProxyType     string `json:"proxy_type"`
+	ProxyHost     string `json:"proxy_host"`
+	ProxyPort     int    `json:"proxy_port"`
+	ProxyUsername string `json:"proxy_username,omitempty"`
+	ProxyPassword string `json:"proxy_password,omitempty"`
+	ProxySecret   string `json:"proxy_secret,omitempty"`
 }
 
 var (
@@ -543,6 +551,13 @@ func DefaultConfig() Config {
 		ListenerChats:     []ListenerChat{},
 		ListenerChatIDs:   []int64{},
 		BotFileNamingMode: "auto",
+		ProxyEnabled:      false,
+		ProxyType:         "socks5",
+		ProxyHost:         "",
+		ProxyPort:         1080,
+		ProxyUsername:     "",
+		ProxyPassword:     "",
+		ProxySecret:       "",
 	}
 }
 

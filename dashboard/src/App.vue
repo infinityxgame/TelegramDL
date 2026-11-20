@@ -133,7 +133,14 @@ const settings = reactive({
   bot_file_naming_mode: 'auto',
   shutdown_when_done: false,
   close_when_done: false,
-  language: ''
+  language: '',
+  proxy_enabled: false,
+  proxy_type: 'socks5',
+  proxy_host: '',
+  proxy_port: 1080,
+  proxy_username: '',
+  proxy_password: '',
+  proxy_secret: ''
 })
 
 // El idioma elegido en Ajustes viaja en settings como cualquier otro ajuste:
@@ -1272,8 +1279,11 @@ onUnmounted(() => {
     <!-- Asistente de Autenticación -->
     <AuthWizard
       v-else-if="!authStatus.authenticated"
-      :authStatus="authStatus"
+      :auth-status="authStatus"
+      :settings="settings"
       @auth-success="onAuthSuccess"
+      @update:settings="(partial) => Object.assign(settings, partial)"
+      @save-settings="saveSettings"
     />
 
     <!-- Estructura Principal de la Aplicación -->

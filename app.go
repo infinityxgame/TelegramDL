@@ -108,6 +108,7 @@ func NewApp(assets fs.FS) (*App, error) {
 	i18n.SetLanguage(cfg.Language)
 
 	cm := telegram.NewClientManager()
+	cm.SetProxyConfig(cfg)
 	eng := downloader.NewEngine(cm, st, cfg)
 	le := listener.NewListenerEngine(cm, st, eng, cfg)
 	up := updater.NewAppUpdater()
@@ -132,7 +133,7 @@ func NewApp(assets fs.FS) (*App, error) {
 		app.UpdateTrayMenuTitles()
 	})
 	srv.SetConfigChangeHandler(func(newCfg config.Config) {
-		app.SetConfig(newCfg)
+		cm.SetProxyConfig(newCfg)
 	})
 
 	// Permitir que el panel abra el diálogo nativo de carpetas aunque se esté
