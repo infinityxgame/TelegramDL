@@ -179,6 +179,7 @@ let saveTimer
 let updateCheckTimer
 let disposed = false
 let syncingSettings = false
+let wailsEventsSubscribed = false
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
 const bootstrapping = ref(true)
@@ -417,7 +418,9 @@ const fetchDownloads = async () => {
       normalizedDownloads
         .filter((item) => item.status === 'duplicate')
         .forEach(promptDuplicateDownload)
-      websocketConnected.value = true
+      if (isWailsRuntime()) {
+        websocketConnected.value = true
+      }
     }
     error.value = ''
   } catch {
@@ -987,11 +990,15 @@ const handleStateUpdate = (data) => {
 const connectWebSocket = async () => {
   if (isWailsRuntime()) {
     websocketConnected.value = true
-    Events.On('tgdl:state', (ev) => {
-      if (ev && ev.data) {
-        handleStateUpdate(ev.data)
-      }
-    })
+    if (!wailsEventsSubscribed) {
+      wailsEventsSubscribed = true
+      Events.On('tgdl:state', (ev) => {
+        if (ev && ev.data) {
+          handleStateUpdate(ev.data)
+        }
+      })
+    }
+    return
   }
 
   // El token viaja como subprotocolo, no en la URL. Las URL completas quedan
