@@ -536,6 +536,8 @@ export default {
     proxyModalSave: 'Guardar y aplicar',
     proxyDisabled: 'Proxy desactivado',
     proxySaved: 'Ajustes de proxy guardados',
+    proxyFailedBanner:
+      'El proxy no respondió ({error}) y se desactivó automáticamente en Ajustes. Se estableció conexión directa.',
     notifySidebarHint:
       'Los avisos de cola terminada y de errores se encienden y apagan con el botón «Avisos del bot» del panel lateral.',
     detectingChat: 'Detectando...',

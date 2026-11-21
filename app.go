@@ -129,6 +129,10 @@ func NewApp(assets fs.FS) (*App, error) {
 	})
 	app.server = srv
 
+	cm.SetOnProxyFailed(func(err error) {
+		srv.DisableProxyInConfig(err)
+	})
+
 	srv.SetLanguageChangeHandler(func() {
 		app.UpdateTrayMenuTitles()
 	})

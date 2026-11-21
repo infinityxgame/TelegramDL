@@ -95,6 +95,7 @@ type ClientManager struct {
 	proxyUsername string
 	proxyPassword string
 	proxySecret   string
+	onProxyFailed func(err error)
 }
 
 // maxAccessHashEntries acota el tamaño de los mapas de access hash de
@@ -433,6 +434,12 @@ func (cm *ClientManager) SetProxyConfig(cfg config.Config) {
 		log.Printf("[TG CLIENT] Reconfigurando cliente por cambio de proxy...")
 		_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
 	}
+}
+
+func (cm *ClientManager) SetOnProxyFailed(fn func(err error)) {
+	cm.mu.Lock()
+	cm.onProxyFailed = fn
+	cm.mu.Unlock()
 }
 
 func GetPyrogramCredentials() (string, error) {
@@ -917,9 +924,10 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 	pUser := cm.proxyUsername
 	pPass := cm.proxyPassword
 	pSec := cm.proxySecret
+	proxyAddr := ""
 
 	if pEnabled && strings.TrimSpace(pHost) != "" && pPort > 0 {
-		proxyAddr := net.JoinHostPort(strings.TrimSpace(pHost), strconv.Itoa(pPort))
+		proxyAddr = net.JoinHostPort(strings.TrimSpace(pHost), strconv.Itoa(pPort))
 		switch strings.ToLower(strings.TrimSpace(pType)) {
 		case "socks5":
 			var auth *proxy.Auth
@@ -969,7 +977,6 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			log.Printf("[TG CLIENT] %s", i18n.T("telegram.ipv6Disabled"))
 		}
 
-		useWS := shouldEnableWebSocket()
 		if useWS {
 			opts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
 			log.Printf("[TG CLIENT] %s", i18n.T("telegram.websocketEnabled"))
@@ -1034,9 +1041,22 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 
 		err := runClient(client)
 
-		// Fallback automático: si la conexión inicial falló sin haber logrado conectar y WebSocket
-		// no estaba activado explícitamente, se intenta conectar usando WebSocket transport (DPI bypass).
-		if err != nil && !errors.Is(err, context.Canceled) && !useWS {
+		// Fallback automático: si la conexión inicial falló (por ejemplo, si el proxy no respondió),
+		// se desactiva el proxy automáticamente en Ajustes y se reintenta conectar mediante WebSocket.
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if pEnabled {
+				log.Printf("[TG CLIENT] El proxy %s (%s) no respondió (%v). Desactivando proxy automáticamente en Ajustes e intentando conexión directa...", pType, proxyAddr, err)
+
+				cm.mu.Lock()
+				cm.proxyEnabled = false
+				cb := cm.onProxyFailed
+				cm.mu.Unlock()
+
+				if cb != nil {
+					go cb(err)
+				}
+			}
+
 			isReady := false
 			select {
 			case <-readyChan:
@@ -1134,17 +1154,28 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		}
 	}
 
+	hasSavedSession := cm.HaySesionGuardada()
+
 	// Esperar brevemente a que el cliente MTProto esté conectado.
 	// Si hay una sesión guardada, somos más pacientes (5s) porque es probable que conecte.
 	// Si no, damos tiempo suficiente (3s) para la primera conexión.
 	timeout := 3 * time.Second
-	if _, err := os.Stat(cm.sessionPath); err == nil {
+	if hasSavedSession {
 		timeout = 5 * time.Second
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := cm.WaitReady(waitCtx); err != nil {
+		if hasSavedSession {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     true,
+				Authenticated:  true,
+				State:          "LOGGED_IN",
+			}
+		}
 		return AuthStatus{
 			Configured:     true,
 			HasCredentials: true,
@@ -1156,7 +1187,26 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 
 	authClient := client.Auth()
 	status, err := authClient.Status(ctx)
-	if err != nil || !status.Authorized {
+	if err != nil {
+		if hasSavedSession {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     true,
+				Authenticated:  true,
+				State:          "LOGGED_IN",
+			}
+		}
+		return AuthStatus{
+			Configured:     true,
+			HasCredentials: true,
+			Authorized:     false,
+			Authenticated:  false,
+			State:          "NEED_PHONE",
+		}
+	}
+
+	if !status.Authorized {
 		return AuthStatus{
 			Configured:     true,
 			HasCredentials: true,

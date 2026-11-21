@@ -533,7 +533,9 @@ export default {
     proxyModalSub: 'Configure a proxy for Telegram connection',
     proxyModalSave: 'Save & Apply',
     proxyDisabled: 'Proxy disabled',
-    proxySaved: 'Proxy settings saved'
+    proxySaved: 'Proxy settings saved',
+    proxyFailedBanner:
+      'The proxy did not respond ({error}) and was automatically disabled in Settings. Direct connection established.'
   },
 
   folder: {

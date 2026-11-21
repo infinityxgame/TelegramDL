@@ -2910,6 +2910,34 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DisableProxyInConfig desactiva automáticamente el proxy en la configuración
+// y guarda el cambio en SQLite cuando la conexión a través de él falla.
+func (s *Server) DisableProxyInConfig(err error) {
+	s.mu.Lock()
+	if !s.config.ProxyEnabled {
+		s.mu.Unlock()
+		return
+	}
+	s.config.ProxyEnabled = false
+	cfg := s.config
+	s.mu.Unlock()
+
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	logbus.Warn(logbus.CatTelegram, i18n.T("telegram.proxyFailedNotice", errMsg), "")
+
+	if saveErr := s.storage.SaveConfig(cfg); saveErr != nil {
+		log.Printf("[SERVER] Error guardando config tras fallo de proxy: %v", saveErr)
+	}
+
+	if s.onConfigChange != nil {
+		s.onConfigChange(cfg)
+	}
+	s.broadcastState()
+}
+
 // handleProxyTest comprueba la conectividad y latencia de un proxy
 func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

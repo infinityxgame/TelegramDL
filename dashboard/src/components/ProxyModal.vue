@@ -35,22 +35,22 @@ const testResult = ref(null)
 const saving = ref(false)
 
 watch(
-  () => props.show,
-  (val) => {
-    if (val && props.settings) {
+  [() => props.show, () => props.settings],
+  ([showVal, settingsVal]) => {
+    if (showVal && settingsVal) {
       form.value = {
-        proxy_enabled: !!props.settings.proxy_enabled,
-        proxy_type: props.settings.proxy_type || 'socks5',
-        proxy_host: props.settings.proxy_host || '',
-        proxy_port: props.settings.proxy_port || 1080,
-        proxy_username: props.settings.proxy_username || '',
-        proxy_password: props.settings.proxy_password || '',
-        proxy_secret: props.settings.proxy_secret || ''
+        proxy_enabled: !!settingsVal.proxy_enabled,
+        proxy_type: settingsVal.proxy_type || 'socks5',
+        proxy_host: settingsVal.proxy_host || '',
+        proxy_port: settingsVal.proxy_port || 1080,
+        proxy_username: settingsVal.proxy_username || '',
+        proxy_password: settingsVal.proxy_password || '',
+        proxy_secret: settingsVal.proxy_secret || ''
       }
       testResult.value = null
     }
   },
-  { immediate: true }
+  { immediate: true, deep: true }
 )
 
 const handleTest = async () => {

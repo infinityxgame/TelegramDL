@@ -156,6 +156,7 @@ var messagesES = map[string]string{
 	"telegram.connected":                "Conexión MTProto establecida exitosamente.",
 	"telegram.websocketEnabled":         "Usando transporte WebSocket MTProto (DPI bypass).",
 	"telegram.ipv6Disabled":             "Conexiones IPv6 desactivadas.",
+	"telegram.proxyFailedNotice":        "El proxy no respondió (%v). Se ha desactivado en Ajustes y se ha establecido conexión directa.",
 	"telegram.fallbackWebsocket":        "Falló la conexión MTProto estándar (%v). Reintentando con transporte WebSocket (DPI bypass)...",
 	"telegram.sessionActive":            "Sesión activa como: %s %s (@%s, ID: %d). Iniciando gaps manager...",
 	"telegram.waitingAuth":              "Cliente conectado pero sin sesión. Esperando autenticación para iniciar escucha...",

@@ -1064,9 +1064,13 @@ const startApp = async () => {
 
   const startBoot = Date.now()
   try {
-    await Promise.all([fetchAuthStatus(), checkForUpdates(true)])
+    await Promise.all([
+      fetchAuthStatus(),
+      fetchSettings(),
+      checkForUpdates(true)
+    ])
     if (authStatus.value.authenticated) {
-      await Promise.all([fetchSettings(), fetchDownloads()]).catch(() => {})
+      await fetchDownloads().catch(() => {})
     }
   } catch (err) {
     console.error(t('console.startupError'), err)
