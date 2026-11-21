@@ -942,36 +942,44 @@ const sendTestNotification = async () => {
                   <span class="field-label-inline">{{
                     t('settings.proxyType')
                   }}</span>
-                  <div class="type-pills">
-                    <button
-                      type="button"
-                      class="type-pill"
+                  <div class="radio-group">
+                    <label
+                      class="radio-option"
                       :class="{
                         active:
                           (props.settings.proxy_type || 'socks5') === 'socks5'
                       }"
                       @click="patch({ proxy_type: 'socks5' })"
                     >
-                      SOCKS5
-                    </button>
-                    <button
-                      type="button"
-                      class="type-pill"
+                      <span class="radio-circle">
+                        <span class="radio-dot"></span>
+                      </span>
+                      <span class="radio-label">SOCKS5</span>
+                    </label>
+
+                    <label
+                      class="radio-option"
                       :class="{
                         active: props.settings.proxy_type === 'mtproto'
                       }"
                       @click="patch({ proxy_type: 'mtproto' })"
                     >
-                      MTProto
-                    </button>
-                    <button
-                      type="button"
-                      class="type-pill"
+                      <span class="radio-circle">
+                        <span class="radio-dot"></span>
+                      </span>
+                      <span class="radio-label">MTProto</span>
+                    </label>
+
+                    <label
+                      class="radio-option"
                       :class="{ active: props.settings.proxy_type === 'http' }"
                       @click="patch({ proxy_type: 'http' })"
                     >
-                      HTTP
-                    </button>
+                      <span class="radio-circle">
+                        <span class="radio-dot"></span>
+                      </span>
+                      <span class="radio-label">HTTP</span>
+                    </label>
                   </div>
                 </div>
 
@@ -1510,9 +1518,12 @@ const sendTestNotification = async () => {
   margin: 0;
 }
 
-.clean-line {
+.proxy-section-group .setting-line.clean-line {
+  border-top: none !important;
   border-bottom: none !important;
+  padding-top: 0 !important;
   padding-bottom: 0 !important;
+  margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
 
@@ -1532,48 +1543,76 @@ const sendTestNotification = async () => {
 .proxy-type-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .field-label-inline {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--user-text, #f3f4f6);
+  min-width: 90px;
 }
 
-.type-pills {
+.radio-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.radio-option {
   display: inline-flex;
-  gap: 6px;
-  background: var(--user-surface-light, rgba(255, 255, 255, 0.04));
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
-}
-
-.type-pill {
-  padding: 5px 14px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--user-text-dim, #9ca3af);
-  font:
-    600 13px 'DM Sans',
-    sans-serif;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  user-select: none;
+  transition: opacity 0.2s;
 }
 
-.type-pill:hover {
-  color: var(--user-text, #ffffff);
+.radio-option:hover {
+  opacity: 0.85;
 }
 
-.type-pill.active {
-  background: var(--user-surface-light, rgba(255, 255, 255, 0.1));
-  border-color: var(--user-primary, var(--user-accent));
+.radio-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--user-border-light, #4b5563);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.radio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: transparent;
+  transform: scale(0);
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.radio-option.active .radio-circle {
+  border-color: var(--user-primary, var(--user-accent, #3b82f6));
+  box-shadow: 0 0 8px var(--user-glow, rgba(59, 130, 246, 0.3));
+}
+
+.radio-option.active .radio-dot {
+  background-color: var(--user-primary, var(--user-accent, #3b82f6));
+  transform: scale(1);
+}
+
+.radio-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--user-text, #f3f4f6);
+}
+
+.radio-option.active .radio-label {
   color: var(--user-text, #ffffff);
-  box-shadow:
-    0 0 0 1px var(--user-primary, var(--user-accent)),
-    0 4px 12px var(--user-glow);
 }
 
 .proxy-inputs-single-line {
