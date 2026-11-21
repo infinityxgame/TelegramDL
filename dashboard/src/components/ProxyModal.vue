@@ -135,14 +135,14 @@ const handleSave = async () => {
           </div>
 
           <div class="modal-body">
-            <div class="setting-row toggle-row">
-              <div class="row-info">
-                <span class="row-label">{{ t('settings.proxyEnabled') }}</span>
-                <span class="row-sub">{{ t('settings.proxySub') }}</span>
+            <div class="setting-line clean-line">
+              <div>
+                <strong>{{ t('settings.proxyEnabled') }}</strong>
+                <small>{{ t('settings.proxySub') }}</small>
               </div>
-              <label class="toggle-switch">
+              <label class="switch">
                 <input v-model="form.proxy_enabled" type="checkbox" />
-                <span class="slider"></span>
+                <span></span>
               </label>
             </div>
 
@@ -150,12 +150,14 @@ const handleSave = async () => {
               class="proxy-fields"
               :class="{ disabled: !form.proxy_enabled }"
             >
-              <div class="form-group">
-                <label class="field-label">{{ t('settings.proxyType') }}</label>
-                <div class="type-selector">
+              <div class="proxy-type-row">
+                <span class="field-label-inline">{{
+                  t('settings.proxyType')
+                }}</span>
+                <div class="type-pills">
                   <button
                     type="button"
-                    class="type-btn"
+                    class="type-pill"
                     :class="{ active: form.proxy_type === 'socks5' }"
                     @click="form.proxy_type = 'socks5'"
                   >
@@ -163,7 +165,7 @@ const handleSave = async () => {
                   </button>
                   <button
                     type="button"
-                    class="type-btn"
+                    class="type-pill"
                     :class="{ active: form.proxy_type === 'mtproto' }"
                     @click="form.proxy_type = 'mtproto'"
                   >
@@ -171,7 +173,7 @@ const handleSave = async () => {
                   </button>
                   <button
                     type="button"
-                    class="type-btn"
+                    class="type-pill"
                     :class="{ active: form.proxy_type === 'http' }"
                     @click="form.proxy_type = 'http'"
                   >
@@ -180,69 +182,68 @@ const handleSave = async () => {
                 </div>
               </div>
 
-              <div class="grid-2">
-                <div class="form-group">
+              <div class="proxy-inputs-single-line">
+                <div class="field-col host-col">
                   <label class="field-label">{{
                     t('settings.proxyHost')
                   }}</label>
                   <input
                     v-model="form.proxy_host"
                     type="text"
-                    class="input-field"
+                    class="proxy-input"
                     placeholder="127.0.0.1"
                   />
                 </div>
-                <div class="form-group">
+                <div class="field-col port-col">
                   <label class="field-label">{{
                     t('settings.proxyPort')
                   }}</label>
                   <input
                     v-model.number="form.proxy_port"
                     type="number"
-                    class="input-field"
+                    class="proxy-input"
                     placeholder="1080"
                   />
                 </div>
-              </div>
-
-              <div
-                v-if="
-                  form.proxy_type === 'socks5' || form.proxy_type === 'http'
-                "
-                class="grid-2"
-              >
-                <div class="form-group">
-                  <label class="field-label">{{
-                    t('settings.proxyUsername')
-                  }}</label>
-                  <input
-                    v-model="form.proxy_username"
-                    type="text"
-                    class="input-field"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="field-label">{{
-                    t('settings.proxyPassword')
-                  }}</label>
-                  <input
-                    v-model="form.proxy_password"
-                    type="password"
-                    class="input-field"
-                  />
-                </div>
-              </div>
-
-              <div v-if="form.proxy_type === 'mtproto'" class="form-group">
-                <label class="field-label">{{
-                  t('settings.proxySecret')
-                }}</label>
-                <input
-                  v-model="form.proxy_secret"
-                  type="text"
-                  class="input-field"
-                  placeholder="ee0123456789abcdef0123456789abcdef"
-                />
+                <template
+                  v-if="
+                    form.proxy_type === 'socks5' || form.proxy_type === 'http'
+                  "
+                >
+                  <div class="field-col user-col">
+                    <label class="field-label">{{
+                      t('settings.proxyUsername')
+                    }}</label>
+                    <input
+                      v-model="form.proxy_username"
+                      type="text"
+                      class="proxy-input"
+                    />
+                  </div>
+                  <div class="field-col pass-col">
+                    <label class="field-label">{{
+                      t('settings.proxyPassword')
+                    }}</label>
+                    <input
+                      v-model="form.proxy_password"
+                      type="password"
+                      class="proxy-input"
+                    />
+                  </div>
+                </template>
+                <template v-else-if="form.proxy_type === 'mtproto'">
+                  <div class="field-col secret-col">
+                    <label class="field-label">{{
+                      t('settings.proxySecret')
+                    }}</label>
+                    <input
+                      v-model="form.proxy_secret"
+                      type="text"
+                      class="proxy-input"
+                      placeholder="ee0123456789..."
+                    />
+                  </div>
+                </template>
               </div>
 
               <div class="test-section">
@@ -323,7 +324,7 @@ const handleSave = async () => {
   background: var(--user-surface, #111827);
   border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
   border-radius: 18px;
-  width: min(520px, 92%);
+  width: min(580px, 94%);
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.5),
     0 0 35px var(--user-glow, rgba(59, 130, 246, 0.15));
@@ -382,29 +383,22 @@ const handleSave = async () => {
   gap: 16px;
 }
 
-.setting-row.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.06));
+.setting-line.clean-line {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
 }
 
-.row-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.row-label {
-  font-weight: 600;
+.setting-line strong {
+  display: block;
   font-size: 0.95rem;
   color: var(--user-text, #f3f4f6);
 }
 
-.row-sub {
+.setting-line small {
+  display: block;
   font-size: 0.8rem;
   color: var(--user-text-muted, #9ca3af);
+  margin-top: 2px;
 }
 
 .proxy-fields {
@@ -415,69 +409,122 @@ const handleSave = async () => {
 }
 
 .proxy-fields.disabled {
-  opacity: 0.6;
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-.form-group {
+.proxy-type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field-label-inline {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--user-text, #f3f4f6);
+}
+
+.type-pills {
+  display: inline-flex;
+  gap: 6px;
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.04));
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+}
+
+.type-pill {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--user-text-dim, #9ca3af);
+  font:
+    600 13px 'DM Sans',
+    sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-pill:hover {
+  color: var(--user-text, #ffffff);
+}
+
+.type-pill.active {
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.1));
+  border-color: var(--user-primary, var(--user-accent));
+  color: var(--user-text, #ffffff);
+  box-shadow:
+    0 0 0 1px var(--user-primary, var(--user-accent)),
+    0 4px 12px var(--user-glow);
+}
+
+.proxy-inputs-single-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.field-col {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.field-label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--user-text-muted, #d1d5db);
-}
-
-.type-selector {
-  display: flex;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 3px;
-  border-radius: 10px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.08));
-  gap: 4px;
-}
-
-.type-btn {
+.field-col.host-col {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--user-text-muted, #9ca3af);
-  font-weight: 500;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
+  min-width: 140px;
 }
 
-.type-btn.active {
-  background: var(--user-accent, #3b82f6);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+.field-col.port-col {
+  width: 90px;
+  flex: 0 0 90px;
 }
 
-.grid-2 {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 12px;
+.field-col.user-col {
+  width: 145px;
+  flex: 0 0 145px;
 }
 
-.input-field {
+.field-col.pass-col {
+  width: 145px;
+  flex: 0 0 145px;
+}
+
+.field-col.secret-col {
+  flex: 1;
+  min-width: 180px;
+}
+
+.field-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--user-text, #f3f4f6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proxy-input {
   width: 100%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
-  background: rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
   color: var(--user-text, #f9fafb);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
-.input-field:focus {
-  border-color: var(--user-accent, #3b82f6);
+.proxy-input:focus {
+  border-color: var(--user-primary, var(--user-accent, #3b82f6));
+  box-shadow: 0 0 0 2px var(--user-glow, rgba(59, 130, 246, 0.2));
 }
 
 .test-section {
@@ -485,9 +532,9 @@ const handleSave = async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.06));
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: none !important;
 }
 
 .test-btn {

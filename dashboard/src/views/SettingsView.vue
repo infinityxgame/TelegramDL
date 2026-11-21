@@ -918,21 +918,19 @@ const sendTestNotification = async () => {
               <Radio :size="15" />
             </template>
 
-            <div class="settings-group">
-              <div class="setting-row">
-                <div class="row-info">
-                  <span class="row-label">{{
-                    t('settings.proxyEnabled')
-                  }}</span>
-                  <span class="row-sub">{{ t('settings.proxySub') }}</span>
+            <div class="settings-group proxy-section-group">
+              <div class="setting-line clean-line">
+                <div>
+                  <strong>{{ t('settings.proxyEnabled') }}</strong>
+                  <small>{{ t('settings.proxySub') }}</small>
                 </div>
-                <label class="toggle-switch">
+                <label class="switch">
                   <input
                     type="checkbox"
                     :checked="props.settings.proxy_enabled"
                     @change="patch({ proxy_enabled: $event.target.checked })"
                   />
-                  <span class="slider"></span>
+                  <span></span>
                 </label>
               </div>
 
@@ -940,14 +938,14 @@ const sendTestNotification = async () => {
                 class="proxy-inline-fields"
                 :class="{ disabled: !props.settings.proxy_enabled }"
               >
-                <div class="form-group">
-                  <label class="field-label">{{
+                <div class="proxy-type-row">
+                  <span class="field-label-inline">{{
                     t('settings.proxyType')
-                  }}</label>
-                  <div class="type-selector">
+                  }}</span>
+                  <div class="type-pills">
                     <button
                       type="button"
-                      class="type-btn"
+                      class="type-pill"
                       :class="{
                         active:
                           (props.settings.proxy_type || 'socks5') === 'socks5'
@@ -958,7 +956,7 @@ const sendTestNotification = async () => {
                     </button>
                     <button
                       type="button"
-                      class="type-btn"
+                      class="type-pill"
                       :class="{
                         active: props.settings.proxy_type === 'mtproto'
                       }"
@@ -968,7 +966,7 @@ const sendTestNotification = async () => {
                     </button>
                     <button
                       type="button"
-                      class="type-btn"
+                      class="type-pill"
                       :class="{ active: props.settings.proxy_type === 'http' }"
                       @click="patch({ proxy_type: 'http' })"
                     >
@@ -977,26 +975,26 @@ const sendTestNotification = async () => {
                   </div>
                 </div>
 
-                <div class="grid-2">
-                  <div class="form-group">
+                <div class="proxy-inputs-single-line">
+                  <div class="field-col host-col">
                     <label class="field-label">{{
                       t('settings.proxyHost')
                     }}</label>
                     <input
                       type="text"
-                      class="input-field"
+                      class="proxy-input"
                       :value="props.settings.proxy_host || ''"
                       placeholder="127.0.0.1"
                       @input="patch({ proxy_host: $event.target.value })"
                     />
                   </div>
-                  <div class="form-group">
+                  <div class="field-col port-col">
                     <label class="field-label">{{
                       t('settings.proxyPort')
                     }}</label>
                     <input
                       type="number"
-                      class="input-field"
+                      class="proxy-input"
                       :value="props.settings.proxy_port || 1080"
                       placeholder="1080"
                       @input="
@@ -1004,59 +1002,55 @@ const sendTestNotification = async () => {
                       "
                     />
                   </div>
-                </div>
-
-                <div
-                  v-if="
-                    (props.settings.proxy_type || 'socks5') === 'socks5' ||
-                    props.settings.proxy_type === 'http'
-                  "
-                  class="grid-2"
-                >
-                  <div class="form-group">
-                    <label class="field-label">{{
-                      t('settings.proxyUsername')
-                    }}</label>
-                    <input
-                      type="text"
-                      class="input-field"
-                      :value="props.settings.proxy_username || ''"
-                      @input="patch({ proxy_username: $event.target.value })"
-                    />
-                  </div>
-                  <div class="form-group">
-                    <label class="field-label">{{
-                      t('settings.proxyPassword')
-                    }}</label>
-                    <input
-                      type="password"
-                      class="input-field"
-                      :value="props.settings.proxy_password || ''"
-                      @input="patch({ proxy_password: $event.target.value })"
-                    />
-                  </div>
-                </div>
-
-                <div
-                  v-if="props.settings.proxy_type === 'mtproto'"
-                  class="form-group"
-                >
-                  <label class="field-label">{{
-                    t('settings.proxySecret')
-                  }}</label>
-                  <input
-                    type="text"
-                    class="input-field"
-                    :value="props.settings.proxy_secret || ''"
-                    placeholder="ee0123456789abcdef0123456789abcdef"
-                    @input="patch({ proxy_secret: $event.target.value })"
-                  />
+                  <template
+                    v-if="
+                      (props.settings.proxy_type || 'socks5') === 'socks5' ||
+                      props.settings.proxy_type === 'http'
+                    "
+                  >
+                    <div class="field-col user-col">
+                      <label class="field-label">{{
+                        t('settings.proxyUsername')
+                      }}</label>
+                      <input
+                        type="text"
+                        class="proxy-input"
+                        :value="props.settings.proxy_username || ''"
+                        @input="patch({ proxy_username: $event.target.value })"
+                      />
+                    </div>
+                    <div class="field-col pass-col">
+                      <label class="field-label">{{
+                        t('settings.proxyPassword')
+                      }}</label>
+                      <input
+                        type="password"
+                        class="proxy-input"
+                        :value="props.settings.proxy_password || ''"
+                        @input="patch({ proxy_password: $event.target.value })"
+                      />
+                    </div>
+                  </template>
+                  <template v-else-if="props.settings.proxy_type === 'mtproto'">
+                    <div class="field-col secret-col">
+                      <label class="field-label">{{
+                        t('settings.proxySecret')
+                      }}</label>
+                      <input
+                        type="text"
+                        class="proxy-input"
+                        :value="props.settings.proxy_secret || ''"
+                        placeholder="ee0123456789..."
+                        @input="patch({ proxy_secret: $event.target.value })"
+                      />
+                    </div>
+                  </template>
                 </div>
 
                 <div class="test-section">
                   <button
                     type="button"
-                    class="test-btn"
+                    class="reset-button-alt test-btn"
                     :disabled="
                       testingProxy ||
                       !props.settings.proxy_host ||
@@ -1064,8 +1058,8 @@ const sendTestNotification = async () => {
                     "
                     @click="testProxy"
                   >
-                    <Loader2 v-if="testingProxy" class="spin" :size="16" />
-                    <Radio v-else :size="16" />
+                    <Loader2 v-if="testingProxy" class="spin" :size="14" />
+                    <Radio v-else :size="14" />
                     <span>{{
                       testingProxy
                         ? t('settings.proxyTesting')
@@ -1081,8 +1075,8 @@ const sendTestNotification = async () => {
                       inactive: !proxyTestResult.active
                     }"
                   >
-                    <CheckCircle2 v-if="proxyTestResult.active" :size="16" />
-                    <AlertCircle v-else :size="16" />
+                    <CheckCircle2 v-if="proxyTestResult.active" :size="14" />
+                    <AlertCircle v-else :size="14" />
                     <span v-if="proxyTestResult.active">
                       {{
                         t('settings.proxyActive', {
@@ -1516,11 +1510,17 @@ const sendTestNotification = async () => {
   margin: 0;
 }
 
+.clean-line {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
 .proxy-inline-fields {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-top: 12px;
+  margin-top: 14px;
   transition: opacity 0.2s;
 }
 
@@ -1529,66 +1529,118 @@ const sendTestNotification = async () => {
   pointer-events: none;
 }
 
-.form-group {
+.proxy-type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field-label-inline {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--user-text, #f3f4f6);
+}
+
+.type-pills {
+  display: inline-flex;
+  gap: 6px;
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.04));
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+}
+
+.type-pill {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--user-text-dim, #9ca3af);
+  font:
+    600 13px 'DM Sans',
+    sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-pill:hover {
+  color: var(--user-text, #ffffff);
+}
+
+.type-pill.active {
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.1));
+  border-color: var(--user-primary, var(--user-accent));
+  color: var(--user-text, #ffffff);
+  box-shadow:
+    0 0 0 1px var(--user-primary, var(--user-accent)),
+    0 4px 12px var(--user-glow);
+}
+
+.proxy-inputs-single-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.field-col {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.field-label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--user-text-muted, #d1d5db);
-}
-
-.type-selector {
-  display: flex;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 3px;
-  border-radius: 10px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.08));
-  gap: 4px;
-}
-
-.type-btn {
+.field-col.host-col {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--user-text-muted, #9ca3af);
-  font-weight: 500;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
+  min-width: 140px;
 }
 
-.type-btn.active {
-  background: var(--user-accent, #3b82f6);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+.field-col.port-col {
+  width: 90px;
+  flex: 0 0 90px;
 }
 
-.grid-2 {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 12px;
+.field-col.user-col {
+  width: 145px;
+  flex: 0 0 145px;
 }
 
-.input-field {
+.field-col.pass-col {
+  width: 145px;
+  flex: 0 0 145px;
+}
+
+.field-col.secret-col {
+  flex: 1;
+  min-width: 180px;
+}
+
+.field-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--user-text, #f3f4f6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proxy-input {
   width: 100%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
-  background: rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
   color: var(--user-text, #f9fafb);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
-.input-field:focus {
-  border-color: var(--user-accent, #3b82f6);
+.proxy-input:focus {
+  border-color: var(--user-primary, var(--user-accent, #3b82f6));
+  box-shadow: 0 0 0 2px var(--user-glow, rgba(59, 130, 246, 0.2));
 }
 
 .test-section {
@@ -1596,43 +1648,26 @@ const sendTestNotification = async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.06));
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: none !important;
 }
 
 .test-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.15));
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--user-text, #e5e7eb);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.test-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--user-accent, #3b82f6);
-}
-
-.test-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
 .test-result {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 6px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 6px 14px;
   border-radius: 8px;
 }
 
@@ -1657,50 +1692,5 @@ const sendTestNotification = async () => {
   to {
     transform: rotate(360deg);
   }
-}
-
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.2);
-  transition: 0.2s;
-  border-radius: 24px;
-}
-
-.slider:before {
-  position: absolute;
-  content: '';
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: 0.2s;
-  border-radius: 50%;
-}
-
-input:checked + .slider {
-  background-color: var(--user-accent, #3b82f6);
-}
-
-input:checked + .slider:before {
-  transform: translateX(20px);
 }
 </style>
