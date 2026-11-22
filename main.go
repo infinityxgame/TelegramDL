@@ -114,13 +114,13 @@ func printUsage() {
 	fmt.Println(i18n.T("cli.usageNoIPv6"))
 }
 
-// getTelegramURLArgument detecta si algún argumento es una URL de Telegram
+// getTelegramURLArgument detecta si algún argumento es una URL de Telegram o un enlace telegramdl://
 func getTelegramURLArgument() string {
 	for _, arg := range os.Args[1:] {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		if strings.Contains(arg, "t.me/") || strings.Contains(arg, "telegram.org/") || strings.Contains(arg, "telegram.me/") {
+		if strings.Contains(arg, "t.me/") || strings.Contains(arg, "telegram.org/") || strings.Contains(arg, "telegram.me/") || strings.HasPrefix(arg, "telegramdl://") {
 			return arg
 		}
 	}
@@ -224,6 +224,7 @@ func waitInstanceLock(timeout time.Duration) (func(), bool) {
 }
 
 func runDesktopMode() {
+	registerCustomURLScheme()
 	release, ok := waitInstanceLock(8 * time.Second)
 	if !ok {
 		notifyAlreadyRunning()

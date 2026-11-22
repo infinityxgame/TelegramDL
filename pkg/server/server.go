@@ -2169,13 +2169,96 @@ func (s *Server) respondQueueFull(w http.ResponseWriter) {
 	})
 }
 
-// EnqueueURL procesa una URL de Telegram y añade los elementos correspondientes a la cola.
-// Si la cola está en su techo, corta el rango y devuelve un error que envuelve
-// ErrQueueFull: las tareas ya encoladas se quedan encoladas (SEC-21).
+func parseProxyURL(rawURL string) (config.SavedProxy, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil || !strings.HasPrefix(rawURL, "telegramdl://") {
+		return config.SavedProxy{}, false
+	}
+
+	pType := "socks5"
+	switch strings.ToLower(u.Host) {
+	case "socks":
+		pType = "socks5"
+	case "mtproto":
+		pType = "mtproto"
+	case "web", "http":
+		pType = "http"
+	}
+
+	q := u.Query()
+	host := q.Get("server")
+	if host == "" {
+		host = q.Get("host")
+	}
+	port := int(config.ParseInt64(q.Get("port")))
+	if port <= 0 {
+		port = 1080
+	}
+	user := q.Get("user")
+	if user == "" {
+		user = q.Get("username")
+	}
+	pass := q.Get("pass")
+	if pass == "" {
+		pass = q.Get("password")
+	}
+	secret := q.Get("secret")
+
+	if strings.TrimSpace(host) == "" {
+		return config.SavedProxy{}, false
+	}
+
+	return config.SavedProxy{
+		Type:     pType,
+		Host:     host,
+		Port:     port,
+		Username: user,
+		Password: pass,
+		Secret:   secret,
+	}, true
+}
+
+// EnqueueURL procesa una URL de Telegram o un enlace de proxy telegramdl://.
+// Si es una URL de proxy, lo guarda en la base de datos y lo activa automáticamente.
 func (s *Server) EnqueueURL(ctx context.Context, rawURL string) error {
 	clean := strings.TrimSpace(rawURL)
 	if clean == "" {
 		return errors.New("empty URL")
+	}
+
+	if strings.HasPrefix(clean, "telegramdl://") {
+		proxy, ok := parseProxyURL(clean)
+		if !ok {
+			return errors.New("invalid proxy URL")
+		}
+		saved, errProxy := s.storage.AddProxy(proxy)
+		if errProxy == nil {
+			proxy = saved
+		}
+
+		s.mu.Lock()
+		cfg := s.config
+		cfg.ProxyEnabled = true
+		cfg.ProxyType = proxy.Type
+		cfg.ProxyHost = proxy.Host
+		cfg.ProxyPort = proxy.Port
+		cfg.ProxyUsername = proxy.Username
+		cfg.ProxyPassword = proxy.Password
+		cfg.ProxySecret = proxy.Secret
+		cfg.ProxyNotice = ""
+		s.config = cfg
+		s.mu.Unlock()
+
+		_ = s.storage.SaveConfig(cfg)
+		if s.clientMgr != nil {
+			s.clientMgr.SetProxyConfig(cfg)
+		}
+		s.broadcastState()
+		if s.onConfigChange != nil {
+			s.onConfigChange(cfg)
+		}
+		logbus.Info(logbus.CatServer, i18n.T("settings.proxySaved"), proxy.Host)
+		return nil
 	}
 
 	parsed, err := downloader.ParseURL(clean)

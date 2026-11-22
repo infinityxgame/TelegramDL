@@ -48,6 +48,30 @@ func registerAppUserModelID(appID, iconPath string) {
 	}
 }
 
+// registerCustomURLScheme registra el protocolo telegramdl:// en el registro de Windows
+// asociando la ruta absoluta del ejecutable obtenida dinámicamente con os.Executable()
+func registerCustomURLScheme() {
+	exePath, err := os.Executable()
+	if err != nil || exePath == "" {
+		return
+	}
+
+	keyPath := `Software\Classes\telegramdl`
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, keyPath, registry.SET_VALUE)
+	if err == nil {
+		_ = k.SetStringValue("", "URL:TelegramDL Protocol")
+		_ = k.SetStringValue("URL Protocol", "")
+		_ = k.Close()
+	}
+
+	cmdPath := `Software\Classes\telegramdl\shell\open\command`
+	cmdKey, _, err := registry.CreateKey(registry.CURRENT_USER, cmdPath, registry.SET_VALUE)
+	if err == nil {
+		_ = cmdKey.SetStringValue("", `"`+exePath+`" "%1"`)
+		_ = cmdKey.Close()
+	}
+}
+
 func setupConsole() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	attachConsole := kernel32.NewProc("AttachConsole")

@@ -74,6 +74,8 @@ func trySystemNotification(msg string) bool {
 
 func registerConsoleCtrlHandler(sigCh chan os.Signal) {}
 
+func registerCustomURLScheme() {}
+
 func registerAppUserModelID(appID, iconPath string) {}
 
 func playNotificationSound() {

@@ -117,53 +117,17 @@ onMounted(async () => {
   }
 })
 
-const testingProxy = ref(false)
-const proxyTestResult = ref(null)
-
-const testProxy = async () => {
-  if (!props.settings.proxy_host || !props.settings.proxy_port) return
-  testingProxy.value = true
-  proxyTestResult.value = null
-  try {
-    const res = await fetch('/api/proxy/test', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders()
-      },
-      body: JSON.stringify({
-        proxy_type: props.settings.proxy_type || 'socks5',
-        proxy_host: props.settings.proxy_host,
-        proxy_port: Number(props.settings.proxy_port),
-        proxy_username: props.settings.proxy_username || '',
-        proxy_password: props.settings.proxy_password || '',
-        proxy_secret: props.settings.proxy_secret || ''
-      })
-    })
-    const data = await res.json()
-    if (data.status === 'ok') {
-      proxyTestResult.value = {
-        active: data.active,
-        ping_ms: data.ping_ms,
-        error: data.error
-      }
-    } else {
-      proxyTestResult.value = {
-        active: false,
-        ping_ms: 0,
-        error: data.error || t('common.serverError')
-      }
-    }
-  } catch (err) {
-    proxyTestResult.value = {
-      active: false,
-      ping_ms: 0,
-      error: err.message || t('common.serverError')
-    }
-  } finally {
-    testingProxy.value = false
-  }
-}
+// --- Formulario de añadir nuevo proxy ---
+const newProxyForm = ref({
+  proxy_type: 'socks5',
+  proxy_host: '',
+  proxy_port: 1080,
+  proxy_username: '',
+  proxy_password: '',
+  proxy_secret: ''
+})
+const testingNewProxy = ref(false)
+const newProxyTestResult = ref(null)
 
 // --- Gestión Multi-Proxy ---
 const savedProxies = ref([])
@@ -288,17 +252,22 @@ const selectProxy = (p) => {
 }
 
 const addCurrentProxy = async () => {
-  if (!props.settings.proxy_host || !props.settings.proxy_port) return
+  if (!newProxyForm.value.proxy_host || !newProxyForm.value.proxy_port) return
+  testingNewProxy.value = true
+  newProxyTestResult.value = null
+
+  const payload = {
+    proxy_type: newProxyForm.value.proxy_type || 'socks5',
+    proxy_host: newProxyForm.value.proxy_host.trim(),
+    proxy_port: Number(newProxyForm.value.proxy_port) || 1080,
+    proxy_username: newProxyForm.value.proxy_username || '',
+    proxy_password: newProxyForm.value.proxy_password || '',
+    proxy_secret: newProxyForm.value.proxy_secret || ''
+  }
+
   try {
-    const payload = {
-      proxy_type: props.settings.proxy_type || 'socks5',
-      proxy_host: props.settings.proxy_host,
-      proxy_port: Number(props.settings.proxy_port) || 1080,
-      proxy_username: props.settings.proxy_username || '',
-      proxy_password: props.settings.proxy_password || '',
-      proxy_secret: props.settings.proxy_secret || ''
-    }
-    const res = await fetch('/api/proxies', {
+    // 1. Comprobar disponibilidad del proxy antes de agregarlo
+    const testRes = await fetch('/api/proxy/test', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -306,12 +275,52 @@ const addCurrentProxy = async () => {
       },
       body: JSON.stringify(payload)
     })
-    const data = await res.json()
-    if (data.status === 'ok') {
-      await fetchSavedProxies()
+    const testData = await testRes.json()
+
+    if (testData.status === 'ok' && testData.active) {
+      newProxyTestResult.value = {
+        active: true,
+        ping_ms: testData.ping_ms
+      }
+
+      // 2. Si está disponible, agregarlo a la lista en DB
+      const res = await fetch('/api/proxies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      if (data.status === 'ok') {
+        await fetchSavedProxies()
+        // Limpiar el formulario para agregar otro proxy
+        newProxyForm.value = {
+          proxy_type: newProxyForm.value.proxy_type,
+          proxy_host: '',
+          proxy_port: 1080,
+          proxy_username: '',
+          proxy_password: '',
+          proxy_secret: ''
+        }
+      }
+    } else {
+      // Si dio error o no respondió, mostrar el aviso y NO agregarlo
+      newProxyTestResult.value = {
+        active: false,
+        ping_ms: 0,
+        error: testData.error || t('settings.proxyNoResponse')
+      }
     }
   } catch (err) {
-    console.error('Error adding proxy:', err)
+    newProxyTestResult.value = {
+      active: false,
+      ping_ms: 0,
+      error: err.message || t('settings.proxyNoResponse')
+    }
+  } finally {
+    testingNewProxy.value = false
   }
 }
 
@@ -1197,9 +1206,9 @@ const sendTestNotification = async () => {
                       class="radio-option"
                       :class="{
                         active:
-                          (props.settings.proxy_type || 'socks5') === 'socks5'
+                          (newProxyForm.proxy_type || 'socks5') === 'socks5'
                       }"
-                      @click="patch({ proxy_type: 'socks5' })"
+                      @click="newProxyForm.proxy_type = 'socks5'"
                     >
                       <span class="radio-circle">
                         <span class="radio-dot"></span>
@@ -1210,9 +1219,9 @@ const sendTestNotification = async () => {
                     <label
                       class="radio-option"
                       :class="{
-                        active: props.settings.proxy_type === 'mtproto'
+                        active: newProxyForm.proxy_type === 'mtproto'
                       }"
-                      @click="patch({ proxy_type: 'mtproto' })"
+                      @click="newProxyForm.proxy_type = 'mtproto'"
                     >
                       <span class="radio-circle">
                         <span class="radio-dot"></span>
@@ -1222,8 +1231,8 @@ const sendTestNotification = async () => {
 
                     <label
                       class="radio-option"
-                      :class="{ active: props.settings.proxy_type === 'http' }"
-                      @click="patch({ proxy_type: 'http' })"
+                      :class="{ active: newProxyForm.proxy_type === 'http' }"
+                      @click="newProxyForm.proxy_type = 'http'"
                     >
                       <span class="radio-circle">
                         <span class="radio-dot"></span>
@@ -1239,11 +1248,10 @@ const sendTestNotification = async () => {
                       t('settings.proxyHost')
                     }}</label>
                     <input
+                      v-model="newProxyForm.proxy_host"
                       type="text"
                       class="proxy-input"
-                      :value="props.settings.proxy_host || ''"
                       placeholder="127.0.0.1"
-                      @input="patch({ proxy_host: $event.target.value })"
                     />
                   </div>
                   <div class="field-col port-col">
@@ -1251,19 +1259,16 @@ const sendTestNotification = async () => {
                       t('settings.proxyPort')
                     }}</label>
                     <input
+                      v-model.number="newProxyForm.proxy_port"
                       type="number"
                       class="proxy-input"
-                      :value="props.settings.proxy_port || 1080"
                       placeholder="1080"
-                      @input="
-                        patch({ proxy_port: Number($event.target.value) })
-                      "
                     />
                   </div>
                   <template
                     v-if="
-                      (props.settings.proxy_type || 'socks5') === 'socks5' ||
-                      props.settings.proxy_type === 'http'
+                      (newProxyForm.proxy_type || 'socks5') === 'socks5' ||
+                      newProxyForm.proxy_type === 'http'
                     "
                   >
                     <div class="field-col user-col">
@@ -1271,10 +1276,9 @@ const sendTestNotification = async () => {
                         t('settings.proxyUsername')
                       }}</label>
                       <input
+                        v-model="newProxyForm.proxy_username"
                         type="text"
                         class="proxy-input"
-                        :value="props.settings.proxy_username || ''"
-                        @input="patch({ proxy_username: $event.target.value })"
                       />
                     </div>
                     <div class="field-col pass-col">
@@ -1282,24 +1286,22 @@ const sendTestNotification = async () => {
                         t('settings.proxyPassword')
                       }}</label>
                       <input
+                        v-model="newProxyForm.proxy_password"
                         type="password"
                         class="proxy-input"
-                        :value="props.settings.proxy_password || ''"
-                        @input="patch({ proxy_password: $event.target.value })"
                       />
                     </div>
                   </template>
-                  <template v-else-if="props.settings.proxy_type === 'mtproto'">
+                  <template v-else-if="newProxyForm.proxy_type === 'mtproto'">
                     <div class="field-col secret-col">
                       <label class="field-label">{{
                         t('settings.proxySecret')
                       }}</label>
                       <input
+                        v-model="newProxyForm.proxy_secret"
                         type="text"
                         class="proxy-input"
-                        :value="props.settings.proxy_secret || ''"
                         placeholder="ee0123456789..."
-                        @input="patch({ proxy_secret: $event.target.value })"
                       />
                     </div>
                   </template>
@@ -1310,55 +1312,38 @@ const sendTestNotification = async () => {
                       class="add-proxy-btn"
                       :title="t('settings.proxyAdd')"
                       :disabled="
-                        !props.settings.proxy_host || !props.settings.proxy_port
+                        testingNewProxy ||
+                        !newProxyForm.proxy_host ||
+                        !newProxyForm.proxy_port
                       "
                       @click="addCurrentProxy"
                     >
-                      <Plus :size="16" />
+                      <Loader2 v-if="testingNewProxy" class="spin" :size="16" />
+                      <Plus v-else :size="16" />
                     </button>
                   </div>
                 </div>
 
-                <div class="test-section">
-                  <button
-                    type="button"
-                    class="reset-button-alt test-btn"
-                    :disabled="
-                      testingProxy ||
-                      !props.settings.proxy_host ||
-                      !props.settings.proxy_port
-                    "
-                    @click="testProxy"
-                  >
-                    <Loader2 v-if="testingProxy" class="spin" :size="14" />
-                    <Radio v-else :size="14" />
-                    <span>{{
-                      testingProxy
-                        ? t('settings.proxyTesting')
-                        : t('settings.proxyTest')
-                    }}</span>
-                  </button>
-
+                <div v-if="newProxyTestResult" class="test-section">
                   <div
-                    v-if="proxyTestResult"
                     class="test-result"
                     :class="{
-                      active: proxyTestResult.active,
-                      inactive: !proxyTestResult.active
+                      active: newProxyTestResult.active,
+                      inactive: !newProxyTestResult.active
                     }"
                   >
-                    <CheckCircle2 v-if="proxyTestResult.active" :size="14" />
+                    <CheckCircle2 v-if="newProxyTestResult.active" :size="14" />
                     <AlertCircle v-else :size="14" />
-                    <span v-if="proxyTestResult.active">
+                    <span v-if="newProxyTestResult.active">
                       {{
                         t('settings.proxyActive', {
-                          ping: proxyTestResult.ping_ms
+                          ping: newProxyTestResult.ping_ms
                         })
                       }}
                     </span>
                     <span v-else>
                       {{ t('settings.proxyInactive') }}:
-                      {{ proxyTestResult.error }}
+                      {{ newProxyTestResult.error }}
                     </span>
                   </div>
                 </div>
@@ -2231,7 +2216,7 @@ const sendTestNotification = async () => {
   border-radius: 8px;
   border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
   background: var(--user-primary, var(--user-accent, #3b82f6));
-  color: #ffffff;
+  color: #07111f !important;
   cursor: pointer;
   transition:
     opacity 0.2s,
@@ -2351,10 +2336,64 @@ const sendTestNotification = async () => {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(2, 8, 19, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
 .proxy-detail-modal {
+  background: var(--user-bg-top, #0e2032);
+  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.15));
+  border-radius: 16px;
+  padding: 20px;
   max-width: 480px;
   width: 90%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
   box-sizing: border-box;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.1));
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--user-text);
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--user-text-dim, #a0aec0);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.close-btn:hover {
+  color: var(--user-text);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .proxy-modal-row {
