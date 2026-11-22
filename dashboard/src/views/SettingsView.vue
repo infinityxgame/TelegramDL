@@ -117,7 +117,11 @@ onMounted(async () => {
   }
 })
 
-// --- Formulario de añadir nuevo proxy ---
+// --- Formulario de añadir nuevo proxy e importación por enlace ---
+const proxyLinkInput = ref('')
+const testingLinkProxy = ref(false)
+const linkTestResult = ref(null)
+
 const newProxyForm = ref({
   proxy_type: 'socks5',
   proxy_host: '',
@@ -128,6 +132,117 @@ const newProxyForm = ref({
 })
 const testingNewProxy = ref(false)
 const newProxyTestResult = ref(null)
+
+const parseProxyLinkPayload = (rawLink) => {
+  const raw = String(rawLink || '').trim()
+  if (!raw) return null
+
+  try {
+    const urlStr = raw
+      .replace(/^telegramdl:\/\//i, 'http://')
+      .replace(/^tg:\/\//i, 'http://')
+      .replace(/^https:\/\/t\.me\//i, 'http://')
+      .replace(/^https:\/\/telegram\.me\//i, 'http://')
+    const url = new URL(urlStr)
+    const hostName = url.hostname || url.host
+    const pathName = url.pathname || ''
+
+    let pType = 'socks5'
+    if (hostName === 'socks' || raw.toLowerCase().includes('socks')) {
+      pType = 'socks5'
+    } else if (
+      hostName === 'mtproto' ||
+      hostName === 'proxy' ||
+      pathName.includes('proxy') ||
+      raw.toLowerCase().includes('mtproto')
+    ) {
+      pType = 'mtproto'
+    } else if (
+      hostName === 'web' ||
+      hostName === 'http' ||
+      raw.toLowerCase().includes('web') ||
+      raw.toLowerCase().includes('http')
+    ) {
+      pType = 'http'
+    }
+
+    const params = new URLSearchParams(url.search)
+    const server = params.get('server') || params.get('host') || ''
+    const port = Number(params.get('port')) || 1080
+    const user = params.get('user') || params.get('username') || ''
+    const pass = params.get('pass') || params.get('password') || ''
+    const secret = params.get('secret') || ''
+
+    if (!server) return null
+
+    return {
+      proxy_type: pType,
+      proxy_host: server,
+      proxy_port: port,
+      proxy_username: user,
+      proxy_password: pass,
+      proxy_secret: secret
+    }
+  } catch {
+    return null
+  }
+}
+
+const addProxyFromLink = async () => {
+  const payload = parseProxyLinkPayload(proxyLinkInput.value)
+  if (!payload) return
+  testingLinkProxy.value = true
+  linkTestResult.value = null
+
+  try {
+    // 1. Comprobar disponibilidad del proxy por enlace
+    const testRes = await fetch('/api/proxy/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify(payload)
+    })
+    const testData = await testRes.json()
+
+    if (testData.status === 'ok' && testData.active) {
+      linkTestResult.value = {
+        active: true,
+        ping_ms: testData.ping_ms
+      }
+
+      // 2. Si está disponible, guardarlo en la lista en DB
+      const res = await fetch('/api/proxies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      if (data.status === 'ok') {
+        await fetchSavedProxies()
+        proxyLinkInput.value = ''
+      }
+    } else {
+      linkTestResult.value = {
+        active: false,
+        ping_ms: 0,
+        error: testData.error || t('settings.proxyNoResponse')
+      }
+    }
+  } catch (err) {
+    linkTestResult.value = {
+      active: false,
+      ping_ms: 0,
+      error: err.message || t('settings.proxyNoResponse')
+    }
+  } finally {
+    testingLinkProxy.value = false
+  }
+}
 
 // --- Gestión Multi-Proxy ---
 const savedProxies = ref([])
@@ -214,11 +329,36 @@ const testSingleSavedProxy = async (p) => {
   }
 }
 
+const formatProxyError = (rawError) => {
+  if (!rawError) return t('settings.proxyNoResponse')
+  const lower = String(rawError).toLowerCase()
+  if (lower.includes('timeout') || lower.includes('deadline')) {
+    return t('settings.errTimeout')
+  }
+  if (lower.includes('refused')) {
+    return t('settings.errRefused')
+  }
+  if (lower.includes('lookup') || lower.includes('no such host')) {
+    return t('settings.errHostNotFound')
+  }
+  if (lower.includes('not supported') || lower.includes('unsupported')) {
+    return t('settings.errUnsupported')
+  }
+  if (
+    lower.includes('auth') ||
+    lower.includes('407') ||
+    lower.includes('user')
+  ) {
+    return t('settings.errAuth')
+  }
+  return t('settings.proxyNoResponse')
+}
+
 const proxyPingText = (p) => {
   const info = proxyPings.value[p.id]
   if (!info || info.testing) return t('settings.proxyTesting')
   if (info.active) return t('settings.proxyPingMs', { ping: info.ping_ms })
-  return info.error || t('settings.proxyNoResponse')
+  return formatProxyError(info.error)
 }
 
 const proxyPingClass = (p) => {
@@ -1210,6 +1350,66 @@ const sendTestNotification = async () => {
                 class="proxy-inline-fields"
                 :class="{ disabled: !props.settings.proxy_enabled }"
               >
+                <!-- Importar proxy mediante enlace telegramdl:// -->
+                <div class="proxy-link-import-row">
+                  <div class="field-col link-col">
+                    <label class="field-label">{{
+                      t('settings.proxyLinkImport')
+                    }}</label>
+                    <div class="link-input-group">
+                      <input
+                        v-model="proxyLinkInput"
+                        type="text"
+                        class="proxy-input"
+                        :placeholder="t('settings.proxyLinkPlaceholder')"
+                        @keyup.enter="addProxyFromLink"
+                      />
+                      <button
+                        type="button"
+                        class="add-proxy-btn"
+                        :title="t('settings.proxyAdd')"
+                        :disabled="testingLinkProxy || !proxyLinkInput"
+                        @click="addProxyFromLink"
+                      >
+                        <Loader2
+                          v-if="testingLinkProxy"
+                          class="spin"
+                          :size="16"
+                        />
+                        <Plus v-else :size="16" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Resultado de comprobación por enlace -->
+                <div
+                  v-if="linkTestResult"
+                  class="test-section link-test-section"
+                >
+                  <div
+                    class="test-result"
+                    :class="{
+                      active: linkTestResult.active,
+                      inactive: !linkTestResult.active
+                    }"
+                  >
+                    <CheckCircle2 v-if="linkTestResult.active" :size="14" />
+                    <AlertCircle v-else :size="14" />
+                    <span v-if="linkTestResult.active">
+                      {{
+                        t('settings.proxyActive', {
+                          ping: linkTestResult.ping_ms
+                        })
+                      }}
+                    </span>
+                    <span v-else>
+                      {{ t('settings.proxyInactive') }}:
+                      {{ linkTestResult.error }}
+                    </span>
+                  </div>
+                </div>
+
                 <div class="proxy-type-row">
                   <span class="field-label-inline">{{
                     t('settings.proxyType')
@@ -2097,6 +2297,27 @@ const sendTestNotification = async () => {
   color: var(--user-text);
 }
 
+.proxy-link-import-row {
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+.link-test-section {
+  margin-top: 1px;
+  margin-bottom: 16px;
+}
+
+.link-col {
+  width: 100%;
+}
+
+.link-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
 .proxy-inputs-single-line {
   display: flex;
   align-items: flex-end;
@@ -2111,8 +2332,8 @@ const sendTestNotification = async () => {
 }
 
 .field-col.host-col {
-  flex: 1 1 120px;
-  min-width: 110px;
+  flex: 1;
+  min-width: 140px;
 }
 
 .field-col.port-col {
@@ -2121,18 +2342,18 @@ const sendTestNotification = async () => {
 }
 
 .field-col.user-col {
-  flex: 1 1 120px;
-  min-width: 110px;
+  width: 170px;
+  flex: 0 0 170px;
 }
 
 .field-col.pass-col {
-  flex: 1.2 1 170px;
-  min-width: 160px;
+  width: 170px;
+  flex: 0 0 170px;
 }
 
 .field-col.secret-col {
-  flex: 1.2 1 170px;
-  min-width: 160px;
+  flex: 1;
+  min-width: 180px;
 }
 
 .field-label {
@@ -2247,21 +2468,31 @@ const sendTestNotification = async () => {
 .saved-proxies-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 14px;
+  margin-top: 20px;
+}
+
+.saved-proxies-container .color-group-title {
+  margin-bottom: 12px;
+  display: block;
 }
 
 .saved-proxies-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .saved-proxies-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .saved-proxy-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
   background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
@@ -2269,6 +2500,7 @@ const sendTestNotification = async () => {
   transition:
     border-color 0.2s,
     background 0.2s;
+  min-width: 0;
 }
 
 .saved-proxy-item:hover {
@@ -2296,24 +2528,33 @@ const sendTestNotification = async () => {
 .proxy-item-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
 }
 
 .proxy-item-info {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .proxy-item-name {
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--user-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .proxy-item-ping {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--user-text-dim, #a0aec0);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .proxy-item-ping.active {
@@ -2328,8 +2569,9 @@ const sendTestNotification = async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
   background: transparent;
@@ -2435,7 +2677,7 @@ const sendTestNotification = async () => {
 }
 
 .proxy-modal-row .field-col.pass-col {
-  flex: 1.4;
+  flex: 1;
 }
 
 .proxy-modal-row .field-col.secret-col {

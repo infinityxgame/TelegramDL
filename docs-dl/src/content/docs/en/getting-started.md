@@ -54,6 +54,10 @@ When opening TelegramDL for the first time—whether via the native application 
 3. Verification code (sent via the official Telegram app or SMS).
 4. Two-Factor Authentication (2FA) password, if enabled on your account.
 
+:::tip[Proxy Connection]
+If you are connecting from a country or network with Telegram restrictions, the startup wizard includes a quick **Proxy** button to test and enable your connection before or during authentication.
+:::
+
 Once finished, you can start using the program.
 
 ---

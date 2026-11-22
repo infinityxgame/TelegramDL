@@ -47,7 +47,29 @@ TelegramDL incluye soporte multilingüe completo:
 
 ---
 
-## 4. Acceso Remoto
+## 4. Configuración de Proxy (Multi-Proxy)
+
+TelegramDL permite conectarse a Telegram a través de servidores proxy **SOCKS5**, **MTProto** o **HTTP**, con soporte para gestionar múltiples proxies guardados:
+
+- **Activar / Desactivar Proxy**: Interruptor principal para habilitar o deshabilitar la conexión por proxy.
+- **Importar por enlace (`telegramdl://`)**:
+  - Campo de entrada rápida para pegar enlaces de proxy en formato URL Scheme (ejemplo: `telegramdl://socks?server=1.1.1.1&port=1080&user=admin&pass=1234`).
+  - Al presionar `Enter` o el botón `+`, verifica la disponibilidad del proxy, muestra los milisegundos de latencia y lo añade a la base de datos de proxies guardados.
+- **Añadir Proxy Manualmente**:
+  - Formulario independiente para ingresar Tipo (`SOCKS5`, `MTProto`, `HTTP`), Servidor/Host, Puerto, Usuario, Contraseña o Secreto.
+  - Al presionar el botón `+`, se realiza la comprobación de conectividad. Si responde con éxito, se añade a la lista y se limpia el formulario.
+- **Lista de Proxies Guardados**:
+  - Muestra todos los proxies almacenados en SQLite en una cuadrícula compacta de 2 columnas.
+  - Cada proxy muestra un **círculo selector (radio)** para activarlo al instante con un clic, el servidor/host y la latencia en milisegundos (o mensaje amigable si no responde).
+  - Botón de **Información `(i)`**: Abre un modal flotante compacto donde puedes editar sus datos, eliminar el proxy de la base de datos o hacer clic en **Compartir** para copiar su enlace `telegramdl://` al portapapeles.
+
+:::info[Configuración de Proxy en el Inicio de Sesión]
+Tanto en el asistente de inicio de sesión de Telegram como en la pantalla de acceso remoto, dispones de un botón rápido de **Proxy** para configurar y probar tu conexión antes de autenticarte, garantizando acceso en redes restringidas.
+:::
+
+---
+
+## 5. Acceso Remoto
 
 Permite controlar TelegramDL desde otros dispositivos (smartphones, tablets u otras computadoras) a través de un navegador web o mediante llamadas a la API REST.
 
@@ -141,9 +163,11 @@ La acción de limpiar historial **nunca elimina los archivos físicos** descarga
 
 ---
 
-## 7. Opciones Adicionales de la Barra Lateral
+## 8. Opciones Adicionales de la Barra Lateral
 
+- **Cerrar al terminar**: Al activar el interruptor «Cerrar al terminar» en la barra lateral, la aplicación o ventana se cerrará automáticamente 10 segundos después de que la cola de descargas quede totalmente vacía. *(Ajuste temporal por sesión)*.
 - **Apagar al terminar**: Al activar el interruptor «Apagar al terminar» en la barra lateral, el equipo se apagará automáticamente 15 segundos después de que la cola de descargas quede totalmente vacía. Mientras esté activo, se mostrará una cuenta atrás en vivo. *(Ajuste temporal por sesión)*.
+- **Avisos del bot**: Botón rápido para activar o desactivar en cualquier momento los avisos y alertas enviados por tu bot de Telegram.
 - **Sonido de la app**: Activa o desactiva las alertas sonoras al finalizar una descarga (tanto en el panel web como en las notificaciones del System Tray al estar minimizado).
 - **Cerrar sesión de Telegram**: Cierra de forma segura la sesión activa de Telegram sin borrar tus ajustes locales ni la base de datos.
 

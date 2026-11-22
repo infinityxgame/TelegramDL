@@ -55,6 +55,10 @@ Al abrir TelegramDL por primera vez ya sea por la aplicación nativa o por el na
 3. Código de verificación (enviado por la app oficial de Telegram o SMS).
 4. Contraseña de verificación en dos pasos (2FA), en caso de tenerla activada.
 
+:::tip[Acceso mediante Proxy]
+Si te encuentras en un país o red con restricciones de acceso a Telegram, la pantalla del asistente inicial incluye un botón rápido de **Proxy** para probar y activar tu conexión antes o durante la autenticación.
+:::
+
 Al terminar puede comenzar a usar el programa
 
 ---

@@ -47,7 +47,29 @@ TelegramDL includes full multilingual support:
 
 ---
 
-## 4. Remote Access
+## 4. Proxy Configuration (Multi-Proxy)
+
+TelegramDL allows connecting to Telegram through **SOCKS5**, **MTProto**, or **HTTP** proxy servers, with support for managing multiple saved proxies:
+
+- **Enable / Disable Proxy**: Primary toggle switch to enable or disable proxy connections.
+- **Import via Link (`telegramdl://`)**:
+  - Quick input field to paste custom proxy links in URL Scheme format (e.g. `telegramdl://socks?server=1.1.1.1&port=1080&user=admin&pass=1234`).
+  - Pressing `Enter` or the `+` button checks proxy availability, displays ping latency in milliseconds, and adds it to the saved proxies database.
+- **Add Proxy Manually**:
+  - Independent input form to enter Type (`SOCKS5`, `MTProto`, `HTTP`), Server/Host, Port, Username, Password, or Secret.
+  - Pressing `+` checks connectivity. If successful, saves the proxy and clears the input fields.
+- **Saved Proxies List**:
+  - Displays all proxies stored in SQLite in a compact 2-column grid.
+  - Each proxy features a **selection circle (radio)** to activate it instantly with one click, the server/host address, and latency in ms (or a friendly message if unreachable).
+  - **Info Button `(i)`**: Opens a floating modal dialog to edit details, delete the proxy from DB, or click **Share** to copy its `telegramdl://` link to the clipboard.
+
+:::info[Proxy Setup at Authentication]
+Both the Telegram login wizard and the Remote Access screen feature a quick **Proxy** button to configure and test your connection before authenticating, ensuring access on restricted networks.
+:::
+
+---
+
+## 5. Remote Access
 
 Allows controlling TelegramDL from other devices (smartphones, tablets, or other PCs) via web browser or REST API endpoints.
 
@@ -141,9 +163,11 @@ Clearing history **never deletes physical files** from your hard drive.
 
 ---
 
-## 7. Additional Sidebar Controls
+## 8. Additional Sidebar Controls
 
-- **Power off when done**: Toggling «Apagar al terminar» arms automatic PC shutdown 15 seconds after the download queue empties. Displays a live countdown while active. *(Session-only setting)*.
+- **Close when done**: Toggling «Cerrar al terminar» in the sidebar schedules automatic app/window closure 10 seconds after the download queue empties. *(Session-only setting)*.
+- **Power off when done**: Toggling «Apagar al terminar» in the sidebar arms automatic PC shutdown 15 seconds after the download queue empties. Displays a live countdown while active. *(Session-only setting)*.
+- **Bot alerts**: Quick button to toggle push notification alerts sent by your Telegram bot.
 - **App sound**: Toggles audio alerts when downloads complete (both in the web panel and in System Tray notifications when minimized).
 - **Log out of Telegram**: Safely closes the active Telegram session without removing local settings or database records.
 

@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -987,10 +986,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			log.Printf("[TG CLIENT] Proxy HTTP activado: %s", proxyAddr)
 		case "mtproto":
 			cleanSecret := strings.TrimSpace(pSec)
-			if len(cleanSecret) > 2 && (strings.HasPrefix(cleanSecret, "ee") || strings.HasPrefix(cleanSecret, "dd")) {
-				cleanSecret = cleanSecret[2:]
-			}
-			secretBytes, err := hex.DecodeString(cleanSecret)
+			secretBytes, err := ParseMTProtoSecret(cleanSecret)
 			if err == nil && len(secretBytes) > 0 {
 				rawDial := func(ctx context.Context, network, addr string) (net.Conn, error) {
 					var d net.Dialer

@@ -157,12 +157,9 @@ func TestProxy(pType, host string, port int, username, password, secret string) 
 
 	case "mtproto":
 		cleanSecret := strings.TrimSpace(secret)
-		if len(cleanSecret) > 2 && (strings.HasPrefix(cleanSecret, "ee") || strings.HasPrefix(cleanSecret, "dd")) {
-			cleanSecret = cleanSecret[2:]
-		}
 		if cleanSecret != "" {
-			if _, err := hex.DecodeString(cleanSecret); err != nil {
-				return false, 0, fmt.Errorf("invalid mtproto secret hex: %w", err)
+			if _, err := ParseMTProtoSecret(cleanSecret); err != nil {
+				return false, 0, fmt.Errorf("invalid mtproto secret: %w", err)
 			}
 		}
 
@@ -177,4 +174,56 @@ func TestProxy(pType, host string, port int, username, password, secret string) 
 	default:
 		return false, 0, fmt.Errorf("unsupported proxy type: %s", pType)
 	}
+}
+
+// ParseMTProtoSecret intenta decodificar un secreto MTProto en sus diversos formatos posibles:
+// 1. Hexadecimal directo (32, 34 o más caracteres hex).
+// 2. Hexadecimal con prefijo "ee" / "dd" descartable si el resto es hex válido.
+// 3. Base64 / Base64URL (con o sin caracteres de relleno '=').
+func ParseMTProtoSecret(secret string) ([]byte, error) {
+	clean := strings.TrimSpace(secret)
+	if clean == "" {
+		return nil, errors.New("empty mtproto secret")
+	}
+
+	// 1. Intentar decodificar como hexadecimal directo
+	if b, err := hex.DecodeString(clean); err == nil && len(b) >= 16 {
+		return b, nil
+	}
+
+	// 2. Si empieza por "ee" o "dd" (mayúsculas o minúsculas) y tiene más de 2 caracteres, probar decodificar el resto como hex
+	lower := strings.ToLower(clean)
+	if len(clean) > 2 && (strings.HasPrefix(lower, "ee") || strings.HasPrefix(lower, "dd")) {
+		if b, err := hex.DecodeString(clean[2:]); err == nil && len(b) >= 16 {
+			return b, nil
+		}
+	}
+
+	// 3. Intentar decodificar como Base64 / Base64URL
+	b64Clean := strings.ReplaceAll(strings.ReplaceAll(clean, "-", "+"), "_", "/")
+	for len(b64Clean)%4 != 0 {
+		b64Clean += "="
+	}
+
+	if b64Bytes, err := base64.StdEncoding.DecodeString(b64Clean); err == nil && len(b64Bytes) > 0 {
+		// Si lo que se decodificó es una cadena ASCII hex de 32+ caracteres:
+		strAscii := strings.TrimSpace(string(b64Bytes))
+		if len(strAscii) >= 32 {
+			if hBytes, hErr := hex.DecodeString(strAscii); hErr == nil && len(hBytes) >= 16 {
+				return hBytes, nil
+			}
+			strLower := strings.ToLower(strAscii)
+			if len(strAscii) > 2 && (strings.HasPrefix(strLower, "ee") || strings.HasPrefix(strLower, "dd")) {
+				if hBytes, hErr := hex.DecodeString(strAscii[2:]); hErr == nil && len(hBytes) >= 16 {
+					return hBytes, nil
+				}
+			}
+		}
+
+		if len(b64Bytes) >= 16 {
+			return b64Bytes, nil
+		}
+	}
+
+	return nil, errors.New("invalid mtproto secret format: expected hex or base64")
 }
