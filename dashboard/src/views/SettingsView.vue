@@ -367,6 +367,7 @@ const saveEditingProxy = async () => {
 const deleteEditingProxy = async () => {
   const p = editingProxyForm.value
   if (!p.id) return
+  const wasSelected = isProxySelected(p)
   try {
     const res = await fetch(`/api/proxies?id=${p.id}`, {
       method: 'DELETE',
@@ -375,6 +376,18 @@ const deleteEditingProxy = async () => {
     const data = await res.json()
     if (data.status === 'ok') {
       editingProxyModal.value = false
+      if (wasSelected || savedProxies.value.length <= 1) {
+        patch({
+          proxy_enabled: false,
+          proxy_host: '',
+          proxy_port: 1080,
+          proxy_username: '',
+          proxy_password: '',
+          proxy_secret: '',
+          proxy_notice: ''
+        })
+        emit('save-settings')
+      }
       await fetchSavedProxies()
     }
   } catch (err) {
@@ -2098,28 +2111,28 @@ const sendTestNotification = async () => {
 }
 
 .field-col.host-col {
-  flex: 1;
-  min-width: 140px;
+  flex: 1 1 120px;
+  min-width: 110px;
 }
 
 .field-col.port-col {
-  width: 90px;
-  flex: 0 0 90px;
+  width: 80px;
+  flex: 0 0 80px;
 }
 
 .field-col.user-col {
-  width: 145px;
-  flex: 0 0 145px;
+  flex: 1 1 120px;
+  min-width: 110px;
 }
 
 .field-col.pass-col {
-  width: 145px;
-  flex: 0 0 145px;
+  flex: 1.2 1 170px;
+  min-width: 160px;
 }
 
 .field-col.secret-col {
-  flex: 1;
-  min-width: 180px;
+  flex: 1.2 1 170px;
+  min-width: 160px;
 }
 
 .field-label {
@@ -2127,8 +2140,6 @@ const sendTestNotification = async () => {
   font-weight: 600;
   color: var(--user-text);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .proxy-input {
@@ -2354,9 +2365,9 @@ const sendTestNotification = async () => {
   background: var(--user-bg-top, #0e2032);
   border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.15));
   border-radius: 16px;
-  padding: 20px;
-  max-width: 480px;
-  width: 90%;
+  padding: 22px 24px;
+  max-width: 500px;
+  width: 92%;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
   box-sizing: border-box;
 }
@@ -2365,8 +2376,9 @@ const sendTestNotification = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.1));
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
 }
 
 .modal-header h3 {
@@ -2374,6 +2386,12 @@ const sendTestNotification = async () => {
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--user-text);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .close-btn {
@@ -2399,18 +2417,52 @@ const sendTestNotification = async () => {
 .proxy-modal-row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
   width: 100%;
+}
+
+.proxy-modal-row .field-col.host-col {
+  flex: 1;
+}
+
+.proxy-modal-row .field-col.port-col {
+  width: 90px;
+  flex: 0 0 90px;
+}
+
+.proxy-modal-row .field-col.user-col {
+  flex: 1;
+}
+
+.proxy-modal-row .field-col.pass-col {
+  flex: 1.4;
+}
+
+.proxy-modal-row .field-col.secret-col {
+  flex: 1;
 }
 
 .proxy-modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
+}
+
+.proxy-modal-footer button {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
 .footer-right-actions {
@@ -2422,10 +2474,22 @@ const sendTestNotification = async () => {
 .delete-btn {
   color: #f87171 !important;
   border-color: rgba(248, 113, 113, 0.3) !important;
+  background: transparent !important;
 }
 
 .delete-btn:hover {
   background: rgba(248, 113, 113, 0.12) !important;
+}
+
+.share-btn {
+  color: var(--user-text) !important;
+  border-color: var(--user-border, rgba(255, 255, 255, 0.15)) !important;
+  background: transparent !important;
+}
+
+.share-btn:hover {
+  border-color: var(--user-primary, #3b82f6) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 .proxy-share-notice {

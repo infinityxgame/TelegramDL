@@ -964,7 +964,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			if pUser != "" || pPass != "" {
 				auth = &proxy.Auth{User: pUser, Password: pPass}
 			}
-			dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: 10 * time.Second})
+			dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: 15 * time.Second})
 			if err == nil {
 				var rawDial dcs.DialFunc
 				if cd, ok := dialer.(proxy.ContextDialer); ok {

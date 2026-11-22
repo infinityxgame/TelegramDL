@@ -316,3 +316,51 @@ func TestMigrationFromSchemaWithoutTopics(t *testing.T) {
 		t.Fatalf("expected 2 entries for same group: %+v", again.ListenerChats)
 	}
 }
+
+func TestProxyDeduplicationAndDelete(t *testing.T) {
+	st := newTestStorage(t)
+
+	// Añadir primer proxy
+	p1, err := st.AddProxy(config.SavedProxy{
+		Type: "socks5",
+		Host: "1.1.1.1",
+		Port: 1080,
+	})
+	if err != nil {
+		t.Fatalf("error adding proxy: %v", err)
+	}
+
+	// Añadir el mismo proxy de nuevo no debe crear un duplicado
+	p2, err := st.AddProxy(config.SavedProxy{
+		Type: "socks5",
+		Host: "1.1.1.1",
+		Port: 1080,
+	})
+	if err != nil {
+		t.Fatalf("error adding duplicate proxy: %v", err)
+	}
+	if p1.ID != p2.ID {
+		t.Fatalf("expected duplicate proxy to return existing ID %d, got %d", p1.ID, p2.ID)
+	}
+
+	proxies, err := st.GetProxies()
+	if err != nil {
+		t.Fatalf("error getting proxies: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected 1 proxy in list, got %d", len(proxies))
+	}
+
+	// Eliminar el proxy debe dejar la lista vacía
+	if err := st.DeleteProxy(p1.ID); err != nil {
+		t.Fatalf("error deleting proxy: %v", err)
+	}
+
+	proxiesAfter, err := st.GetProxies()
+	if err != nil {
+		t.Fatalf("error getting proxies after delete: %v", err)
+	}
+	if len(proxiesAfter) != 0 {
+		t.Fatalf("expected empty proxy list, got %d", len(proxiesAfter))
+	}
+}

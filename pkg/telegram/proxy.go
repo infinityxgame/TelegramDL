@@ -81,14 +81,23 @@ func wrapProxyDialer(dialFunc dcs.DialFunc, proxyType, proxyAddr string, onFail 
 			return conn, nil
 		}
 
-		fails := atomic.AddInt32(&failCount, 1)
-		msg := fmt.Sprintf("El proxy %s (%s) falló al conectar (%d/2): %v", proxyType, proxyAddr, fails, err)
-		log.Printf("[TG CLIENT ERROR] %s", msg)
-		logbus.Error(logbus.CatTelegram, "Fallo de conexión en proxy", msg)
+		errStr := strings.ToLower(err.Error())
+		isIPv6Err := strings.Contains(addr, "[") ||
+			strings.Contains(errStr, "address type not supported") ||
+			strings.Contains(errStr, "network is unreachable") ||
+			strings.Contains(errStr, "no route to host")
 
-		if fails >= 2 && atomic.CompareAndSwapInt32(&triggered, 0, 1) {
-			if onFail != nil {
-				go onFail(err)
+		msg := fmt.Sprintf("El proxy %s (%s) falló al conectar a %s: %v", proxyType, proxyAddr, addr, err)
+		log.Printf("[TG CLIENT ERROR] %s", msg)
+
+		// Solo registrar error en logbus y contar fallos reales si no es un intento de IPv6 no soportado
+		if !isIPv6Err {
+			logbus.Error(logbus.CatTelegram, "Fallo de conexión en proxy", msg)
+			fails := atomic.AddInt32(&failCount, 1)
+			if fails >= 3 && atomic.CompareAndSwapInt32(&triggered, 0, 1) {
+				if onFail != nil {
+					go onFail(err)
+				}
 			}
 		}
 

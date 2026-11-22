@@ -3150,30 +3150,6 @@ func (s *Server) handleProxies(w http.ResponseWriter, r *http.Request) {
 			s.errorResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Si la lista de proxies en DB está vacía pero hay un proxy configurado actualmente,
-		// auto-poblamos la tabla con el proxy actual para conservar la preferencia.
-		s.mu.RLock()
-		currentHost := s.config.ProxyHost
-		currentType := s.config.ProxyType
-		currentPort := s.config.ProxyPort
-		currentUser := s.config.ProxyUsername
-		currentPass := s.config.ProxyPassword
-		currentSec := s.config.ProxySecret
-		s.mu.RUnlock()
-
-		if len(proxies) == 0 && strings.TrimSpace(currentHost) != "" {
-			seeded, errSeed := s.storage.AddProxy(config.SavedProxy{
-				Type:     currentType,
-				Host:     currentHost,
-				Port:     currentPort,
-				Username: currentUser,
-				Password: currentPass,
-				Secret:   currentSec,
-			})
-			if errSeed == nil {
-				proxies = []config.SavedProxy{seeded}
-			}
-		}
 
 		s.jsonResponse(w, http.StatusOK, map[string]any{
 			"status":  "ok",
@@ -3254,6 +3230,30 @@ func (s *Server) handleProxies(w http.ResponseWriter, r *http.Request) {
 		if err := s.storage.DeleteProxy(id); err != nil {
 			s.errorResponse(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+
+		remaining, _ := s.storage.GetProxies()
+		if len(remaining) == 0 {
+			// Si ya no quedan proxies guardados, desactivar y limpiar el proxy activo
+			s.mu.Lock()
+			s.config.ProxyEnabled = false
+			s.config.ProxyHost = ""
+			s.config.ProxyPort = 1080
+			s.config.ProxyUsername = ""
+			s.config.ProxyPassword = ""
+			s.config.ProxySecret = ""
+			s.config.ProxyNotice = ""
+			cfg := s.config
+			s.mu.Unlock()
+
+			_ = s.storage.SaveConfig(cfg)
+			if s.clientMgr != nil {
+				s.clientMgr.SetProxyConfig(cfg)
+			}
+			s.broadcastState()
+			if s.onConfigChange != nil {
+				s.onConfigChange(cfg)
+			}
 		}
 
 		s.jsonResponse(w, http.StatusOK, map[string]any{

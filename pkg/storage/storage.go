@@ -240,6 +240,8 @@ func (s *Storage) initSchema() error {
 		return err
 	}
 
+	s.migrateInitialProxy()
+
 	return nil
 }
 
@@ -1588,10 +1590,32 @@ func (s *Storage) GetProxies() ([]config.SavedProxy, error) {
 	return proxies, rows.Err()
 }
 
-// AddProxy añade una nueva entrada de proxy a SQLite y devuelve el registro con su ID asignado.
+// AddProxy añade una nueva entrada de proxy a SQLite (o la actualiza si ya existe por host/puerto/tipo).
 func (s *Storage) AddProxy(p config.SavedProxy) (config.SavedProxy, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	p.Host = strings.TrimSpace(p.Host)
+	if p.Type == "" {
+		p.Type = "socks5"
+	}
+	if p.Port <= 0 {
+		p.Port = 1080
+	}
+
+	// Evitar duplicados: comprobar si ya existe un proxy con el mismo tipo, host y puerto
+	var existingID int64
+	errCheck := s.db.QueryRow(`
+		SELECT id FROM proxies WHERE LOWER(proxy_type) = LOWER(?) AND LOWER(proxy_host) = LOWER(?) AND proxy_port = ?
+	`, p.Type, p.Host, p.Port).Scan(&existingID)
+
+	if errCheck == nil && existingID > 0 {
+		p.ID = existingID
+		_, _ = s.db.Exec(`
+			UPDATE proxies SET proxy_username=?, proxy_password=?, proxy_secret=? WHERE id=?
+		`, p.Username, p.Password, p.Secret, existingID)
+		return p, nil
+	}
 
 	now := time.Now().Unix()
 	res, err := s.db.Exec(`
@@ -1606,6 +1630,48 @@ func (s *Storage) AddProxy(p config.SavedProxy) (config.SavedProxy, error) {
 		p.ID = id
 	}
 	return p, nil
+}
+
+func (s *Storage) migrateInitialProxy() {
+	var count int
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM app_config WHERE key = 'proxies_migrated_v1'").Scan(&count)
+	if count > 0 {
+		return
+	}
+
+	_, _ = s.db.Exec("INSERT OR REPLACE INTO app_config(key, value) VALUES('proxies_migrated_v1', '1')")
+
+	var proxyCount int
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM proxies").Scan(&proxyCount)
+	if proxyCount > 0 {
+		return
+	}
+
+	var host, pType, portStr, user, pass, secret string
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_host'").Scan(&host)
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return
+	}
+
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_type'").Scan(&pType)
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_port'").Scan(&portStr)
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_username'").Scan(&user)
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_password'").Scan(&pass)
+	_ = s.db.QueryRow("SELECT value FROM app_config WHERE key = 'proxy_secret'").Scan(&secret)
+
+	if pType == "" {
+		pType = "socks5"
+	}
+	port, _ := strconv.Atoi(portStr)
+	if port <= 0 {
+		port = 1080
+	}
+
+	_, _ = s.db.Exec(`
+		INSERT INTO proxies(proxy_type, proxy_host, proxy_port, proxy_username, proxy_password, proxy_secret, created_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
+	`, pType, host, port, user, pass, secret, time.Now().Unix())
 }
 
 // UpdateProxy actualiza una entrada de proxy existente en SQLite.
