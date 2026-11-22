@@ -4,10 +4,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"tgdown/pkg/config"
@@ -74,7 +76,85 @@ func trySystemNotification(msg string) bool {
 
 func registerConsoleCtrlHandler(sigCh chan os.Signal) {}
 
-func registerCustomURLScheme() {}
+// registerCustomURLScheme registra el protocolo telegramdl:// en sistemas no-Windows
+// (Linux mediante XDG Mime Handler y macOS mediante LaunchServices).
+func registerCustomURLScheme() {
+	switch runtime.GOOS {
+	case "linux":
+		registerLinuxCustomURLScheme()
+	case "darwin":
+		registerMacCustomURLScheme()
+	}
+}
+
+// registerLinuxCustomURLScheme crea o actualiza el archivo .desktop en el directorio XDG del usuario
+// y registra telegramdl.desktop como el manejador predeterminado para el protocolo telegramdl://
+func registerLinuxCustomURLScheme() {
+	exePath, err := os.Executable()
+	if err != nil || exePath == "" {
+		return
+	}
+	if evalPath, err := filepath.EvalSymlinks(exePath); err == nil && evalPath != "" {
+		exePath = evalPath
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return
+	}
+
+	appsDir := filepath.Join(homeDir, ".local", "share", "applications")
+	if err := os.MkdirAll(appsDir, 0755); err != nil {
+		log.Printf("[SYS] %s", i18n.T("system.xdgMkdirError", err))
+		return
+	}
+
+	desktopFile := filepath.Join(appsDir, "telegramdl.desktop")
+	content := fmt.Sprintf(`[Desktop Entry]
+Name=TelegramDL
+Comment=Telegram Downloader Desktop
+Exec="%s" %%u
+Icon=telegramdl
+Type=Application
+Terminal=false
+MimeType=x-scheme-handler/telegramdl;
+Categories=Network;FileTransfer;
+`, exePath)
+
+	existing, err := os.ReadFile(desktopFile)
+	if err != nil || string(existing) != content {
+		if err := os.WriteFile(desktopFile, []byte(content), 0644); err != nil {
+			log.Printf("[SYS] %s", i18n.T("system.xdgDesktopError", err))
+			return
+		}
+	}
+
+	if xdgMime, err := exec.LookPath("xdg-mime"); err == nil {
+		cmd := exec.Command(xdgMime, "default", "telegramdl.desktop", "x-scheme-handler/telegramdl")
+		if err := cmd.Run(); err != nil {
+			log.Printf("[SYS] %s", i18n.T("system.xdgMimeError", err))
+		}
+	}
+}
+
+// registerMacCustomURLScheme registra el paquete .app en LaunchServices de macOS
+// cuando la aplicación se ejecuta desde un bundle .app.
+func registerMacCustomURLScheme() {
+	exePath, err := os.Executable()
+	if err != nil || exePath == "" {
+		return
+	}
+	if idx := strings.Index(exePath, ".app/Contents/MacOS/"); idx != -1 {
+		appPath := exePath[:idx+4]
+		lsregister := "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+		if _, err := os.Stat(lsregister); err == nil {
+			cmd := exec.Command(lsregister, "-f", appPath)
+			if err := cmd.Run(); err != nil {
+				log.Printf("[SYS] %s", i18n.T("system.macLaunchServicesError", err))
+			}
+		}
+	}
+}
 
 func registerAppUserModelID(appID, iconPath string) {}
 

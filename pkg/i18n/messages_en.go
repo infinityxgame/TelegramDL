@@ -22,6 +22,10 @@ var messagesEN = map[string]string{
 	"system.startupURLError":           "Error processing startup URL: %v",
 	"system.logCleared":                "Log cleared",
 	"system.trayNotifyError":           "Error showing native notification: %v",
+	"system.xdgMkdirError":             "Could not create XDG applications directory: %v",
+	"system.xdgDesktopError":           "Could not write XDG .desktop file: %v",
+	"system.xdgMimeError":              "Error registering MIME handler with xdg-mime: %v",
+	"system.macLaunchServicesError":    "Error registering .app bundle in LaunchServices: %v",
 
 	// HTTP server (pkg/server)
 	"server.listening":              "Server listening on %s:%d",
