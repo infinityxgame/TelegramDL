@@ -541,7 +541,7 @@ const handleSave = async () => {
 .field-label {
   font-size: 0.88rem;
   font-weight: 600;
-  color: var(--user-text, #f3f4f6);
+  color: var(--user-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -554,7 +554,7 @@ const handleSave = async () => {
   border-radius: 8px;
   border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
   background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
-  color: var(--user-text, #f9fafb);
+  color: var(--user-text);
   font-size: 0.92rem;
   outline: none;
   transition:
@@ -583,18 +583,18 @@ const handleSave = async () => {
   gap: 8px;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.15));
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--user-text, #e5e7eb);
-  font-size: 0.85rem;
-  font-weight: 500;
+  border: 1px solid var(--user-border);
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.05));
+  color: var(--user-text);
+  font-size: 0.88rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .test-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--user-accent, #3b82f6);
+  border-color: var(--user-primary, var(--user-accent));
+  color: var(--user-text);
 }
 
 .test-btn:disabled {
@@ -648,17 +648,17 @@ const handleSave = async () => {
 .cancel-btn {
   padding: 9px 16px;
   border-radius: 10px;
-  border: 1px solid var(--user-border-light, rgba(255, 255, 255, 0.12));
-  background: transparent;
-  color: var(--user-text-muted, #9ca3af);
+  border: 1px solid var(--user-border);
+  background: var(--user-surface-light, transparent);
+  color: var(--user-text-dim);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
 }
 
 .cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--user-text, #fff);
+  background: var(--user-border);
+  color: var(--user-text);
 }
 
 .save-btn {
@@ -668,18 +668,18 @@ const handleSave = async () => {
   padding: 9px 18px;
   border-radius: 10px;
   border: none;
-  background: var(--user-accent, #3b82f6);
-  color: #ffffff;
+  background: var(--user-gradient, var(--user-primary));
+  color: var(--user-btn-text, var(--user-bg-base, #080d14));
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px var(--user-glow);
   transition: all 0.2s;
 }
 
 .save-btn:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  opacity: 0.92;
+  box-shadow: 0 6px 16px var(--user-glow);
 }
 
 .toggle-switch {

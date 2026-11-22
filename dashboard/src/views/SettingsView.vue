@@ -1549,7 +1549,7 @@ const sendTestNotification = async () => {
 .field-label-inline {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--user-text, #f3f4f6);
+  color: var(--user-text);
   min-width: 90px;
 }
 
@@ -1576,7 +1576,7 @@ const sendTestNotification = async () => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--user-border-light, #4b5563);
+  border: 2px solid var(--user-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1596,23 +1596,23 @@ const sendTestNotification = async () => {
 }
 
 .radio-option.active .radio-circle {
-  border-color: var(--user-primary, var(--user-accent, #3b82f6));
-  box-shadow: 0 0 8px var(--user-glow, rgba(59, 130, 246, 0.3));
+  border-color: var(--user-primary);
+  box-shadow: 0 0 8px var(--user-glow);
 }
 
 .radio-option.active .radio-dot {
-  background-color: var(--user-primary, var(--user-accent, #3b82f6));
+  background-color: var(--user-primary);
   transform: scale(1);
 }
 
 .radio-label {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--user-text, #f3f4f6);
+  color: var(--user-text);
 }
 
 .radio-option.active .radio-label {
-  color: var(--user-text, #ffffff);
+  color: var(--user-text);
 }
 
 .proxy-inputs-single-line {
@@ -1656,7 +1656,7 @@ const sendTestNotification = async () => {
 .field-label {
   font-size: 0.88rem;
   font-weight: 600;
-  color: var(--user-text, #f3f4f6);
+  color: var(--user-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1669,7 +1669,7 @@ const sendTestNotification = async () => {
   border-radius: 8px;
   border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
   background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
-  color: var(--user-text, #f9fafb);
+  color: var(--user-text);
   font-size: 0.92rem;
   outline: none;
   transition:

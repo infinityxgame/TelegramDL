@@ -1658,6 +1658,7 @@ html.theme-light .auth-button.secondary:hover:not(:disabled),
 html.theme-light .auth-button.ghost,
 html.theme-light .auth-button.ghost:not(:disabled):hover,
 html.theme-light .token-input-row input,
+html.theme-light .proxy-input,
 html.theme-light .ghost-icon-btn:hover,
 html.theme-light .modal-header h3,
 html.theme-light .cancel-btn:hover,
@@ -1685,6 +1686,7 @@ html.theme-light .brand-version-text tspan {
 /* --- Texto secundario ----------------------------------------------------- */
 html.theme-light .sidebar-status,
 html.theme-light .empty-state p,
+html.theme-light .proxy-input::placeholder,
 html.theme-light .download-form input::placeholder {
   color: var(--light-ink-soft);
 }
@@ -2692,6 +2694,47 @@ html.theme-silent-cherry .sidebar-toggle.armed:hover {
   background: #f7cbd7 !important;
   border-color: var(--light-alert) !important;
   color: #8e1b34 !important;
+}
+
+/* Radio buttons y Stepper para Silent Cherry / Temas Claros */
+html.theme-silent-cherry .radio-option.active .radio-circle {
+  border-color: #be185d !important;
+  box-shadow: 0 0 8px rgba(190, 24, 93, 0.35) !important;
+}
+
+html.theme-silent-cherry .radio-option.active .radio-dot {
+  background-color: #be185d !important;
+}
+
+html.theme-silent-cherry .radio-option.active .radio-label {
+  color: #463a57 !important;
+}
+
+html.theme-light .proxy-badge-btn:hover {
+  color: #111111 !important;
+  border-color: var(--user-primary, #f472b6) !important;
+}
+
+html.theme-light .step-item {
+  color: var(--light-ink-soft, #6b6270);
+}
+
+html.theme-light .step-item.active,
+html.theme-light .step-item.done {
+  color: var(--light-ink, #463a57);
+}
+
+html.theme-light .step-label {
+  color: var(--light-ink-soft, #6b6270);
+}
+
+html.theme-light .step-item.active .step-label,
+html.theme-light .step-item.done .step-label {
+  color: var(--light-ink, #463a57);
+}
+
+html.theme-light .step-divider {
+  background: var(--user-border, #f472b6) !important;
 }
 
 /* -----------------------------------------------------------------------------

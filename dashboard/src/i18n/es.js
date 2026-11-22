@@ -605,6 +605,9 @@ export default {
     connectedAs: 'Conectado como',
     successFallback: 'Tu sesión de Telegram está lista y activa.',
     goDashboard: 'Ir al Dashboard',
+    proxyBtn: 'Proxy',
+    proxyActiveTooltip: 'Proxy activo ({ping} ms)',
+    proxyInactiveTooltip: 'Proxy no disponible',
     errFillBoth: 'Por favor completa tanto el API ID como el API HASH',
     errApiIdFormat: 'El API ID debe contener solo dígitos (ej. 12345678)',
     errApiHashFormat:

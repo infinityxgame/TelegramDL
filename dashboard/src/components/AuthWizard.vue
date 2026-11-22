@@ -767,9 +767,9 @@ const cancelBack = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--user-text-muted, #9ca3af);
+  background: var(--user-surface-light, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  color: var(--user-text-dim, #9ca3af);
   padding: 5px 12px;
   border-radius: 20px;
   font-size: 0.8rem;
@@ -779,15 +779,15 @@ const cancelBack = () => {
 }
 
 .proxy-badge-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--user-text, #ffffff);
-  border-color: var(--user-accent, #3b82f6);
+  background: var(--user-surface, rgba(255, 255, 255, 0.12));
+  color: var(--user-text);
+  border-color: var(--user-primary, var(--user-accent));
 }
 
 .proxy-badge-btn.enabled {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #60a5fa;
+  background: var(--user-primary-soft, rgba(59, 130, 246, 0.12));
+  border-color: var(--user-primary, rgba(59, 130, 246, 0.4));
+  color: var(--user-primary, #60a5fa);
 }
 
 .proxy-badge-btn .status-dot {
@@ -907,7 +907,7 @@ const cancelBack = () => {
   justify-content: space-between;
   margin-bottom: 26px;
   padding: 10px 0;
-  border-bottom: 1px solid #162f47;
+  border-bottom: 1px solid var(--user-border);
   gap: 4px;
 }
 
@@ -915,21 +915,24 @@ const cancelBack = () => {
   display: flex;
   align-items: center;
   gap: 5px;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity 0.3s;
   flex-shrink: 0;
+  color: var(--user-text-dim);
 }
 
 .step-item.active,
 .step-item.done {
   opacity: 1;
+  color: var(--user-text);
 }
 
 .step-num {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--user-bg-base);
+  background: var(--user-surface-light, var(--user-bg-base));
+  border: 1px solid var(--user-border);
   color: var(--user-text-dim);
   font-size: 11px;
   font-weight: 700;
@@ -939,20 +942,27 @@ const cancelBack = () => {
 }
 
 .step-item.active .step-num {
-  background: var(--user-primary);
-  color: var(--user-bg-base);
+  background: var(--user-gradient, var(--user-primary));
+  color: var(--user-btn-text, var(--user-bg-base));
+  border-color: transparent;
 }
 
 .step-item.done .step-num {
   background: #39db9a;
   color: #061425;
+  border-color: transparent;
 }
 
 .step-label {
   font-size: 11.5px;
   font-weight: 600;
-  color: #dbe7f5;
+  color: var(--user-text-dim);
   white-space: nowrap;
+}
+
+.step-item.active .step-label,
+.step-item.done .step-label {
+  color: var(--user-text);
 }
 
 .step-divider {
