@@ -2066,41 +2066,50 @@ html.theme-light .range-input {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
-  height: 18px;
+  height: 20px;
 }
 html.theme-light .range-input::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 6px;
-  background: var(--light-track);
+  height: 8px;
+  border-radius: 8px;
+  background: rgba(180, 110, 145, 0.32) !important;
+  border: 1px solid rgba(160, 90, 125, 0.25);
 }
 html.theme-light .range-input::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   margin-top: -5px;
   border-radius: 50%;
-  background: var(--user-primary);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 4px rgba(60, 60, 70, 0.35);
+  background: linear-gradient(135deg, #e91e63 0%, #c2185b 100%) !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 2px 8px rgba(194, 24, 91, 0.45) !important;
   cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+html.theme-light .range-input::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(194, 24, 91, 0.6) !important;
 }
 html.theme-light .range-input::-moz-range-track {
-  height: 6px;
-  border-radius: 6px;
-  background: var(--light-track);
+  height: 8px;
+  border-radius: 8px;
+  background: rgba(180, 110, 145, 0.32) !important;
+  border: 1px solid rgba(160, 90, 125, 0.25);
 }
 html.theme-light .range-input::-moz-range-progress {
-  height: 6px;
-  border-radius: 6px;
-  background: var(--user-primary);
+  height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e91e63 0%, #c2185b 100%) !important;
 }
 html.theme-light .range-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: var(--user-primary);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 4px rgba(60, 60, 70, 0.35);
+  background: linear-gradient(135deg, #e91e63 0%, #c2185b 100%) !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 2px 8px rgba(194, 24, 91, 0.45) !important;
   cursor: pointer;
 }
 
@@ -4445,4 +4454,241 @@ html.theme-udyat .update-required-overlay {
     rgba(0, 122, 255, 0.2) 0%,
     var(--apple-tv-bg-base) 70%
   );
+}
+
+/* --- Personalización de Fondo Más Oscuro para .proxy-detail-modal --- */
+
+/* 1. Rainy Garden */
+html.theme-rainy-garden .proxy-detail-modal,
+html[data-color-id='18'] .proxy-detail-modal {
+  background: linear-gradient(145deg, #0f2115 0%, #0a160d 100%) !important;
+  border: 1px solid rgba(58, 97, 68, 0.4) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(58, 97, 68, 0.15) !important;
+}
+
+html.theme-rainy-garden .proxy-detail-modal .proxy-input,
+html[data-color-id='18'] .proxy-detail-modal .proxy-input {
+  background: rgba(6, 14, 8, 0.6) !important;
+  border-color: rgba(58, 97, 68, 0.35) !important;
+  color: #f0f5f2 !important;
+}
+
+html.theme-rainy-garden .proxy-detail-modal .reset-button-alt,
+html[data-color-id='18'] .proxy-detail-modal .reset-button-alt {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(58, 97, 68, 0.35) !important;
+  color: #e6ecef !important;
+}
+
+/* 2. Herbal Apothecary */
+html.theme-herbal-apothecary .proxy-detail-modal,
+html[data-color-id='21'] .proxy-detail-modal {
+  background: linear-gradient(145deg, #112217 0%, #0c1810 100%) !important;
+  border: 1px solid rgba(127, 176, 105, 0.3) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(127, 176, 105, 0.15) !important;
+}
+
+html.theme-herbal-apothecary .proxy-detail-modal .proxy-input,
+html[data-color-id='21'] .proxy-detail-modal .proxy-input {
+  background: rgba(7, 15, 10, 0.6) !important;
+  border-color: rgba(127, 176, 105, 0.3) !important;
+  color: #f2f7f3 !important;
+}
+
+html.theme-herbal-apothecary .proxy-detail-modal .reset-button-alt,
+html[data-color-id='21'] .proxy-detail-modal .reset-button-alt {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(127, 176, 105, 0.3) !important;
+  color: #e2f0e6 !important;
+}
+
+/* 3. Telegram Color 5 (Azul Sólido) - Fondo más oscuro */
+html[data-color-id='5'] .proxy-detail-modal {
+  background: linear-gradient(145deg, #091524 0%, #050b14 100%) !important;
+  border: 1px solid rgba(56, 167, 255, 0.28) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.85),
+    0 0 25px rgba(56, 167, 255, 0.15) !important;
+}
+
+html[data-color-id='5'] .proxy-detail-modal .proxy-input {
+  background: rgba(4, 10, 18, 0.65) !important;
+  border-color: rgba(56, 167, 255, 0.25) !important;
+  color: #ffffff !important;
+}
+
+html[data-color-id='5'] .proxy-detail-modal .reset-button-alt {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(56, 167, 255, 0.25) !important;
+  color: #e3f2ff !important;
+}
+
+/* 4. Telegram Degradado 5 (Color 13) - Fondo más oscuro */
+html[data-color-id='13'] .proxy-detail-modal {
+  background: linear-gradient(145deg, #0b1222 0%, #060a16 100%) !important;
+  border: 1px solid rgba(180, 139, 242, 0.3) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.85),
+    0 0 25px rgba(180, 139, 242, 0.15) !important;
+}
+
+html[data-color-id='13'] .proxy-detail-modal .proxy-input {
+  background: rgba(5, 9, 18, 0.65) !important;
+  border-color: rgba(180, 139, 242, 0.28) !important;
+  color: #ffffff !important;
+}
+
+html[data-color-id='13'] .proxy-detail-modal .reset-button-alt {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(180, 139, 242, 0.28) !important;
+  color: #f0e6ff !important;
+}
+
+/* 5. Twilight Comet */
+html.theme-twilight-comet .proxy-detail-modal,
+html[data-color-id='16'] .proxy-detail-modal {
+  background: linear-gradient(145deg, #241442 0%, #160a2b 100%) !important;
+  border: 1px solid rgba(183, 154, 245, 0.35) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.85),
+    0 0 25px rgba(209, 97, 143, 0.18) !important;
+}
+
+html.theme-twilight-comet .proxy-detail-modal .proxy-input,
+html[data-color-id='16'] .proxy-detail-modal .proxy-input {
+  background: rgba(12, 7, 24, 0.65) !important;
+  border-color: rgba(183, 154, 245, 0.3) !important;
+  color: #ffffff !important;
+}
+
+html.theme-twilight-comet .proxy-detail-modal .reset-button-alt,
+html[data-color-id='16'] .proxy-detail-modal .reset-button-alt {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(183, 154, 245, 0.3) !important;
+  color: #f3ecff !important;
+}
+
+/* --- Adaptación para Tema Claro y Silent Cherry (.theme-silent-cherry / .theme-light) --- */
+
+/* Modal Contenedor */
+html.theme-light .proxy-detail-modal,
+html.theme-silent-cherry .proxy-detail-modal,
+html.theme-light .proxy-modal,
+html.theme-silent-cherry .proxy-modal {
+  background: #f8f2f9 !important;
+  border: 1px solid rgba(212, 143, 177, 0.45) !important;
+  box-shadow: 0 20px 45px rgba(60, 20, 40, 0.25) !important;
+}
+
+/* Botón Eliminar en Tema Claro / Silent Cherry */
+html.theme-light .proxy-detail-modal .delete-btn,
+html.theme-silent-cherry .proxy-detail-modal .delete-btn {
+  color: #d32f2f !important;
+  border-color: rgba(211, 47, 47, 0.4) !important;
+  background: rgba(211, 47, 47, 0.12) !important;
+}
+
+html.theme-light .proxy-detail-modal .delete-btn:hover,
+html.theme-silent-cherry .proxy-detail-modal .delete-btn:hover {
+  color: #b71c1c !important;
+  background: rgba(211, 47, 47, 0.22) !important;
+  border-color: rgba(211, 47, 47, 0.6) !important;
+}
+
+/* Botón Compartir / Reset Alt en Tema Claro / Silent Cherry */
+html.theme-light .proxy-detail-modal .share-btn,
+html.theme-silent-cherry .proxy-detail-modal .share-btn,
+html.theme-light .proxy-detail-modal .reset-button-alt,
+html.theme-silent-cherry .proxy-detail-modal .reset-button-alt {
+  color: #3d2345 !important;
+  border-color: rgba(180, 130, 160, 0.4) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+
+html.theme-light .proxy-detail-modal .share-btn:hover,
+html.theme-silent-cherry .proxy-detail-modal .share-btn:hover,
+html.theme-light .proxy-detail-modal .reset-button-alt:hover,
+html.theme-silent-cherry .proxy-detail-modal .reset-button-alt:hover {
+  color: #1a0820 !important;
+  background: #ffffff !important;
+  border-color: #f48fb1 !important;
+}
+
+/* Entradas de Texto (Inputs) */
+html.theme-light .proxy-detail-modal .proxy-input,
+html.theme-silent-cherry .proxy-detail-modal .proxy-input,
+html.theme-light .proxy-modal .proxy-input,
+html.theme-silent-cherry .proxy-modal .proxy-input {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(200, 150, 180, 0.45) !important;
+  color: #2d1836 !important;
+}
+
+html.theme-light .proxy-detail-modal .proxy-input:focus,
+html.theme-silent-cherry .proxy-detail-modal .proxy-input:focus,
+html.theme-light .proxy-modal .proxy-input:focus,
+html.theme-silent-cherry .proxy-modal .proxy-input:focus {
+  background: #ffffff !important;
+  border-color: #f48fb1 !important;
+  box-shadow: 0 0 0 2px rgba(244, 143, 177, 0.3) !important;
+}
+
+/* Etiquetas y Títulos */
+html.theme-light .proxy-detail-modal .field-label,
+html.theme-silent-cherry .proxy-detail-modal .field-label,
+html.theme-light .proxy-detail-modal .field-label-inline,
+html.theme-silent-cherry .proxy-detail-modal .field-label-inline,
+html.theme-light .proxy-detail-modal .radio-label,
+html.theme-silent-cherry .proxy-detail-modal .radio-label,
+html.theme-light .proxy-detail-modal .modal-header h3,
+html.theme-silent-cherry .proxy-detail-modal .modal-header h3,
+html.theme-light .proxy-modal .field-label,
+html.theme-silent-cherry .proxy-modal .field-label,
+html.theme-light .proxy-modal .field-label-inline,
+html.theme-silent-cherry .proxy-modal .field-label-inline,
+html.theme-light .proxy-modal .radio-label,
+html.theme-silent-cherry .proxy-modal .radio-label,
+html.theme-light .proxy-modal .modal-header h3,
+html.theme-silent-cherry .proxy-modal .modal-header h3,
+html.theme-light .proxy-modal .setting-line strong,
+html.theme-silent-cherry .proxy-modal .setting-line strong {
+  color: #2d1836 !important;
+}
+
+/* Botón Cerrar */
+html.theme-light .proxy-detail-modal .close-btn,
+html.theme-silent-cherry .proxy-detail-modal .close-btn,
+html.theme-light .proxy-modal .close-btn,
+html.theme-silent-cherry .proxy-modal .close-btn {
+  color: #5c3f66 !important;
+}
+
+html.theme-light .proxy-detail-modal .close-btn:hover,
+html.theme-silent-cherry .proxy-detail-modal .close-btn:hover,
+html.theme-light .proxy-modal .close-btn:hover,
+html.theme-silent-cherry .proxy-modal .close-btn:hover {
+  color: #2d1836 !important;
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Tarjetas de proxies guardados */
+html.theme-light .saved-proxy-item,
+html.theme-silent-cherry .saved-proxy-item {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-color: rgba(200, 150, 180, 0.35) !important;
+}
+
+html.theme-light .saved-proxy-item .proxy-item-name,
+html.theme-silent-cherry .saved-proxy-item .proxy-item-name {
+  color: #2d1836 !important;
+}
+
+html.theme-light .saved-proxy-item.active,
+html.theme-silent-cherry .saved-proxy-item.active {
+  background: rgba(244, 143, 177, 0.22) !important;
+  border-color: #f48fb1 !important;
 }

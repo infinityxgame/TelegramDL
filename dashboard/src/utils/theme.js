@@ -417,6 +417,7 @@ const lightThemeIds = new Set([19])
 
 const applyThemeClass = (colorId) => {
   const root = document.documentElement
+  root.setAttribute('data-color-id', String(colorId))
   Object.values(specialThemeClasses).forEach((cls) =>
     root.classList.remove(cls)
   )
