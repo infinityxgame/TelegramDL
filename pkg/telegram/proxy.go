@@ -75,29 +75,26 @@ func wrapProxyDialer(dialFunc dcs.DialFunc, proxyType, proxyAddr string, onFail 
 	var triggered int32
 
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// Rechazar directamente solicitudes IPv6 si se usa proxy para IPv4,
+		// evitando llamadas innecesarias al proxy y eliminando los errores en el log.
+		if strings.Contains(addr, "[") || strings.HasPrefix(network, "tcp6") {
+			return nil, errors.New("IPv6 not supported over proxy")
+		}
+
 		conn, err := dialFunc(ctx, network, addr)
 		if err == nil {
 			atomic.StoreInt32(&failCount, 0)
 			return conn, nil
 		}
 
-		errStr := strings.ToLower(err.Error())
-		isIPv6Err := strings.Contains(addr, "[") ||
-			strings.Contains(errStr, "address type not supported") ||
-			strings.Contains(errStr, "network is unreachable") ||
-			strings.Contains(errStr, "no route to host")
-
 		msg := fmt.Sprintf("El proxy %s (%s) falló al conectar a %s: %v", proxyType, proxyAddr, addr, err)
 		log.Printf("[TG CLIENT ERROR] %s", msg)
+		logbus.Error(logbus.CatTelegram, "Fallo de conexión en proxy", msg)
 
-		// Solo registrar error en logbus y contar fallos reales si no es un intento de IPv6 no soportado
-		if !isIPv6Err {
-			logbus.Error(logbus.CatTelegram, "Fallo de conexión en proxy", msg)
-			fails := atomic.AddInt32(&failCount, 1)
-			if fails >= 3 && atomic.CompareAndSwapInt32(&triggered, 0, 1) {
-				if onFail != nil {
-					go onFail(err)
-				}
+		fails := atomic.AddInt32(&failCount, 1)
+		if fails >= 3 && atomic.CompareAndSwapInt32(&triggered, 0, 1) {
+			if onFail != nil {
+				go onFail(err)
 			}
 		}
 
@@ -112,7 +109,8 @@ func TestProxy(pType, host string, port int, username, password, secret string) 
 	}
 
 	proxyAddr := net.JoinHostPort(strings.TrimSpace(host), strconv.Itoa(port))
-	testTargets := []string{"149.154.167.50:443", "149.154.175.50:443", "91.108.56.130:443"}
+	// DC2 (149.154.175.50) es el DC principal para cuentas de Telegram en Latinoamérica y Europa.
+	testTargets := []string{"149.154.175.50:443", "149.154.167.50:443", "91.108.56.130:443"}
 
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
