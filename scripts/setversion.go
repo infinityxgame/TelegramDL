@@ -57,13 +57,33 @@ func main() {
 		},
 		{
 			path:    "build/windows/info.json",
-			regex:   regexp.MustCompile(`"fileVersion"\s*:\s*"[^"]+"`),
-			replace: fmt.Sprintf(`"fileVersion": "%s"`, version),
+			regex:   regexp.MustCompile(`"file_version"\s*:\s*"[^"]+"`),
+			replace: fmt.Sprintf(`"file_version": "%s"`, version),
 		},
 		{
 			path:    "build/windows/info.json",
-			regex:   regexp.MustCompile(`"productVersion"\s*:\s*"[^"]+"`),
-			replace: fmt.Sprintf(`"productVersion": "%s"`, version),
+			regex:   regexp.MustCompile(`"product_version"\s*:\s*"[^"]+"`),
+			replace: fmt.Sprintf(`"product_version": "%s"`, version),
+		},
+		{
+			path:    "build/windows/info.json",
+			regex:   regexp.MustCompile(`"FileVersion"\s*:\s*"[^"]+"`),
+			replace: fmt.Sprintf(`"FileVersion": "%s"`, version),
+		},
+		{
+			path:    "build/windows/info.json",
+			regex:   regexp.MustCompile(`"ProductVersion"\s*:\s*"[^"]+"`),
+			replace: fmt.Sprintf(`"ProductVersion": "%s"`, version),
+		},
+		{
+			path:    "build/windows/wails.exe.manifest",
+			regex:   regexp.MustCompile(`(<assemblyIdentity[^>]+name="com\.infinityxgame\.telegramdl"[^>]+version=")[^"]+(")`),
+			replace: fmt.Sprintf(`${1}%s${2}`, version),
+		},
+		{
+			path:    "build/windows/nsis/wails_tools.nsh",
+			regex:   regexp.MustCompile(`(!define INFO_PRODUCTVERSION ")[^"]+(")`),
+			replace: fmt.Sprintf(`${1}%s${2}`, version),
 		},
 		{
 			path:    "build/darwin/Info.plist",
@@ -92,6 +112,9 @@ func main() {
 	for _, r := range rules {
 		content, err := os.ReadFile(r.path)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			fmt.Printf("[ERROR] No se pudo leer %s: %v\n", r.path, err)
 			continue
 		}
