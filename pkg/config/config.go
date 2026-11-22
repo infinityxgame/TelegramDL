@@ -248,6 +248,17 @@ type Config struct {
 	ProxyNotice   string `json:"proxy_notice,omitempty"`
 }
 
+// SavedProxy representa una entrada de proxy en la lista de proxies guardados en SQLite.
+type SavedProxy struct {
+	ID       int64  `json:"id"`
+	Type     string `json:"proxy_type"`
+	Host     string `json:"proxy_host"`
+	Port     int    `json:"proxy_port"`
+	Username string `json:"proxy_username,omitempty"`
+	Password string `json:"proxy_password,omitempty"`
+	Secret   string `json:"proxy_secret,omitempty"`
+}
+
 var (
 	DataDir     string
 	UserEnvPath string

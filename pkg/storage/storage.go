@@ -191,6 +191,17 @@ func (s *Storage) initSchema() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_scanner_ranges_chat ON scanner_cache_ranges(chat_id);
+
+	CREATE TABLE IF NOT EXISTS proxies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		proxy_type TEXT NOT NULL DEFAULT 'socks5',
+		proxy_host TEXT NOT NULL DEFAULT '',
+		proxy_port INTEGER NOT NULL DEFAULT 1080,
+		proxy_username TEXT NOT NULL DEFAULT '',
+		proxy_password TEXT NOT NULL DEFAULT '',
+		proxy_secret TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL DEFAULT 0
+	);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -1554,4 +1565,66 @@ func (s *Storage) DeleteScannerCacheByChat(chatID int64) error {
 	_, _ = s.db.Exec("DELETE FROM scanner_cache_items WHERE chat_id = ?", chatID)
 	_, _ = s.db.Exec("DELETE FROM scanner_cache_ranges WHERE chat_id = ?", chatID)
 	return nil
+}
+
+// GetProxies devuelve la lista de proxies guardados en SQLite.
+func (s *Storage) GetProxies() ([]config.SavedProxy, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query("SELECT id, proxy_type, proxy_host, proxy_port, proxy_username, proxy_password, proxy_secret FROM proxies ORDER BY id ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	proxies := make([]config.SavedProxy, 0)
+	for rows.Next() {
+		var p config.SavedProxy
+		if err := rows.Scan(&p.ID, &p.Type, &p.Host, &p.Port, &p.Username, &p.Password, &p.Secret); err == nil {
+			proxies = append(proxies, p)
+		}
+	}
+	return proxies, rows.Err()
+}
+
+// AddProxy añade una nueva entrada de proxy a SQLite y devuelve el registro con su ID asignado.
+func (s *Storage) AddProxy(p config.SavedProxy) (config.SavedProxy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().Unix()
+	res, err := s.db.Exec(`
+		INSERT INTO proxies(proxy_type, proxy_host, proxy_port, proxy_username, proxy_password, proxy_secret, created_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
+	`, p.Type, p.Host, p.Port, p.Username, p.Password, p.Secret, now)
+	if err != nil {
+		return p, err
+	}
+	id, err := res.LastInsertId()
+	if err == nil {
+		p.ID = id
+	}
+	return p, nil
+}
+
+// UpdateProxy actualiza una entrada de proxy existente en SQLite.
+func (s *Storage) UpdateProxy(p config.SavedProxy) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec(`
+		UPDATE proxies SET proxy_type=?, proxy_host=?, proxy_port=?, proxy_username=?, proxy_password=?, proxy_secret=?
+		WHERE id=?
+	`, p.Type, p.Host, p.Port, p.Username, p.Password, p.Secret, p.ID)
+	return err
+}
+
+// DeleteProxy elimina una entrada de proxy de SQLite por su ID.
+func (s *Storage) DeleteProxy(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM proxies WHERE id=?", id)
+	return err
 }

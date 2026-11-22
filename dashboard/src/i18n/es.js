@@ -540,6 +540,16 @@ export default {
     proxyNoticeTitle: 'Aviso de conexión por Proxy',
     proxyFailedBanner:
       'El proxy no respondió ({error}) y se desactivó automáticamente en Ajustes. Se estableció conexión directa.',
+    proxyAdd: 'Añadir proxy a la lista',
+    proxySavedList: 'Proxies guardados',
+    proxyPingMs: '{ping} ms',
+    proxyNoResponse: 'Sin respuesta',
+    proxyInfoTitle: 'Información del Proxy',
+    proxyShare: 'Compartir',
+    proxySave: 'Guardar',
+    proxyDelete: 'Eliminar',
+    proxyCopied: 'Enlace de proxy copiado al portapapeles',
+    proxyDeleteConfirm: '¿Seguro que deseas eliminar este proxy de la lista?',
     notifySidebarHint:
       'Los avisos de cola terminada y de errores se encienden y apagan con el botón «Avisos del bot» del panel lateral.',
     detectingChat: 'Detectando...',

@@ -65,7 +65,8 @@ import {
   DeliverySent02Icon,
   FlashIcon,
   FilterIcon,
-  LanguagesIcon
+  LanguagesIcon,
+  Share01Icon
 } from '@hugeicons/core-free-icons'
 
 // Grosor de línea del juego. HugeIcons no fija ninguno por defecto y sus trazos
@@ -131,6 +132,7 @@ export const ScrollText = icon(Pulse01Icon) // entrada "Logs" del menú
 export const Search = icon(Search01Icon) // buscar dentro del registro
 export const Send = icon(DeliverySent02Icon) // enviar el token a Telegram
 export const Settings2 = icon(Settings02Icon) // entrada "Ajustes" del menú
+export const Share2 = icon(Share01Icon) // compartir proxy o enlace
 export const ShieldCheck = icon(ShieldCheckIcon) // verificación en dos pasos
 export const Star = icon(StarIcon) // marcar favorito
 export const Trash2 = icon(Delete02Icon) // eliminar

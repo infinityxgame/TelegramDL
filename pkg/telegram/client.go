@@ -89,14 +89,22 @@ type ClientManager struct {
 	chatUsernames        map[int64]string
 	onGenericMessage     func(ctx context.Context, entities tg.Entities, msg *tg.Message) error
 
-	proxyEnabled  bool
-	proxyType     string
-	proxyHost     string
-	proxyPort     int
-	proxyUsername string
-	proxyPassword string
-	proxySecret   string
-	onProxyFailed func(err error)
+	proxyEnabled        bool
+	proxyType           string
+	proxyHost           string
+	proxyPort           int
+	proxyUsername       string
+	proxyPassword       string
+	proxySecret         string
+	cfgProxyEnabled     bool
+	cfgProxyType        string
+	cfgProxyHost        string
+	cfgProxyPort        int
+	cfgProxyUsername    string
+	cfgProxyPassword    string
+	cfgProxySecret      string
+	cfgProxyInitialized bool
+	onProxyFailed       func(err error)
 }
 
 // maxAccessHashEntries acota el tamaño de los mapas de access hash de
@@ -411,13 +419,23 @@ func NewClientManager() *ClientManager {
 
 func (cm *ClientManager) SetProxyConfig(cfg config.Config) {
 	cm.mu.Lock()
-	changed := cm.proxyEnabled != cfg.ProxyEnabled ||
-		cm.proxyType != cfg.ProxyType ||
-		cm.proxyHost != cfg.ProxyHost ||
-		cm.proxyPort != cfg.ProxyPort ||
-		cm.proxyUsername != cfg.ProxyUsername ||
-		cm.proxyPassword != cfg.ProxyPassword ||
-		cm.proxySecret != cfg.ProxySecret
+	changed := !cm.cfgProxyInitialized ||
+		cm.cfgProxyEnabled != cfg.ProxyEnabled ||
+		cm.cfgProxyType != cfg.ProxyType ||
+		cm.cfgProxyHost != cfg.ProxyHost ||
+		cm.cfgProxyPort != cfg.ProxyPort ||
+		cm.cfgProxyUsername != cfg.ProxyUsername ||
+		cm.cfgProxyPassword != cfg.ProxyPassword ||
+		cm.cfgProxySecret != cfg.ProxySecret
+
+	cm.cfgProxyInitialized = true
+	cm.cfgProxyEnabled = cfg.ProxyEnabled
+	cm.cfgProxyType = cfg.ProxyType
+	cm.cfgProxyHost = cfg.ProxyHost
+	cm.cfgProxyPort = cfg.ProxyPort
+	cm.cfgProxyUsername = cfg.ProxyUsername
+	cm.cfgProxyPassword = cfg.ProxyPassword
+	cm.cfgProxySecret = cfg.ProxySecret
 
 	cm.proxyEnabled = cfg.ProxyEnabled
 	cm.proxyType = cfg.ProxyType
@@ -432,7 +450,7 @@ func (cm *ClientManager) SetProxyConfig(cfg config.Config) {
 	cm.mu.Unlock()
 
 	if changed && apiID != 0 && apiHash != "" {
-		log.Printf("[TG CLIENT] Reconfigurando cliente por cambio de proxy...")
+		log.Printf("[TG CLIENT] Reconfigurando cliente por cambio explícito de proxy...")
 		_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
 	}
 }

@@ -20,7 +20,12 @@ import {
   AlertCircle,
   Radio,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Plus,
+  Info,
+  Share2,
+  Save,
+  X
 } from '../icons'
 import FolderPicker from '../components/FolderPicker.vue'
 import { useAuthToken } from '../composables/useAuthToken'
@@ -93,6 +98,7 @@ const networkExposed = computed(
 )
 
 onMounted(async () => {
+  fetchSavedProxies()
   try {
     // Mismo patrón de petición que listenerApi en esta vista: fetch con
     // authHeaders() y parseo de JSON, lanzando Error si la respuesta no es OK.
@@ -156,6 +162,245 @@ const testProxy = async () => {
     }
   } finally {
     testingProxy.value = false
+  }
+}
+
+// --- Gestión Multi-Proxy ---
+const savedProxies = ref([])
+const proxyPings = ref({})
+const editingProxyModal = ref(false)
+const editingProxyForm = ref({
+  id: 0,
+  proxy_type: 'socks5',
+  proxy_host: '',
+  proxy_port: 1080,
+  proxy_username: '',
+  proxy_password: '',
+  proxy_secret: ''
+})
+const shareNotice = ref('')
+
+const fetchSavedProxies = async () => {
+  try {
+    const res = await fetch('/api/proxies', {
+      headers: { ...authHeaders() }
+    })
+    const data = await res.json()
+    if (data.status === 'ok') {
+      savedProxies.value = data.proxies || []
+      testAllSavedProxies()
+    }
+  } catch (err) {
+    console.error('Error fetching saved proxies:', err)
+  }
+}
+
+const testAllSavedProxies = () => {
+  for (const p of savedProxies.value) {
+    proxyPings.value[p.id] = {
+      testing: true,
+      active: false,
+      ping_ms: 0,
+      error: ''
+    }
+    testSingleSavedProxy(p)
+  }
+}
+
+const testSingleSavedProxy = async (p) => {
+  try {
+    const res = await fetch('/api/proxy/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify({
+        proxy_type: p.proxy_type || 'socks5',
+        proxy_host: p.proxy_host,
+        proxy_port: Number(p.proxy_port),
+        proxy_username: p.proxy_username || '',
+        proxy_password: p.proxy_password || '',
+        proxy_secret: p.proxy_secret || ''
+      })
+    })
+    const data = await res.json()
+    if (data.status === 'ok') {
+      proxyPings.value[p.id] = {
+        testing: false,
+        active: data.active,
+        ping_ms: data.ping_ms,
+        error: data.error || ''
+      }
+    } else {
+      proxyPings.value[p.id] = {
+        testing: false,
+        active: false,
+        ping_ms: 0,
+        error: data.error || t('settings.proxyNoResponse')
+      }
+    }
+  } catch (err) {
+    proxyPings.value[p.id] = {
+      testing: false,
+      active: false,
+      ping_ms: 0,
+      error: err.message || t('settings.proxyNoResponse')
+    }
+  }
+}
+
+const proxyPingText = (p) => {
+  const info = proxyPings.value[p.id]
+  if (!info || info.testing) return t('settings.proxyTesting')
+  if (info.active) return t('settings.proxyPingMs', { ping: info.ping_ms })
+  return info.error || t('settings.proxyNoResponse')
+}
+
+const proxyPingClass = (p) => {
+  const info = proxyPings.value[p.id]
+  if (!info || info.testing) return 'testing'
+  if (info.active) return 'active'
+  return 'error'
+}
+
+const isProxySelected = (p) => {
+  return (
+    props.settings.proxy_enabled &&
+    props.settings.proxy_host === p.proxy_host &&
+    Number(props.settings.proxy_port) === Number(p.proxy_port) &&
+    (props.settings.proxy_type || 'socks5') === (p.proxy_type || 'socks5')
+  )
+}
+
+const selectProxy = (p) => {
+  patch({
+    proxy_enabled: true,
+    proxy_type: p.proxy_type || 'socks5',
+    proxy_host: p.proxy_host,
+    proxy_port: Number(p.proxy_port),
+    proxy_username: p.proxy_username || '',
+    proxy_password: p.proxy_password || '',
+    proxy_secret: p.proxy_secret || '',
+    proxy_notice: ''
+  })
+  emit('save-settings')
+}
+
+const addCurrentProxy = async () => {
+  if (!props.settings.proxy_host || !props.settings.proxy_port) return
+  try {
+    const payload = {
+      proxy_type: props.settings.proxy_type || 'socks5',
+      proxy_host: props.settings.proxy_host,
+      proxy_port: Number(props.settings.proxy_port) || 1080,
+      proxy_username: props.settings.proxy_username || '',
+      proxy_password: props.settings.proxy_password || '',
+      proxy_secret: props.settings.proxy_secret || ''
+    }
+    const res = await fetch('/api/proxies', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify(payload)
+    })
+    const data = await res.json()
+    if (data.status === 'ok') {
+      await fetchSavedProxies()
+    }
+  } catch (err) {
+    console.error('Error adding proxy:', err)
+  }
+}
+
+const openEditModal = (p) => {
+  editingProxyForm.value = { ...p }
+  shareNotice.value = ''
+  editingProxyModal.value = true
+}
+
+const saveEditingProxy = async () => {
+  const p = editingProxyForm.value
+  if (!p.proxy_host || !p.proxy_port) return
+  try {
+    const res = await fetch('/api/proxies', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify(p)
+    })
+    const data = await res.json()
+    if (data.status === 'ok') {
+      editingProxyModal.value = false
+      if (isProxySelected(p)) {
+        patch({
+          proxy_type: p.proxy_type || 'socks5',
+          proxy_host: p.proxy_host,
+          proxy_port: Number(p.proxy_port),
+          proxy_username: p.proxy_username || '',
+          proxy_password: p.proxy_password || '',
+          proxy_secret: p.proxy_secret || '',
+          proxy_notice: ''
+        })
+        emit('save-settings')
+      }
+      await fetchSavedProxies()
+    }
+  } catch (err) {
+    console.error('Error updating proxy:', err)
+  }
+}
+
+const deleteEditingProxy = async () => {
+  const p = editingProxyForm.value
+  if (!p.id) return
+  try {
+    const res = await fetch(`/api/proxies?id=${p.id}`, {
+      method: 'DELETE',
+      headers: { ...authHeaders() }
+    })
+    const data = await res.json()
+    if (data.status === 'ok') {
+      editingProxyModal.value = false
+      await fetchSavedProxies()
+    }
+  } catch (err) {
+    console.error('Error deleting proxy:', err)
+  }
+}
+
+const shareEditingProxy = async () => {
+  const p = editingProxyForm.value
+  const host = p.proxy_host || ''
+  const port = p.proxy_port || 1080
+  const type = p.proxy_type || 'socks5'
+  let url = ''
+
+  if (type === 'socks5') {
+    url = `telegramdl://socks?server=${encodeURIComponent(host)}&port=${port}`
+    if (p.proxy_username) url += `&user=${encodeURIComponent(p.proxy_username)}`
+    if (p.proxy_password) url += `&pass=${encodeURIComponent(p.proxy_password)}`
+  } else if (type === 'mtproto') {
+    url = `telegramdl://mtproto?server=${encodeURIComponent(host)}&port=${port}`
+    if (p.proxy_secret) url += `&secret=${encodeURIComponent(p.proxy_secret)}`
+  } else if (type === 'http') {
+    url = `telegramdl://web?server=${encodeURIComponent(host)}&port=${port}`
+    if (p.proxy_username) url += `&user=${encodeURIComponent(p.proxy_username)}`
+    if (p.proxy_password) url += `&pass=${encodeURIComponent(p.proxy_password)}`
+  }
+
+  try {
+    await navigator.clipboard.writeText(url)
+    shareNotice.value = t('settings.proxyCopied')
+    setTimeout(() => {
+      shareNotice.value = ''
+    }, 3000)
+  } catch (err) {
+    console.error('Could not copy proxy link:', err)
   }
 }
 
@@ -928,7 +1173,12 @@ const sendTestNotification = async () => {
                   <input
                     type="checkbox"
                     :checked="props.settings.proxy_enabled"
-                    @change="patch({ proxy_enabled: $event.target.checked })"
+                    @change="
+                      patch({
+                        proxy_enabled: $event.target.checked,
+                        ...($event.target.checked ? { proxy_notice: '' } : {})
+                      })
+                    "
                   />
                   <span></span>
                 </label>
@@ -1053,6 +1303,20 @@ const sendTestNotification = async () => {
                       />
                     </div>
                   </template>
+                  <div class="field-col add-col">
+                    <label class="field-label">&nbsp;</label>
+                    <button
+                      type="button"
+                      class="add-proxy-btn"
+                      :title="t('settings.proxyAdd')"
+                      :disabled="
+                        !props.settings.proxy_host || !props.settings.proxy_port
+                      "
+                      @click="addCurrentProxy"
+                    >
+                      <Plus :size="16" />
+                    </button>
+                  </div>
                 </div>
 
                 <div class="test-section">
@@ -1096,6 +1360,50 @@ const sendTestNotification = async () => {
                       {{ t('settings.proxyInactive') }}:
                       {{ proxyTestResult.error }}
                     </span>
+                  </div>
+                </div>
+
+                <!-- Lista de proxies guardados -->
+                <div
+                  v-if="savedProxies.length > 0"
+                  class="saved-proxies-container"
+                >
+                  <span class="color-group-title">{{
+                    t('settings.proxySavedList')
+                  }}</span>
+                  <div class="saved-proxies-list">
+                    <div
+                      v-for="p in savedProxies"
+                      :key="p.id"
+                      class="saved-proxy-item"
+                      :class="{ active: isProxySelected(p) }"
+                      @click="selectProxy(p)"
+                    >
+                      <div class="proxy-item-left">
+                        <span class="radio-circle">
+                          <span class="radio-dot"></span>
+                        </span>
+                        <div class="proxy-item-info">
+                          <span class="proxy-item-name">{{
+                            p.proxy_host
+                          }}</span>
+                          <span
+                            class="proxy-item-ping"
+                            :class="proxyPingClass(p)"
+                          >
+                            {{ proxyPingText(p) }}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="proxy-info-btn"
+                        :title="t('settings.proxyInfoTitle')"
+                        @click.stop="openEditModal(p)"
+                      >
+                        <Info :size="16" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1479,6 +1787,182 @@ const sendTestNotification = async () => {
       <Save :size="19" />
     </button>
     -->
+    <!-- Modal para ver y editar detalles del proxy -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="editingProxyModal"
+          class="modal-overlay"
+          @click.self="editingProxyModal = false"
+        >
+          <div class="modal-content proxy-detail-modal">
+            <div class="modal-header">
+              <h3>{{ t('settings.proxyInfoTitle') }}</h3>
+              <button
+                type="button"
+                class="close-btn"
+                @click="editingProxyModal = false"
+              >
+                <X :size="18" />
+              </button>
+            </div>
+
+            <div class="modal-body">
+              <!-- Tipo de Proxy -->
+              <div class="proxy-type-row">
+                <span class="field-label-inline">{{
+                  t('settings.proxyType')
+                }}</span>
+                <div class="radio-group">
+                  <label
+                    class="radio-option"
+                    :class="{
+                      active: editingProxyForm.proxy_type === 'socks5'
+                    }"
+                    @click="editingProxyForm.proxy_type = 'socks5'"
+                  >
+                    <span class="radio-circle"
+                      ><span class="radio-dot"></span
+                    ></span>
+                    <span class="radio-label">SOCKS5</span>
+                  </label>
+                  <label
+                    class="radio-option"
+                    :class="{
+                      active: editingProxyForm.proxy_type === 'mtproto'
+                    }"
+                    @click="editingProxyForm.proxy_type = 'mtproto'"
+                  >
+                    <span class="radio-circle"
+                      ><span class="radio-dot"></span
+                    ></span>
+                    <span class="radio-label">MTProto</span>
+                  </label>
+                  <label
+                    class="radio-option"
+                    :class="{
+                      active: editingProxyForm.proxy_type === 'http'
+                    }"
+                    @click="editingProxyForm.proxy_type = 'http'"
+                  >
+                    <span class="radio-circle"
+                      ><span class="radio-dot"></span
+                    ></span>
+                    <span class="radio-label">HTTP</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Servidor y Puerto -->
+              <div class="proxy-modal-row">
+                <div class="field-col host-col">
+                  <label class="field-label">{{
+                    t('settings.proxyHost')
+                  }}</label>
+                  <input
+                    v-model="editingProxyForm.proxy_host"
+                    type="text"
+                    class="proxy-input"
+                    placeholder="127.0.0.1"
+                  />
+                </div>
+                <div class="field-col port-col">
+                  <label class="field-label">{{
+                    t('settings.proxyPort')
+                  }}</label>
+                  <input
+                    v-model.number="editingProxyForm.proxy_port"
+                    type="number"
+                    class="proxy-input"
+                    placeholder="1080"
+                  />
+                </div>
+              </div>
+
+              <!-- Credenciales / Secreto -->
+              <div
+                v-if="
+                  editingProxyForm.proxy_type === 'socks5' ||
+                  editingProxyForm.proxy_type === 'http'
+                "
+                class="proxy-modal-row"
+              >
+                <div class="field-col user-col">
+                  <label class="field-label">{{
+                    t('settings.proxyUsername')
+                  }}</label>
+                  <input
+                    v-model="editingProxyForm.proxy_username"
+                    type="text"
+                    class="proxy-input"
+                  />
+                </div>
+                <div class="field-col pass-col">
+                  <label class="field-label">{{
+                    t('settings.proxyPassword')
+                  }}</label>
+                  <input
+                    v-model="editingProxyForm.proxy_password"
+                    type="password"
+                    class="proxy-input"
+                  />
+                </div>
+              </div>
+              <div
+                v-else-if="editingProxyForm.proxy_type === 'mtproto'"
+                class="proxy-modal-row"
+              >
+                <div class="field-col secret-col">
+                  <label class="field-label">{{
+                    t('settings.proxySecret')
+                  }}</label>
+                  <input
+                    v-model="editingProxyForm.proxy_secret"
+                    type="text"
+                    class="proxy-input"
+                    placeholder="ee0123456789..."
+                  />
+                </div>
+              </div>
+
+              <div v-if="shareNotice" class="proxy-share-notice">
+                {{ shareNotice }}
+              </div>
+            </div>
+
+            <div class="modal-footer proxy-modal-footer">
+              <button
+                type="button"
+                class="reset-button-alt share-btn"
+                @click="shareEditingProxy"
+              >
+                <Share2 :size="14" />
+                <span>{{ t('settings.proxyShare') }}</span>
+              </button>
+
+              <div class="footer-right-actions">
+                <button
+                  type="button"
+                  class="reset-button-alt delete-btn"
+                  @click="deleteEditingProxy"
+                >
+                  <Trash2 :size="14" />
+                  <span>{{ t('settings.proxyDelete') }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="save-button"
+                  @click="saveEditingProxy"
+                >
+                  <Save :size="14" />
+                  <span>{{ t('settings.proxySave') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1731,5 +2215,184 @@ const sendTestNotification = async () => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.field-col.add-col {
+  width: 38px;
+  flex: 0 0 38px;
+}
+
+.add-proxy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  background: var(--user-primary, var(--user-accent, #3b82f6));
+  color: #ffffff;
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    transform 0.1s;
+}
+
+.add-proxy-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.add-proxy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.saved-proxies-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.saved-proxies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.saved-proxy-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  background: var(--user-surface-alt, rgba(0, 0, 0, 0.2));
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.saved-proxy-item:hover {
+  border-color: var(
+    --user-border-light,
+    var(--user-accent, rgba(255, 255, 255, 0.25))
+  );
+}
+
+.saved-proxy-item.active {
+  border-color: var(--user-primary, var(--user-accent, #3b82f6));
+  background: var(--user-surface, rgba(59, 130, 246, 0.08));
+}
+
+.saved-proxy-item.active .radio-circle {
+  border-color: var(--user-primary, var(--user-accent, #3b82f6));
+}
+
+.saved-proxy-item.active .radio-dot {
+  opacity: 1;
+  transform: scale(1);
+  background: var(--user-primary, var(--user-accent, #3b82f6));
+}
+
+.proxy-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.proxy-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proxy-item-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--user-text);
+}
+
+.proxy-item-ping {
+  font-size: 0.8rem;
+  color: var(--user-text-dim, #a0aec0);
+}
+
+.proxy-item-ping.active {
+  color: #34d399;
+}
+
+.proxy-item-ping.error {
+  color: #f87171;
+}
+
+.proxy-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--user-text-dim, #a0aec0);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.proxy-info-btn:hover {
+  color: var(--user-text);
+  border-color: var(--user-primary, #3b82f6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.proxy-detail-modal {
+  max-width: 480px;
+  width: 90%;
+  box-sizing: border-box;
+}
+
+.proxy-modal-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+}
+
+.proxy-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--user-border, rgba(255, 255, 255, 0.12));
+}
+
+.footer-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.delete-btn {
+  color: #f87171 !important;
+  border-color: rgba(248, 113, 113, 0.3) !important;
+}
+
+.delete-btn:hover {
+  background: rgba(248, 113, 113, 0.12) !important;
+}
+
+.proxy-share-notice {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: #34d399;
+  font-weight: 500;
 }
 </style>

@@ -1374,6 +1374,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings/speed-limit", s.handleSpeedLimit)
 	mux.HandleFunc("/api/settings/dismiss-proxy-notice", s.handleDismissProxyNotice)
 	mux.HandleFunc("/api/proxy/test", s.handleProxyTest)
+	mux.HandleFunc("/api/proxies", s.handleProxies)
 
 	// Notifications
 	mux.HandleFunc("/api/notifications/test", s.handleNotificationTest)
@@ -2822,10 +2823,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, ok := raw["proxy_enabled"]; ok && v != nil {
 		if b, ok := v.(bool); ok {
-			if previousCfg.ProxyNotice != "" && !previousCfg.ProxyEnabled && b {
-				cfg.ProxyEnabled = false
-			} else {
-				cfg.ProxyEnabled = b
+			cfg.ProxyEnabled = b
+			if b {
+				// Al activar explícitamente el proxy se descarta cualquier aviso previo de fallo
+				cfg.ProxyNotice = ""
 			}
 		}
 	}
@@ -2861,7 +2862,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		if v == nil {
 			cfg.ProxyNotice = ""
 		} else if sVal, ok := v.(string); ok {
-			cfg.ProxyNotice = sVal
+			// Si el proxy está activo, no conservar avisos de fallo
+			if !cfg.ProxyEnabled || sVal == "" {
+				cfg.ProxyNotice = sVal
+			}
 		}
 	}
 
@@ -2901,7 +2905,16 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.downloader.UpdateConfig(cfg)
 	s.listener.UpdateConfig(cfg)
-	if s.clientMgr != nil {
+
+	proxyFieldChanged := previousCfg.ProxyEnabled != cfg.ProxyEnabled ||
+		previousCfg.ProxyType != cfg.ProxyType ||
+		previousCfg.ProxyHost != cfg.ProxyHost ||
+		previousCfg.ProxyPort != cfg.ProxyPort ||
+		previousCfg.ProxyUsername != cfg.ProxyUsername ||
+		previousCfg.ProxyPassword != cfg.ProxyPassword ||
+		previousCfg.ProxySecret != cfg.ProxySecret
+
+	if s.clientMgr != nil && proxyFieldChanged {
 		s.clientMgr.SetProxyConfig(cfg)
 	}
 	s.restartBotListener()
@@ -3043,6 +3056,130 @@ func (s *Server) handleProxyTest(w http.ResponseWriter, r *http.Request) {
 		"ping_ms": pingMs,
 		"error":   "",
 	})
+}
+
+// handleProxies gestiona el listado, creación, edición y eliminación de proxies guardados
+func (s *Server) handleProxies(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		proxies, err := s.storage.GetProxies()
+		if err != nil {
+			s.errorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// Si la lista de proxies en DB está vacía pero hay un proxy configurado actualmente,
+		// auto-poblamos la tabla con el proxy actual para conservar la preferencia.
+		s.mu.RLock()
+		currentHost := s.config.ProxyHost
+		currentType := s.config.ProxyType
+		currentPort := s.config.ProxyPort
+		currentUser := s.config.ProxyUsername
+		currentPass := s.config.ProxyPassword
+		currentSec := s.config.ProxySecret
+		s.mu.RUnlock()
+
+		if len(proxies) == 0 && strings.TrimSpace(currentHost) != "" {
+			seeded, errSeed := s.storage.AddProxy(config.SavedProxy{
+				Type:     currentType,
+				Host:     currentHost,
+				Port:     currentPort,
+				Username: currentUser,
+				Password: currentPass,
+				Secret:   currentSec,
+			})
+			if errSeed == nil {
+				proxies = []config.SavedProxy{seeded}
+			}
+		}
+
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status":  "ok",
+			"proxies": proxies,
+		})
+
+	case http.MethodPost:
+		var req config.SavedProxy
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidConfig"))
+			return
+		}
+		if strings.TrimSpace(req.Host) == "" {
+			s.errorResponse(w, http.StatusBadRequest, "Host required")
+			return
+		}
+		if req.Port <= 0 {
+			req.Port = 1080
+		}
+		if req.Type == "" {
+			req.Type = "socks5"
+		}
+
+		saved, err := s.storage.AddProxy(req)
+		if err != nil {
+			s.errorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status": "ok",
+			"proxy":  saved,
+		})
+
+	case http.MethodPut:
+		var req config.SavedProxy
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidConfig"))
+			return
+		}
+		if req.ID <= 0 {
+			s.errorResponse(w, http.StatusBadRequest, "Proxy ID required")
+			return
+		}
+		if strings.TrimSpace(req.Host) == "" {
+			s.errorResponse(w, http.StatusBadRequest, "Host required")
+			return
+		}
+
+		if err := s.storage.UpdateProxy(req); err != nil {
+			s.errorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status": "ok",
+		})
+
+	case http.MethodDelete:
+		var id int64
+		idStr := r.URL.Query().Get("id")
+		if idStr != "" {
+			id = config.ParseInt64(idStr)
+		} else {
+			var body struct {
+				ID int64 `json:"id"`
+			}
+			if json.NewDecoder(r.Body).Decode(&body) == nil {
+				id = body.ID
+			}
+		}
+
+		if id <= 0 {
+			s.errorResponse(w, http.StatusBadRequest, "Proxy ID required")
+			return
+		}
+
+		if err := s.storage.DeleteProxy(id); err != nil {
+			s.errorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		s.jsonResponse(w, http.StatusOK, map[string]any{
+			"status": "ok",
+		})
+
+	default:
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+	}
 }
 
 // handleNotificationTest envía un mensaje de prueba mediante el bot de notificaciones.

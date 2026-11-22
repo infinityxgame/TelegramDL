@@ -1028,18 +1028,17 @@ const handleStateUpdate = (data) => {
     sessionStats.skipped = Number(skipped) || 0
   }
   if (data.settings) {
-    if (
-      data.settings.proxy_notice ||
-      (data.settings.proxy_enabled === false && settings.proxy_enabled === true)
-    ) {
-      settings.proxy_enabled = false
-      if (data.settings.proxy_notice) {
-        settings.proxy_notice = data.settings.proxy_notice
-      }
-      clearTimeout(saveTimer)
-      settingsSavePending.value = false
-    }
     if (!settingsSavePending.value && !saving.value) {
+      if (
+        data.settings.proxy_notice ||
+        (data.settings.proxy_enabled === false &&
+          settings.proxy_enabled === true)
+      ) {
+        settings.proxy_enabled = false
+        if (data.settings.proxy_notice) {
+          settings.proxy_notice = data.settings.proxy_notice
+        }
+      }
       syncSettings(data.settings)
     }
     checkProxyNoticeModal()

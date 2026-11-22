@@ -108,7 +108,8 @@ const handleSave = async () => {
       proxy_port: Number(form.value.proxy_port),
       proxy_username: form.value.proxy_username,
       proxy_password: form.value.proxy_password,
-      proxy_secret: form.value.proxy_secret
+      proxy_secret: form.value.proxy_secret,
+      ...(form.value.proxy_enabled ? { proxy_notice: '' } : {})
     }
     emit('update:settings', payload)
     emit('save', payload)

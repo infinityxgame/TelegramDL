@@ -536,7 +536,18 @@ export default {
     proxySaved: 'Proxy settings saved',
     proxyNoticeTitle: 'Proxy Connection Notice',
     proxyFailedBanner:
-      'The proxy did not respond ({error}) and was automatically disabled in Settings. Direct connection established.'
+      'The proxy did not respond ({error}) and was automatically disabled in Settings. Direct connection established.',
+    proxyAdd: 'Add proxy to list',
+    proxySavedList: 'Saved Proxies',
+    proxyPingMs: '{ping} ms',
+    proxyNoResponse: 'No response',
+    proxyInfoTitle: 'Proxy Details',
+    proxyShare: 'Share',
+    proxySave: 'Save',
+    proxyDelete: 'Delete',
+    proxyCopied: 'Proxy link copied to clipboard',
+    proxyDeleteConfirm:
+      'Are you sure you want to delete this proxy from the list?'
   },
 
   folder: {

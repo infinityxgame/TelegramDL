@@ -140,3 +140,24 @@ func TestHandleSettingsMasksNotificationBotToken(t *testing.T) {
 		t.Errorf("el fallback de guardado pisó el token: s.config.NotificationBotToken = %q", got)
 	}
 }
+
+// TestHandleSettingsPreservesProxyState comprueba que al modificar ajustes como
+// el color del tema (color_id) con el proxy activo, el proxy se mantiene activo.
+func TestHandleSettingsPreservesProxyState(t *testing.T) {
+	s := newMaskingTestServer(t)
+	s.config.ProxyEnabled = true
+	s.config.ProxyHost = "127.0.0.1"
+	s.config.ProxyPort = 1080
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings",
+		strings.NewReader(`{"color_id": 3, "proxy_enabled": true}`))
+	w := httptest.NewRecorder()
+	s.handleSettings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("se esperaba 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !s.GetConfig().ProxyEnabled {
+		t.Errorf("el proxy fue desactivado al cambiar el tema (color_id)")
+	}
+}
