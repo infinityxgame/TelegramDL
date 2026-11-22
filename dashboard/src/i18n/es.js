@@ -6,6 +6,7 @@ export default {
   common: {
     cancel: 'Cancelar',
     confirm: 'Confirmar',
+    accept: 'Aceptar',
     understood: 'Entendido',
     back: 'Atrás',
     add: 'Añadir',
@@ -536,6 +537,7 @@ export default {
     proxyModalSave: 'Guardar y aplicar',
     proxyDisabled: 'Proxy desactivado',
     proxySaved: 'Ajustes de proxy guardados',
+    proxyNoticeTitle: 'Aviso de conexión por Proxy',
     proxyFailedBanner:
       'El proxy no respondió ({error}) y se desactivó automáticamente en Ajustes. Se estableció conexión directa.',
     notifySidebarHint:
@@ -603,9 +605,6 @@ export default {
     connectedAs: 'Conectado como',
     successFallback: 'Tu sesión de Telegram está lista y activa.',
     goDashboard: 'Ir al Dashboard',
-    proxyBtn: 'Proxy',
-    proxyActiveTooltip: 'Proxy activo ({ping} ms)',
-    proxyInactiveTooltip: 'Proxy no disponible',
     errFillBoth: 'Por favor completa tanto el API ID como el API HASH',
     errApiIdFormat: 'El API ID debe contener solo dígitos (ej. 12345678)',
     errApiHashFormat:

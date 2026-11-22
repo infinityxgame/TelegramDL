@@ -10,7 +10,8 @@ import {
   ArrowLeft,
   Loader2,
   Info,
-  Radio
+  Radio,
+  Check
 } from '../icons'
 import ProxyModal from './ProxyModal.vue'
 import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
@@ -37,7 +38,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['auth-success', 'update:settings', 'save-settings'])
+const emit = defineEmits([
+  'auth-success',
+  'update:settings',
+  'save-settings',
+  'dismiss-proxy-notice'
+])
 
 const showProxyModal = ref(false)
 
@@ -359,6 +365,25 @@ const cancelBack = () => {
             </span>
           </label>
         </div>
+      </div>
+
+      <!-- Banner Informativo de Proxy -->
+      <div v-if="settings?.proxy_notice" class="proxy-notice-card" role="alert">
+        <div class="proxy-notice-content">
+          <AlertCircle :size="18" class="proxy-notice-icon" />
+          <div class="proxy-notice-body">
+            <strong>{{ t('settings.proxyNoticeTitle') }}</strong>
+            <p>{{ settings.proxy_notice }}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="proxy-notice-accept-btn"
+          @click="emit('dismiss-proxy-notice')"
+        >
+          <Check :size="14" />
+          <span>{{ t('common.accept') }}</span>
+        </button>
       </div>
 
       <!-- Stepper -->

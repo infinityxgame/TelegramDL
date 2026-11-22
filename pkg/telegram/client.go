@@ -31,6 +31,7 @@ import (
 
 	"tgdown/pkg/config"
 	"tgdown/pkg/i18n"
+	"tgdown/pkg/logbus"
 )
 
 type UserInfo struct {
@@ -928,6 +929,17 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 
 	if pEnabled && strings.TrimSpace(pHost) != "" && pPort > 0 {
 		proxyAddr = net.JoinHostPort(strings.TrimSpace(pHost), strconv.Itoa(pPort))
+		onProxyFail := func(err error) {
+			cm.mu.Lock()
+			cm.proxyEnabled = false
+			cb := cm.onProxyFailed
+			cm.mu.Unlock()
+
+			if cb != nil {
+				cb(err)
+			}
+		}
+
 		switch strings.ToLower(strings.TrimSpace(pType)) {
 		case "socks5":
 			var auth *proxy.Auth
@@ -936,22 +948,24 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			}
 			dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: 10 * time.Second})
 			if err == nil {
-				var dialFunc dcs.DialFunc
+				var rawDial dcs.DialFunc
 				if cd, ok := dialer.(proxy.ContextDialer); ok {
-					dialFunc = cd.DialContext
+					rawDial = cd.DialContext
 				} else {
-					dialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+					rawDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
 						return dialer.Dial(network, addr)
 					}
 				}
-				opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: dialFunc, PreferIPv6: false})
+				wrapped := wrapProxyDialer(rawDial, "SOCKS5", proxyAddr, onProxyFail)
+				opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: wrapped, PreferIPv6: false})
 				log.Printf("[TG CLIENT] Proxy SOCKS5 activado: %s", proxyAddr)
 			} else {
 				log.Printf("[TG CLIENT ERROR] Error al configurar proxy SOCKS5: %v", err)
 			}
 		case "http":
-			dialFunc := buildHTTPProxyDialer(proxyAddr, pUser, pPass)
-			opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: dialFunc, PreferIPv6: false})
+			rawDial := buildHTTPProxyDialer(proxyAddr, pUser, pPass)
+			wrapped := wrapProxyDialer(rawDial, "HTTP", proxyAddr, onProxyFail)
+			opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: wrapped, PreferIPv6: false})
 			log.Printf("[TG CLIENT] Proxy HTTP activado: %s", proxyAddr)
 		case "mtproto":
 			cleanSecret := strings.TrimSpace(pSec)
@@ -960,7 +974,12 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 			}
 			secretBytes, err := hex.DecodeString(cleanSecret)
 			if err == nil && len(secretBytes) > 0 {
-				res, err := dcs.MTProxy(proxyAddr, secretBytes, dcs.MTProxyOptions{})
+				rawDial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+					var d net.Dialer
+					return d.DialContext(ctx, network, proxyAddr)
+				}
+				wrapped := wrapProxyDialer(rawDial, "MTProto", proxyAddr, onProxyFail)
+				res, err := dcs.MTProxy(proxyAddr, secretBytes, dcs.MTProxyOptions{Dial: wrapped})
 				if err == nil {
 					opts.Resolver = res
 					log.Printf("[TG CLIENT] Proxy MTProto activado: %s", proxyAddr)
@@ -1019,6 +1038,7 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 				defer cm.closeDownloadPool()
 
 				// Bucle de espera de autenticación para iniciar el manejador de actualizaciones (gaps)
+				proxyFailures := 0
 				for {
 					self, err := c.Self(runCtx)
 					if err == nil && self != nil {
@@ -1028,11 +1048,19 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 						})
 					}
 
+					if pEnabled {
+						proxyFailures++
+						log.Printf("[TG CLIENT ERROR] Fallo en verificación de sesión con proxy (%d/2): %v", proxyFailures, err)
+						if proxyFailures >= 2 {
+							return fmt.Errorf("proxy error: %w", err)
+						}
+					}
+
 					log.Printf("[TG CLIENT] %s", i18n.T("telegram.waitingAuth"))
 					select {
 					case <-runCtx.Done():
 						return runCtx.Err()
-					case <-time.After(5 * time.Second):
+					case <-time.After(2 * time.Second):
 						// Reintentar check de Self()
 					}
 				}
@@ -1045,7 +1073,9 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 		// se desactiva el proxy automáticamente en Ajustes y se reintenta conectar mediante WebSocket.
 		if err != nil && !errors.Is(err, context.Canceled) {
 			if pEnabled {
-				log.Printf("[TG CLIENT] El proxy %s (%s) no respondió (%v). Desactivando proxy automáticamente en Ajustes e intentando conexión directa...", pType, proxyAddr, err)
+				errMsg := fmt.Sprintf("El proxy %s (%s) no respondió: %v. Cambiando a conexión directa (WebSocket)...", pType, proxyAddr, err)
+				log.Printf("[TG CLIENT ERROR] %s", errMsg)
+				logbus.Error(logbus.CatTelegram, "Fallo en conexión por proxy", errMsg)
 
 				cm.mu.Lock()
 				cm.proxyEnabled = false
@@ -1053,29 +1083,59 @@ func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
 				cm.mu.Unlock()
 
 				if cb != nil {
-					go cb(err)
+					cb(err)
 				}
+			} else {
+				log.Printf("[TG CLIENT ERROR] Falló la conexión MTProto estándar: %v. Intentando transporte WebSocket...", err)
 			}
 
-			isReady := false
-			select {
-			case <-readyChan:
-				isReady = true
-			default:
-			}
-
-			if !isReady && ctx.Err() == nil {
-				log.Printf("[TG CLIENT] %s", i18n.T("telegram.fallbackWebsocket", err))
+			if ctx.Err() == nil {
+				cm.mu.Lock()
+				cm.readyChan = make(chan struct{})
+				fallbackReadyChan := cm.readyChan
 				fallbackOpts := opts
 				fallbackOpts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
 
-				cm.mu.Lock()
 				fallbackClient := telegram.NewClient(cm.apiID, cm.apiHash, fallbackOpts)
 				cm.client = fallbackClient
 				cm.rawClient = fallbackClient.API()
 				cm.mu.Unlock()
 
-				err = runClient(fallbackClient)
+				runFallbackClient := func(c *telegram.Client) error {
+					fallbackOnce := sync.Once{}
+					return c.Run(ctx, func(runCtx context.Context) error {
+						fallbackOnce.Do(func() {
+							close(fallbackReadyChan)
+							go func() {
+								time.Sleep(300 * time.Millisecond)
+								_ = cm.FetchDialogs(context.Background())
+							}()
+						})
+
+						log.Printf("[TG CLIENT] %s", i18n.T("telegram.connected"))
+
+						cm.openDownloadPool()
+						defer cm.closeDownloadPool()
+
+						for {
+							self, err := c.Self(runCtx)
+							if err == nil && self != nil {
+								log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
+								return gaps.Run(runCtx, c.API(), self.ID, updates.AuthOptions{
+									IsBot: false,
+								})
+							}
+
+							select {
+							case <-runCtx.Done():
+								return runCtx.Err()
+							case <-time.After(2 * time.Second):
+							}
+						}
+					})
+				}
+
+				err = runFallbackClient(fallbackClient)
 			}
 		}
 

@@ -140,7 +140,8 @@ const settings = reactive({
   proxy_port: 1080,
   proxy_username: '',
   proxy_password: '',
-  proxy_secret: ''
+  proxy_secret: '',
+  proxy_notice: ''
 })
 
 // El idioma elegido en Ajustes viaja en settings como cualquier otro ajuste:
@@ -482,6 +483,42 @@ const saveSettings = async (newSettings) => {
   } finally {
     saving.value = false
     settingsSavePending.value = false
+  }
+}
+
+let proxyNoticeModalOpen = false
+
+const checkProxyNoticeModal = () => {
+  if (settings.proxy_notice && !proxyNoticeModalOpen && !bootstrapping.value) {
+    proxyNoticeModalOpen = true
+    const noticeText = settings.proxy_notice
+    openConfirm({
+      title: t('settings.proxyNoticeTitle'),
+      message: noticeText,
+      confirmText: t('common.accept'),
+      cancelText: null,
+      type: 'primary',
+      action: async () => {
+        proxyNoticeModalOpen = false
+        await dismissProxyNotice()
+      },
+      cancelAction: async () => {
+        proxyNoticeModalOpen = false
+        await dismissProxyNotice()
+      }
+    })
+  }
+}
+
+const dismissProxyNotice = async () => {
+  settings.proxy_notice = ''
+  try {
+    await fetch('/api/settings/dismiss-proxy-notice', {
+      method: 'POST',
+      headers: { ...authHeaders() }
+    })
+  } catch (err) {
+    console.error('Could not dismiss proxy notice:', err)
   }
 }
 
@@ -990,8 +1027,23 @@ const handleStateUpdate = (data) => {
     sessionStats.failed = Number(failed) || 0
     sessionStats.skipped = Number(skipped) || 0
   }
-  if (data.settings && !settingsSavePending.value && !saving.value)
-    syncSettings(data.settings)
+  if (data.settings) {
+    if (
+      data.settings.proxy_notice ||
+      (data.settings.proxy_enabled === false && settings.proxy_enabled === true)
+    ) {
+      settings.proxy_enabled = false
+      if (data.settings.proxy_notice) {
+        settings.proxy_notice = data.settings.proxy_notice
+      }
+      clearTimeout(saveTimer)
+      settingsSavePending.value = false
+    }
+    if (!settingsSavePending.value && !saving.value) {
+      syncSettings(data.settings)
+    }
+    checkProxyNoticeModal()
+  }
 }
 
 const connectWebSocket = async () => {
@@ -1080,6 +1132,7 @@ const startApp = async () => {
     const remaining = Math.max(0, minTime - elapsed)
     setTimeout(() => {
       bootstrapping.value = false
+      checkProxyNoticeModal()
     }, remaining)
   }
 
@@ -1288,6 +1341,7 @@ onUnmounted(() => {
       @auth-success="onAuthSuccess"
       @update:settings="(partial) => Object.assign(settings, partial)"
       @save-settings="saveSettings"
+      @dismiss-proxy-notice="dismissProxyNotice"
     />
 
     <!-- Estructura Principal de la Aplicación -->
@@ -2589,5 +2643,71 @@ onUnmounted(() => {
     width: 48px;
     height: 48px;
   }
+}
+
+/* Banner Informativo de Proxy */
+.proxy-notice-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  background: var(--user-surface, #1e293b);
+  border: 1px solid var(--user-primary, var(--user-accent, #3b82f6));
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.3),
+    0 0 20px var(--user-glow, rgba(59, 130, 246, 0.2));
+  animation: modalRise 0.3s ease-out;
+}
+
+.proxy-notice-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.proxy-notice-icon {
+  color: var(--user-primary, var(--user-accent, #3b82f6));
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.proxy-notice-body strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--user-text, #ffffff);
+  margin-bottom: 2px;
+}
+
+.proxy-notice-body p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--user-text-dim, #9ca3af);
+  line-height: 1.4;
+}
+
+.proxy-notice-accept-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: none;
+  background: var(--user-primary, var(--user-accent, #3b82f6));
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px var(--user-glow, rgba(59, 130, 246, 0.3));
+  transition: all 0.2s;
+}
+
+.proxy-notice-accept-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 </style>

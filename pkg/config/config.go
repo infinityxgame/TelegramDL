@@ -245,6 +245,7 @@ type Config struct {
 	ProxyUsername string `json:"proxy_username,omitempty"`
 	ProxyPassword string `json:"proxy_password,omitempty"`
 	ProxySecret   string `json:"proxy_secret,omitempty"`
+	ProxyNotice   string `json:"proxy_notice,omitempty"`
 }
 
 var (

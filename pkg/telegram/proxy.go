@@ -7,14 +7,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gotd/td/telegram/dcs"
 	"golang.org/x/net/proxy"
+
+	"tgdown/pkg/logbus"
 )
 
 // buildHTTPProxyDialer construye una función DialFunc que establece un túnel HTTP CONNECT
@@ -60,6 +64,35 @@ func buildHTTPProxyDialer(proxyAddr, username, password string) dcs.DialFunc {
 		}
 
 		return conn, nil
+	}
+}
+
+// wrapProxyDialer envuelve una función DialFunc de proxy para contar los fallos de marcado consecutivos.
+// Si el proxy falla 2 veces consecutivas al intentar conectar con Telegram, dispara inmediatamente
+// la función de desactivado automático (onFail) para conmutar a conexión directa.
+func wrapProxyDialer(dialFunc dcs.DialFunc, proxyType, proxyAddr string, onFail func(err error)) dcs.DialFunc {
+	var failCount int32
+	var triggered int32
+
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dialFunc(ctx, network, addr)
+		if err == nil {
+			atomic.StoreInt32(&failCount, 0)
+			return conn, nil
+		}
+
+		fails := atomic.AddInt32(&failCount, 1)
+		msg := fmt.Sprintf("El proxy %s (%s) falló al conectar (%d/2): %v", proxyType, proxyAddr, fails, err)
+		log.Printf("[TG CLIENT ERROR] %s", msg)
+		logbus.Error(logbus.CatTelegram, "Fallo de conexión en proxy", msg)
+
+		if fails >= 2 && atomic.CompareAndSwapInt32(&triggered, 0, 1) {
+			if onFail != nil {
+				go onFail(err)
+			}
+		}
+
+		return nil, err
 	}
 }
 

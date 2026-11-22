@@ -534,6 +534,7 @@ export default {
     proxyModalSave: 'Save & Apply',
     proxyDisabled: 'Proxy disabled',
     proxySaved: 'Proxy settings saved',
+    proxyNoticeTitle: 'Proxy Connection Notice',
     proxyFailedBanner:
       'The proxy did not respond ({error}) and was automatically disabled in Settings. Direct connection established.'
   },

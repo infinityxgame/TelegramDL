@@ -1372,6 +1372,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/settings/speed", s.handleSpeedLimit)
 	mux.HandleFunc("/api/settings/speed-limit", s.handleSpeedLimit)
+	mux.HandleFunc("/api/settings/dismiss-proxy-notice", s.handleDismissProxyNotice)
 	mux.HandleFunc("/api/proxy/test", s.handleProxyTest)
 
 	// Notifications
@@ -2821,7 +2822,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, ok := raw["proxy_enabled"]; ok && v != nil {
 		if b, ok := v.(bool); ok {
-			cfg.ProxyEnabled = b
+			if previousCfg.ProxyNotice != "" && !previousCfg.ProxyEnabled && b {
+				cfg.ProxyEnabled = false
+			} else {
+				cfg.ProxyEnabled = b
+			}
 		}
 	}
 	if v, ok := raw["proxy_type"]; ok && v != nil {
@@ -2850,6 +2855,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if v, ok := raw["proxy_secret"]; ok && v != nil {
 		if sVal, ok := v.(string); ok {
 			cfg.ProxySecret = sVal
+		}
+	}
+	if v, ok := raw["proxy_notice"]; ok {
+		if v == nil {
+			cfg.ProxyNotice = ""
+		} else if sVal, ok := v.(string); ok {
+			cfg.ProxyNotice = sVal
 		}
 	}
 
@@ -2910,32 +2922,59 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DisableProxyInConfig desactiva automáticamente el proxy en la configuración
-// y guarda el cambio en SQLite cuando la conexión a través de él falla.
+// DisableProxyInConfig desactiva automáticamente el proxy en la configuración,
+// guarda un aviso informativo y guarda el cambio en SQLite cuando la conexión falla.
 func (s *Server) DisableProxyInConfig(err error) {
-	s.mu.Lock()
-	if !s.config.ProxyEnabled {
-		s.mu.Unlock()
-		return
-	}
-	s.config.ProxyEnabled = false
-	cfg := s.config
-	s.mu.Unlock()
-
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	logbus.Warn(logbus.CatTelegram, i18n.T("telegram.proxyFailedNotice", errMsg), "")
+
+	noticeText := i18n.T("telegram.proxyFailedNotice", errMsg)
+
+	s.mu.Lock()
+	s.config.ProxyEnabled = false
+	s.config.ProxyNotice = noticeText
+	cfg := s.config
+	s.mu.Unlock()
+
+	logbus.Warn(logbus.CatTelegram, noticeText, "")
 
 	if saveErr := s.storage.SaveConfig(cfg); saveErr != nil {
 		log.Printf("[SERVER] Error guardando config tras fallo de proxy: %v", saveErr)
+	}
+
+	s.downloader.UpdateConfig(cfg)
+	s.listener.UpdateConfig(cfg)
+	if s.clientMgr != nil {
+		s.clientMgr.SetProxyConfig(cfg)
 	}
 
 	if s.onConfigChange != nil {
 		s.onConfigChange(cfg)
 	}
 	s.broadcastState()
+}
+
+// handleDismissProxyNotice descarta la nota informativa de proxy
+func (s *Server) handleDismissProxyNotice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
+	s.mu.Lock()
+	s.config.ProxyNotice = ""
+	cfg := s.config
+	s.mu.Unlock()
+
+	_ = s.storage.SaveConfig(cfg)
+	if s.onConfigChange != nil {
+		s.onConfigChange(cfg)
+	}
+	s.broadcastState()
+
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleProxyTest comprueba la conectividad y latencia de un proxy

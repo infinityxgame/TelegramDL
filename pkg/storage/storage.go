@@ -701,6 +701,9 @@ func (s *Storage) LoadConfig(defaults config.Config, legacyPath string) (config.
 	if val, ok := kv["proxy_secret"]; ok {
 		cfg.ProxySecret = val
 	}
+	if val, ok := kv["proxy_notice"]; ok {
+		cfg.ProxyNotice = val
+	}
 
 	// Cargar listener_chats
 	chatRows, err := s.db.Query("SELECT chat_id, topic_id, topic_name, name, folder, topic_folder, auto_download, listen_self, f_photos, f_videos, f_audios, f_docs, f_stickers, name_mode FROM listener_chats ORDER BY chat_id, topic_id")
@@ -827,6 +830,7 @@ func (s *Storage) SaveConfig(cfg config.Config) error {
 		"proxy_username":           cfg.ProxyUsername,
 		"proxy_password":           cfg.ProxyPassword,
 		"proxy_secret":             cfg.ProxySecret,
+		"proxy_notice":             cfg.ProxyNotice,
 	}
 
 	if cfg.NotificationTopicID != nil {
