@@ -142,8 +142,10 @@ const startQRLogin = async () => {
   const data = await apiCall('/api/auth/qr/start', {})
   qrStatus.value = data.status || 'STARTING'
   await pollQRStatus()
-  stopQRPolling()
-  qrPollTimer = setInterval(pollQRStatus, 3000)
+  if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+    stopQRPolling()
+    qrPollTimer = setInterval(pollQRStatus, 3000)
+  }
 }
 
 const cancelQRLogin = async () => {
