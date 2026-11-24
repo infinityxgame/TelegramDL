@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gotd/td/telegram/auth/qrlogin"
-	"github.com/gotd/td/tg"
 	"rsc.io/qr"
 )
 
@@ -69,11 +68,11 @@ drained:
 	cm.qrLoginCancel = cancel
 	cm.qrLoginStatus = QRLoginStatus{Status: "STARTING"}
 
-	go cm.runQRLogin(qrCtx, client, apiID, apiHash)
+	go cm.runQRLogin(qrCtx, client)
 	return cm.qrLoginStatus, nil
 }
 
-func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client, apiID int, apiHash string) {
+func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client) {
 	show := func(_ context.Context, token qrlogin.Token) error {
 		img, err := token.Image(qr.M)
 		if err != nil {
@@ -174,5 +173,3 @@ func (cm *ClientManager) ExpireQRLoginState() {
 	cm.qrLoginMu.Unlock()
 }
 
-// Ensure the login update handler uses the exact generated update type.
-var _ = (*tg.UpdateLoginToken)(nil)
