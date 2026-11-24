@@ -16,9 +16,7 @@ import (
 func TestInitClientRechazaAPIIDInvalidoSinDestruirEstado(t *testing.T) {
 	cm := &ClientManager{}
 	cm.apiID = 42
-	// Centinela: stopRunning() pondría readyChan a nil y repondría los mapas
-	// de DC. Si la validación falla antes de tocar cm, nada de esto cambia.
-	cm.readyChan = make(chan struct{})
+	cm.generation = 7
 
 	if err := cm.InitClient("basura", "abc"); err == nil {
 		t.Fatal("un api_id inválido debe devolver error")
@@ -26,11 +24,11 @@ func TestInitClientRechazaAPIIDInvalidoSinDestruirEstado(t *testing.T) {
 	if cm.apiID != 42 {
 		t.Fatalf("cm.apiID fue modificado: got %d, want 42", cm.apiID)
 	}
+	if cm.generation != 7 {
+		t.Fatalf("cm.generation fue modificado: got %d, want 7", cm.generation)
+	}
 	if cm.client != nil {
 		t.Fatal("cm.client no debe destruirse cuando la validación falla")
-	}
-	if cm.readyChan == nil {
-		t.Fatal("cm.readyChan no debe tocarse: stopRunning() no debe ejecutarse en un error de validación")
 	}
 	if cm.dcPools != nil || cm.dcClients != nil {
 		t.Fatal("los mapas de DC no deben reponerse: stopRunning() no debe ejecutarse en un error de validación")

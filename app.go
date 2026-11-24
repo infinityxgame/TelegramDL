@@ -108,6 +108,7 @@ func NewApp(assets fs.FS) (*App, error) {
 	i18n.SetLanguage(cfg.Language)
 
 	cm := telegram.NewClientManager()
+	cm.SetSessionStore(st)
 	cm.SetProxyConfig(cfg)
 	eng := downloader.NewEngine(cm, st, cfg)
 	le := listener.NewListenerEngine(cm, st, eng, cfg)

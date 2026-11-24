@@ -147,12 +147,7 @@ const apiCall = async (url, body) => {
 }
 
 const saveCredentials = async () => {
-  // SEC-34: validar el formato ANTES de enviar, sobre el valor ya recortado,
-  // para que los espacios de los extremos no enmascaren un campo vacío ni un
-  // valor mal formado. El backend solo hace TrimSpace y Atoi sobre api_id y
-  // no valida api_hash, así que un dato inválido llegaría hasta Telegram:
-  // acotamos aquí con el patrón canónico (api_id solo dígitos, api_hash de 32
-  // caracteres hexadecimales, igual que el placeholder de este mismo formulario).
+  if (loading.value) return
   const trimmedApiId = apiId.value.trim()
   const trimmedApiHash = apiHash.value.trim()
   if (!trimmedApiId || !trimmedApiHash) {
@@ -175,6 +170,7 @@ const saveCredentials = async () => {
 }
 
 const sendCode = async () => {
+  if (loading.value) return
   if (!phoneNumber.value) {
     errorMessage.value = t('auth.errPhone')
     return
@@ -193,6 +189,7 @@ const sendCode = async () => {
 }
 
 const verifyCode = async () => {
+  if (loading.value) return
   if (!code.value) {
     errorMessage.value = t('auth.errCode')
     return
@@ -201,10 +198,6 @@ const verifyCode = async () => {
     phone_number: phoneNumber.value,
     code: code.value.trim()
   })
-  // SEC-34: Telegram ya consumió el código en este punto (tanto si entra
-  // directo como si pide 2FA después). Ningún paso posterior lo reutiliza,
-  // así que se vacía el ref de inmediato para no retenerlo en memoria.
-  // Si la llamada falla, apiCall lanza antes y el valor queda para reintentar.
   code.value = ''
   if (data.status === '2fa_required' || data.state === 'WAITING_2FA') {
     emit('auth-success', { ...props.authStatus, state: 'WAITING_2FA' })
@@ -213,14 +206,7 @@ const verifyCode = async () => {
   }
 }
 
-// SEC-05: cuando el panel se ve desde fuera de este equipo y por HTTP, la
-// contraseña de 2FA viaja en claro por la red. Aquí SOLO se advierte, no se
-// bloquea el envío: el acceso por HTTP en la LAN es un escenario documentado
-// (REMOTE_ACCESS.md) y cortar el envío rompería a usuarios legítimos; la
-// decisión de continuar es del usuario.
 const insecureTransport = computed(() => {
-  // Dentro de la ventana nativa (Wails) el panel no viaja por la red: ahí no
-  // hay nada que advertir, aunque el hostname interno no sea loopback.
   if (isWailsRuntime()) return false
   return (
     !isLoopbackHost(window.location.hostname) &&
@@ -229,6 +215,7 @@ const insecureTransport = computed(() => {
 })
 
 const verify2FA = async () => {
+  if (loading.value) return
   if (!password.value) {
     errorMessage.value = t('auth.err2fa')
     return
@@ -236,24 +223,12 @@ const verify2FA = async () => {
   const data = await apiCall('/api/auth/verify-2fa', {
     password: password.value
   })
-  // SEC-34: este es el punto final real del login. Tras este éxito solo queda
-  // el paso 5, que únicamente pinta la pantalla de éxito y no lee password,
-  // y el resto del panel nunca tuvo acceso a este ref; por eso se vacía aquí,
-  // justo antes de emitir, para que la contraseña 2FA no permanezca en
-  // memoria durante el resto de la sesión. Si la llamada falla, apiCall lanza
-  // antes y el valor se conserva para que el usuario pueda reintentar.
   password.value = ''
   emit('auth-success', { ...data, authenticated: true })
 }
 
-// Vuelve al paso anterior del asistente.
-
-// Los pasos 1 y 2 se desandan sin tocar el servidor: basta con volver a pintar
-// la pantalla anterior y que el usuario reenvie el dato. El paso de 2FA es
-// distinto: Telegram ya consumio el codigo de verificacion al pedir la
-// contrasena, asi que no se puede "volver al codigo" — hay que cerrar el
-// intento a medias y pedir un codigo nuevo desde el paso del telefono.
 const goBack = async () => {
+  if (loading.value) return
   errorMessage.value = ''
 
   if (currentStep.value === 2) {
@@ -272,9 +247,6 @@ const goBack = async () => {
     code.value = ''
     password.value = ''
     try {
-      // La puerta de setup del servidor exige Content-Type JSON en las
-      // mutaciones que van sin token: sin él respondería 415 y el intento de
-      // login quedaría pendiente en el servidor.
       await fetch('/api/auth/logout', {
         method: 'POST',
         headers: {
@@ -288,8 +260,6 @@ const goBack = async () => {
     }
     loading.value = false
     stepOverride.value = 2
-    // Se conserva phoneNumber a proposito: lo normal es reintentar con el
-    // mismo numero y que Telegram mande otro codigo.
     emit('auth-success', {
       ...props.authStatus,
       authenticated: false,

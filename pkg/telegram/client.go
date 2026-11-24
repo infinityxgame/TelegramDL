@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,17 +19,14 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/gotd/td/clock"
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
-	"github.com/gotd/td/telegram/dcs"
-	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
-	"golang.org/x/net/proxy"
 
 	"tgdown/pkg/config"
 	"tgdown/pkg/i18n"
-	"tgdown/pkg/logbus"
 )
 
 type UserInfo struct {
@@ -52,7 +48,10 @@ type AuthStatus struct {
 	Authorized     bool      `json:"authorized"`
 	Authenticated  bool      `json:"authenticated"`
 	State          string    `json:"state"`
-	Phone          string    `json:"phone,omitempty"`
+	Phone          string    `json:"phone_number,omitempty"`
+	PhoneLegacy    string    `json:"phone,omitempty"`
+	Online         bool      `json:"online"`
+	SessionKnown   bool      `json:"session_known"`
 	User           *UserInfo `json:"user,omitempty"`
 }
 
@@ -71,13 +70,34 @@ type ClientManager struct {
 	sessionPath        string
 	cancelRun          context.CancelFunc
 	runWg              sync.WaitGroup
+	lifecycleMu        sync.Mutex
+	authMu             sync.Mutex
+	generation         uint64
+	connected          bool
+	stateChanged       chan struct{}
+	lastConnErr        error
+	transport          string
+	proxyRestart       bool
+	mClient            managedClient
+	newClient          func(telegram.Options) managedClient
+	clock              clock.Clock
+	sessionStore       sessionEvidenceStore
+	authStage          string
+	knownUser          *UserInfo
+	knownSessionID     string
+	setupPending       bool
+	clockSynced        bool
+	attemptID          uint64
+	lastStatus         AuthStatus
+	proxyCfg           config.Config
 	mu                 sync.RWMutex
 	// dcMu serializa únicamente la creación de pools por DC (SEC-18). La
 	// llamada de red client.DC() se hace fuera de cm.mu para no bloquear
 	// todo el manejador; este candado corto evita que dos goroutines abran
 	// dos pools duplicados para el mismo DC mientras tanto.
 	dcMu                 sync.Mutex
-	readyChan            chan struct{}
+	proxyFailureNotified uint64
+	newAuth              func(*telegram.Client) authClient
 	phoneCodeHash        string
 	pendingPhone         string
 	dispatcher           tg.UpdateDispatcher
@@ -413,51 +433,14 @@ func NewClientManager() *ClientManager {
 		dcPools:             make(map[int]telegram.CloseInvoker),
 		dcClients:           make(map[int]*tg.Client),
 	}
-	return cm
-}
-
-func (cm *ClientManager) SetProxyConfig(cfg config.Config) {
-	cm.mu.Lock()
-	changed := !cm.cfgProxyInitialized ||
-		cm.cfgProxyEnabled != cfg.ProxyEnabled ||
-		cm.cfgProxyType != cfg.ProxyType ||
-		cm.cfgProxyHost != cfg.ProxyHost ||
-		cm.cfgProxyPort != cfg.ProxyPort ||
-		cm.cfgProxyUsername != cfg.ProxyUsername ||
-		cm.cfgProxyPassword != cfg.ProxyPassword ||
-		cm.cfgProxySecret != cfg.ProxySecret
-
-	cm.cfgProxyInitialized = true
-	cm.cfgProxyEnabled = cfg.ProxyEnabled
-	cm.cfgProxyType = cfg.ProxyType
-	cm.cfgProxyHost = cfg.ProxyHost
-	cm.cfgProxyPort = cfg.ProxyPort
-	cm.cfgProxyUsername = cfg.ProxyUsername
-	cm.cfgProxyPassword = cfg.ProxyPassword
-	cm.cfgProxySecret = cfg.ProxySecret
-
-	cm.proxyEnabled = cfg.ProxyEnabled
-	cm.proxyType = cfg.ProxyType
-	cm.proxyHost = cfg.ProxyHost
-	cm.proxyPort = cfg.ProxyPort
-	cm.proxyUsername = cfg.ProxyUsername
-	cm.proxyPassword = cfg.ProxyPassword
-	cm.proxySecret = cfg.ProxySecret
-
-	apiID := cm.apiID
-	apiHash := cm.apiHash
-	cm.mu.Unlock()
-
-	if changed && apiID != 0 && apiHash != "" {
-		log.Printf("[TG CLIENT] Reconfigurando cliente por cambio explícito de proxy...")
-		_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+	cm.newClient = func(opts telegram.Options) managedClient {
+		return &realManagedClient{client: telegram.NewClient(cm.apiID, cm.apiHash, opts)}
 	}
-}
-
-func (cm *ClientManager) SetOnProxyFailed(fn func(err error)) {
-	cm.mu.Lock()
-	cm.onProxyFailed = fn
-	cm.mu.Unlock()
+	cm.newAuth = func(c *telegram.Client) authClient {
+		return &realAuthClient{auth: c.Auth()}
+	}
+	cm.stateChanged = make(chan struct{})
+	return cm
 }
 
 func GetPyrogramCredentials() (string, error) {
@@ -774,29 +757,6 @@ func (cm *ClientManager) ResolveUsername(ctx context.Context, username string) (
 	return 0, errors.New(i18n.T("telegram.unknownChatType"))
 }
 
-func (cm *ClientManager) WaitReady(ctx context.Context) error {
-	cm.mu.RLock()
-	ready := cm.readyChan
-	client := cm.client
-	cm.mu.RUnlock()
-
-	if client == nil {
-		return errors.New(i18n.T("telegram.notConfigured"))
-	}
-	if ready == nil {
-		return nil
-	}
-
-	select {
-	case <-ready:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(15 * time.Second):
-		return errors.New(i18n.T("telegram.timeoutConnecting"))
-	}
-}
-
 func (cm *ClientManager) RawClient() *tg.Client {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -809,406 +769,59 @@ func (cm *ClientManager) Client() *telegram.Client {
 	return cm.client
 }
 
-func (cm *ClientManager) InitClient(apiIDStr, apiHash string) error {
-	// SEC-01: validar las credenciales ANTES de tocar la sesión. Antes,
-	// stopRunning() se ejecutaba primero y un api_id inválido mataba el
-	// cliente MTProto vivo solo para devolver después un error. La
-	// validación no lee ni escribe cm, así que un error de formato sale sin
-	// llamar a stopRunning() y sin modificar ningún campo del manejador.
-	apiIDStr = strings.TrimSpace(apiIDStr)
-	apiHash = strings.TrimSpace(apiHash)
-
-	// Borrado intencionado de credenciales: solo en ese caso se decide parar
-	// la sesión actual, porque el usuario pide vaciar la configuración.
-	borrarSesion := apiIDStr == "" || apiHash == ""
-	id := 0
-	if !borrarSesion {
-		var err error
-		id, err = strconv.Atoi(apiIDStr)
-		if err != nil {
-			// Sin stopRunning() ni mutación de cm: el estado previo queda intacto.
-			return fmt.Errorf(i18n.T("telegram.invalidAPIID"), err)
-		}
-	}
-
-	// Detener la sesión anterior antes de tomar el mutex. La goroutine de
-	// Telegram puede necesitarlo mientras termina.
-	cm.stopRunning()
-
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	if borrarSesion {
-		cm.apiID = 0
-		cm.apiHash = ""
-		cm.client = nil
-		cm.rawClient = nil
-		return nil
-	}
-
-	cm.apiID = id
-	cm.apiHash = apiHash
-	cm.readyChan = make(chan struct{})
-	readyChan := cm.readyChan
-
-	// Registrar los handlers una sola vez. InitClient puede ejecutarse varias
-	// veces durante la autenticación o al cambiar credenciales.
-	if !cm.dispatcherRegistered {
-		cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
-			cm.cacheEntities(entities)
-			msg, ok := update.Message.(*tg.Message)
-			if !ok {
-				return nil
-			}
-			cm.mu.RLock()
-			cb := cm.onGenericMessage
-			cm.mu.RUnlock()
-			if cb != nil {
-				return cb(ctx, entities, msg)
-			}
-			return nil
-		})
-
-		cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
-			cm.cacheEntities(entities)
-			msg, ok := update.Message.(*tg.Message)
-			if !ok {
-				return nil
-			}
-			cm.mu.RLock()
-			cb := cm.onGenericMessage
-			cm.mu.RUnlock()
-			if cb != nil {
-				return cb(ctx, entities, msg)
-			}
-			return nil
-		})
-
-		cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
-			cm.cacheEntities(entities)
-			msg, ok := update.Message.(*tg.Message)
-			if !ok {
-				return nil
-			}
-			cm.mu.RLock()
-			cb := cm.onGenericMessage
-			cm.mu.RUnlock()
-			if cb != nil {
-				return cb(ctx, entities, msg)
-			}
-			return nil
-		})
-
-		cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
-			cm.cacheEntities(entities)
-			msg, ok := update.Message.(*tg.Message)
-			if !ok {
-				return nil
-			}
-			cm.mu.RLock()
-			cb := cm.onGenericMessage
-			cm.mu.RUnlock()
-			if cb != nil {
-				return cb(ctx, entities, msg)
-			}
-			return nil
-		})
-		cm.dispatcherRegistered = true
-	}
-
-	gaps := updates.New(updates.Config{
-		Handler: cm.dispatcher,
-	})
-
-	opts := telegram.Options{
-		SessionStorage: &session.FileStorage{
-			Path: cm.sessionPath,
-		},
-		UpdateHandler: gaps,
-		Device: telegram.DeviceConfig{
-			DeviceModel:   "TGDown Desktop",
-			SystemVersion: systemVersionLabel(),
-			AppVersion:    config.AppVersion,
-			LangCode:      "es",
-		},
-	}
-
-	useWS := shouldEnableWebSocket()
-
-	pEnabled := cm.proxyEnabled
-	pType := cm.proxyType
-	pHost := cm.proxyHost
-	pPort := cm.proxyPort
-	pUser := cm.proxyUsername
-	pPass := cm.proxyPassword
-	pSec := cm.proxySecret
-	proxyAddr := ""
-
-	if pEnabled && strings.TrimSpace(pHost) != "" && pPort > 0 {
-		proxyAddr = net.JoinHostPort(strings.TrimSpace(pHost), strconv.Itoa(pPort))
-		onProxyFail := func(err error) {
-			cm.mu.Lock()
-			cm.proxyEnabled = false
-			cb := cm.onProxyFailed
-			cm.mu.Unlock()
-
-			if cb != nil {
-				cb(err)
-			}
-		}
-
-		switch strings.ToLower(strings.TrimSpace(pType)) {
-		case "socks5":
-			var auth *proxy.Auth
-			if pUser != "" || pPass != "" {
-				auth = &proxy.Auth{User: pUser, Password: pPass}
-			}
-			dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: 15 * time.Second})
-			if err == nil {
-				var rawDial dcs.DialFunc
-				if cd, ok := dialer.(proxy.ContextDialer); ok {
-					rawDial = cd.DialContext
-				} else {
-					rawDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
-						return dialer.Dial(network, addr)
-					}
-				}
-				wrapped := wrapProxyDialer(rawDial, "SOCKS5", proxyAddr, onProxyFail)
-				opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: wrapped, PreferIPv6: false})
-				log.Printf("[TG CLIENT] Proxy SOCKS5 activado: %s", proxyAddr)
-			} else {
-				log.Printf("[TG CLIENT ERROR] Error al configurar proxy SOCKS5: %v", err)
-			}
-		case "http":
-			rawDial := buildHTTPProxyDialer(proxyAddr, pUser, pPass)
-			wrapped := wrapProxyDialer(rawDial, "HTTP", proxyAddr, onProxyFail)
-			opts.Resolver = dcs.Plain(dcs.PlainOptions{Dial: wrapped, PreferIPv6: false})
-			log.Printf("[TG CLIENT] Proxy HTTP activado: %s", proxyAddr)
-		case "mtproto":
-			cleanSecret := strings.TrimSpace(pSec)
-			secretBytes, err := ParseMTProtoSecret(cleanSecret)
-			if err == nil && len(secretBytes) > 0 {
-				rawDial := func(ctx context.Context, network, addr string) (net.Conn, error) {
-					var d net.Dialer
-					return d.DialContext(ctx, network, proxyAddr)
-				}
-				wrapped := wrapProxyDialer(rawDial, "MTProto", proxyAddr, onProxyFail)
-				res, err := dcs.MTProxy(proxyAddr, secretBytes, dcs.MTProxyOptions{Dial: wrapped})
-				if err == nil {
-					opts.Resolver = res
-					log.Printf("[TG CLIENT] Proxy MTProto activado: %s", proxyAddr)
-				} else {
-					log.Printf("[TG CLIENT ERROR] Error al crear resolver MTProxy: %v", err)
-				}
-			} else {
-				log.Printf("[TG CLIENT ERROR] Secreto MTProto invalido: %s", pSec)
-			}
-		}
-	} else {
-		useNoIPv6 := shouldDisableIPv6()
-		if useNoIPv6 {
-			log.Printf("[TG CLIENT] %s", i18n.T("telegram.ipv6Disabled"))
-		}
-
-		if useWS {
-			opts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
-			log.Printf("[TG CLIENT] %s", i18n.T("telegram.websocketEnabled"))
-		} else if useNoIPv6 {
-			opts.Resolver = dcs.Plain(dcs.PlainOptions{PreferIPv6: false})
-		}
-	}
-
-	client := telegram.NewClient(cm.apiID, cm.apiHash, opts)
-	cm.client = client
-	cm.rawClient = client.API()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cm.cancelRun = cancel
-
-	readyOnce := sync.Once{}
-	cm.runWg.Add(1)
-	go func() {
-		defer cm.runWg.Done()
-		// Sin el API_ID: el registro se comparte en capturas y el identificador
-		// de la aplicación no aporta nada para diagnosticar.
-		log.Printf("[TG CLIENT] %s", i18n.T("telegram.connecting"))
-
-		runClient := func(c *telegram.Client) error {
-			return c.Run(ctx, func(runCtx context.Context) error {
-				readyOnce.Do(func() {
-					close(readyChan)
-					go func() {
-						time.Sleep(300 * time.Millisecond)
-						_ = cm.FetchDialogs(context.Background())
-					}()
-				})
-
-				log.Printf("[TG CLIENT] %s", i18n.T("telegram.connected"))
-
-				// Los bloques de archivo salen por su propio grupo de conexiones.
-				// Se abre aquí, con la sesión ya conectada, y se cierra al salir de
-				// Run, que es cuando se cae la conexión o se cierra el programa.
-				cm.openDownloadPool()
-				defer cm.closeDownloadPool()
-
-				// Bucle de espera de autenticación para iniciar el manejador de actualizaciones (gaps)
-				proxyFailures := 0
-				for {
-					self, err := c.Self(runCtx)
-					if err == nil && self != nil {
-						log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
-						return gaps.Run(runCtx, c.API(), self.ID, updates.AuthOptions{
-							IsBot: false,
-						})
-					}
-
-					if pEnabled {
-						proxyFailures++
-						log.Printf("[TG CLIENT ERROR] Fallo en verificación de sesión con proxy (%d/2): %v", proxyFailures, err)
-						if proxyFailures >= 2 {
-							return fmt.Errorf("proxy error: %w", err)
-						}
-					}
-
-					log.Printf("[TG CLIENT] %s", i18n.T("telegram.waitingAuth"))
-					select {
-					case <-runCtx.Done():
-						return runCtx.Err()
-					case <-time.After(2 * time.Second):
-						// Reintentar check de Self()
-					}
-				}
-			})
-		}
-
-		err := runClient(client)
-
-		// Fallback automático: si la conexión inicial falló (por ejemplo, si el proxy no respondió),
-		// se desactiva el proxy automáticamente en Ajustes y se reintenta conectar mediante WebSocket.
-		if err != nil && !errors.Is(err, context.Canceled) {
-			if pEnabled {
-				errMsg := fmt.Sprintf("El proxy %s (%s) no respondió: %v. Cambiando a conexión directa (WebSocket)...", pType, proxyAddr, err)
-				log.Printf("[TG CLIENT ERROR] %s", errMsg)
-				logbus.Error(logbus.CatTelegram, "Fallo en conexión por proxy", errMsg)
-
-				cm.mu.Lock()
-				cm.proxyEnabled = false
-				cb := cm.onProxyFailed
-				cm.mu.Unlock()
-
-				if cb != nil {
-					cb(err)
-				}
-			} else {
-				log.Printf("[TG CLIENT ERROR] Falló la conexión MTProto estándar: %v. Intentando transporte WebSocket...", err)
-			}
-
-			if ctx.Err() == nil {
-				cm.mu.Lock()
-				cm.readyChan = make(chan struct{})
-				fallbackReadyChan := cm.readyChan
-				fallbackOpts := opts
-				fallbackOpts.Resolver = dcs.Websocket(dcs.WebsocketOptions{})
-
-				fallbackClient := telegram.NewClient(cm.apiID, cm.apiHash, fallbackOpts)
-				cm.client = fallbackClient
-				cm.rawClient = fallbackClient.API()
-				cm.mu.Unlock()
-
-				runFallbackClient := func(c *telegram.Client) error {
-					fallbackOnce := sync.Once{}
-					return c.Run(ctx, func(runCtx context.Context) error {
-						fallbackOnce.Do(func() {
-							close(fallbackReadyChan)
-							go func() {
-								time.Sleep(300 * time.Millisecond)
-								_ = cm.FetchDialogs(context.Background())
-							}()
-						})
-
-						log.Printf("[TG CLIENT] %s", i18n.T("telegram.connected"))
-
-						cm.openDownloadPool()
-						defer cm.closeDownloadPool()
-
-						for {
-							self, err := c.Self(runCtx)
-							if err == nil && self != nil {
-								log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
-								return gaps.Run(runCtx, c.API(), self.ID, updates.AuthOptions{
-									IsBot: false,
-								})
-							}
-
-							select {
-							case <-runCtx.Done():
-								return runCtx.Err()
-							case <-time.After(2 * time.Second):
-							}
-						}
-					})
-				}
-
-				err = runFallbackClient(fallbackClient)
-			}
-		}
-
-		if err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("[TG CLIENT ERROR] %s", i18n.T("telegram.runError", err))
-		}
-	}()
-
-	return nil
-}
-
-func (cm *ClientManager) Stop() {
-	cm.stopRunning()
-}
-
-func (cm *ClientManager) stopRunning() {
-	cm.mu.Lock()
-	cancel := cm.cancelRun
-	cm.cancelRun = nil
-	cm.mu.Unlock()
-
-	if cancel != nil {
-		cancel()
-	}
-	cm.runWg.Wait()
-
-	cm.mu.Lock()
-	cm.client = nil
-	cm.rawClient = nil
-	cm.downloadPool = nil
-	cm.downloadClient = nil
-	cm.downloadPoolNotice = false
-	cm.readyChan = nil
-	cm.dcPools = make(map[int]telegram.CloseInvoker)
-	cm.dcClients = make(map[int]*tg.Client)
-	cm.primaryDC = 0
-	cm.mu.Unlock()
-}
-
-// HaySesionGuardada informa si existe el fichero de sesión de Telegram en
-// disco. El panel (pkg/server) usa este método para decidir si los endpoints
-// de configuración de /api/auth/ pueden responder sin token SOLO mientras no
-// haya sesión guardada: es el único momento en que configurar la cuenta no
-// expone ni destruye nada ajeno (ver SECURITY_FIXPLAN.md §1.3, cierre de
-// SEC-01). Nil-safe: un manejador nulo no tiene sesión.
+// HaySesionGuardada informa si existe el fichero de sesión de Telegram en disco.
 func (cm *ClientManager) HaySesionGuardada() bool {
 	if cm == nil {
 		return false
 	}
-	// Copiar el path y soltar el candado ANTES de os.Stat: no se hace I/O con
-	// el candado tomado, aunque la llamada sea barata (estilo SEC-18).
 	cm.mu.RLock()
 	sessionPath := cm.sessionPath
 	cm.mu.RUnlock()
 
-	// Cualquier error de stat (incluido «no existe») cuenta como «sin
-	// sesión»: es la respuesta conservadora, porque hace exigir token.
 	_, err := os.Stat(sessionPath)
 	return err == nil
+}
+
+func sessionFingerprint(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	h := sha1.Sum(data)
+	return fmt.Sprintf("%x", h)
+}
+
+func (cm *ClientManager) rememberAuthorized(user *tg.User) {
+	if user == nil {
+		return
+	}
+	var colorID *int
+	if pc, ok := user.Color.(*tg.PeerColor); ok {
+		if c, ok := pc.GetColor(); ok {
+			colorID = &c
+		}
+	}
+	uInfo := &UserInfo{
+		ID:        user.ID,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Username:  user.Username,
+		Phone:     user.Phone,
+		ColorID:   colorID,
+	}
+	cm.mu.Lock()
+	cm.knownUser = uInfo
+	store := cm.sessionStore
+	sessPath := cm.sessionPath
+	cm.mu.Unlock()
+
+	if store != nil {
+		fp := sessionFingerprint(sessPath)
+		if fp == "" {
+			fp = fmt.Sprintf("user_%d", user.ID)
+		}
+		_ = store.MarkTelegramAuthorized(fp, *uInfo)
+	}
 }
 
 func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
@@ -1216,6 +829,11 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	client := cm.client
 	apiID := cm.apiID
 	apiHash := cm.apiHash
+	knownUser := cm.knownUser
+	authStage := cm.authStage
+	pendingPhone := cm.pendingPhone
+	store := cm.sessionStore
+	sessPath := cm.sessionPath
 	cm.mu.RUnlock()
 
 	if apiID == 0 || apiHash == "" || client == nil {
@@ -1228,26 +846,52 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		}
 	}
 
-	hasSavedSession := cm.HaySesionGuardada()
-
-	// Esperar brevemente a que el cliente MTProto esté conectado.
-	// Si hay una sesión guardada, somos más pacientes (5s) porque es probable que conecte.
-	// Si no, damos tiempo suficiente (3s) para la primera conexión.
-	timeout := 3 * time.Second
-	if hasSavedSession {
-		timeout = 5 * time.Second
+	var sessionKnown bool
+	var savedUser *UserInfo
+	if store != nil {
+		sessID, evUser, _, _ := store.GetTelegramAuthEvidence()
+		currentFP := sessionFingerprint(sessPath)
+		if sessID != "" && currentFP != "" && sessID == currentFP && cm.HaySesionGuardada() {
+			sessionKnown = true
+			savedUser = evUser
+		}
+	} else if cm.HaySesionGuardada() {
+		sessionKnown = true
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	if savedUser == nil && knownUser != nil {
+		savedUser = knownUser
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if err := cm.WaitReady(waitCtx); err != nil {
-		if hasSavedSession {
+	err := cm.WaitReady(waitCtx)
+
+	if err != nil {
+		if sessionKnown && savedUser != nil {
 			return AuthStatus{
 				Configured:     true,
 				HasCredentials: true,
 				Authorized:     true,
 				Authenticated:  true,
-				State:          "LOGGED_IN",
+				State:          "CONNECTING",
+				Phone:          savedUser.Phone,
+				PhoneLegacy:    savedUser.Phone,
+				SessionKnown:   true,
+				Online:         false,
+				User:           savedUser,
+			}
+		}
+		if authStage != "" {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     false,
+				Authenticated:  false,
+				State:          authStage,
+				Phone:          pendingPhone,
+				PhoneLegacy:    pendingPhone,
+				Online:         false,
 			}
 		}
 		return AuthStatus{
@@ -1255,20 +899,48 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			HasCredentials: true,
 			Authorized:     false,
 			Authenticated:  false,
-			State:          "NEED_PHONE",
+			State:          "CONNECTING",
+			Online:         false,
 		}
 	}
 
-	authClient := client.Auth()
-	status, err := authClient.Status(ctx)
-	if err != nil {
-		if hasSavedSession {
+	cm.mu.RLock()
+	newAuthFn := cm.newAuth
+	cm.mu.RUnlock()
+
+	var aClient authClient
+	if newAuthFn != nil {
+		aClient = newAuthFn(client)
+	} else {
+		aClient = &realAuthClient{auth: client.Auth()}
+	}
+
+	status, statusErr := aClient.Status(ctx)
+	if statusErr != nil {
+		if sessionKnown && savedUser != nil {
 			return AuthStatus{
 				Configured:     true,
 				HasCredentials: true,
 				Authorized:     true,
 				Authenticated:  true,
-				State:          "LOGGED_IN",
+				State:          "CONNECTING",
+				Phone:          savedUser.Phone,
+				PhoneLegacy:    savedUser.Phone,
+				SessionKnown:   true,
+				Online:         false,
+				User:           savedUser,
+			}
+		}
+		if authStage != "" {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     false,
+				Authenticated:  false,
+				State:          authStage,
+				Phone:          pendingPhone,
+				PhoneLegacy:    pendingPhone,
+				Online:         false,
 			}
 		}
 		return AuthStatus{
@@ -1277,27 +949,56 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "NEED_PHONE",
+			Online:         false,
 		}
 	}
 
 	if !status.Authorized {
+		if authStage != "" {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     false,
+				Authenticated:  false,
+				State:          authStage,
+				Phone:          pendingPhone,
+				PhoneLegacy:    pendingPhone,
+				Online:         true,
+			}
+		}
 		return AuthStatus{
 			Configured:     true,
 			HasCredentials: true,
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "NEED_PHONE",
+			Online:         true,
 		}
 	}
 
-	user, err := client.Self(ctx)
-	if err != nil {
+	user, selfErr := client.Self(ctx)
+	if selfErr != nil || user == nil {
+		if sessionKnown && savedUser != nil {
+			return AuthStatus{
+				Configured:     true,
+				HasCredentials: true,
+				Authorized:     true,
+				Authenticated:  true,
+				State:          "LOGGED_IN",
+				Phone:          savedUser.Phone,
+				PhoneLegacy:    savedUser.Phone,
+				SessionKnown:   true,
+				Online:         true,
+				User:           savedUser,
+			}
+		}
 		return AuthStatus{
 			Configured:     true,
 			HasCredentials: true,
 			Authorized:     true,
 			Authenticated:  true,
 			State:          "LOGGED_IN",
+			Online:         true,
 		}
 	}
 
@@ -1308,6 +1009,29 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		}
 	}
 
+	uInfo := &UserInfo{
+		ID:        user.ID,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Username:  user.Username,
+		Phone:     user.Phone,
+		ColorID:   colorID,
+	}
+
+	cm.mu.Lock()
+	cm.knownUser = uInfo
+	cm.authStage = ""
+	store = cm.sessionStore
+	cm.mu.Unlock()
+
+	if store != nil {
+		fp := sessionFingerprint(sessPath)
+		if fp == "" {
+			fp = fmt.Sprintf("user_%d", user.ID)
+		}
+		_ = store.MarkTelegramAuthorized(fp, *uInfo)
+	}
+
 	return AuthStatus{
 		Configured:     true,
 		HasCredentials: true,
@@ -1315,21 +1039,73 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		Authenticated:  true,
 		State:          "LOGGED_IN",
 		Phone:          user.Phone,
-		User: &UserInfo{
-			ID:        user.ID,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			Username:  user.Username,
-			Phone:     user.Phone,
-			ColorID:   colorID,
-		},
+		PhoneLegacy:    user.Phone,
+		Online:         true,
+		SessionKnown:   true,
+		User:           uInfo,
 	}
 }
 
+func normalizePhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return ""
+	}
+	var sb strings.Builder
+	for i, r := range phone {
+		if r == '+' && i == 0 {
+			sb.WriteRune(r)
+		} else if r >= '0' && r <= '9' {
+			sb.WriteRune(r)
+		}
+	}
+	res := sb.String()
+	if !strings.HasPrefix(res, "+") {
+		res = "+" + res
+	}
+	digits := strings.TrimPrefix(res, "+")
+	if len(digits) < 7 || len(digits) > 15 {
+		return ""
+	}
+	return res
+}
+
+func formatAuthError(stage string, err error) error {
+	if err == nil {
+		return nil
+	}
+	errMsg := err.Error()
+	upper := strings.ToUpper(errMsg)
+
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(upper, "TIMEOUT") || strings.Contains(upper, "CONNECT") {
+		return fmt.Errorf("connection error: %w", err)
+	}
+	if strings.Contains(upper, "PHONE_NUMBER_INVALID") {
+		return errors.New("invalid phone number format")
+	}
+	if strings.Contains(upper, "PHONE_CODE_INVALID") {
+		return errors.New("invalid verification code")
+	}
+	if strings.Contains(upper, "PHONE_CODE_EXPIRED") {
+		return errors.New("verification code expired")
+	}
+	if strings.Contains(upper, "PASSWORD_HASH_INVALID") {
+		return errors.New("invalid 2FA password")
+	}
+	if strings.Contains(upper, "FLOOD_WAIT") {
+		return fmt.Errorf("too many attempts, please wait: %w", err)
+	}
+	return err
+}
+
 func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, error) {
-	cm.mu.Lock()
+	cm.authMu.Lock()
+	defer cm.authMu.Unlock()
+
+	cm.mu.RLock()
 	client := cm.client
-	cm.mu.Unlock()
+	newAuthFn := cm.newAuth
+	cm.mu.RUnlock()
 
 	if client == nil {
 		return "", errors.New(i18n.T("telegram.notConfigured"))
@@ -1339,10 +1115,21 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
 	}
 
-	phone = strings.TrimSpace(phone)
-	sentCode, err := client.Auth().SendCode(ctx, phone, auth.SendCodeOptions{})
+	phone = normalizePhone(phone)
+	if phone == "" {
+		return "", errors.New("phone number is required")
+	}
+
+	var aClient authClient
+	if newAuthFn != nil {
+		aClient = newAuthFn(client)
+	} else {
+		aClient = &realAuthClient{auth: client.Auth()}
+	}
+
+	sentCode, err := aClient.SendCode(ctx, phone, auth.SendCodeOptions{})
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("telegram.sendCodeError"), err)
+		return "", formatAuthError("send_code", err)
 	}
 
 	sc, ok := sentCode.(*tg.AuthSentCode)
@@ -1353,21 +1140,26 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	cm.mu.Lock()
 	cm.phoneCodeHash = sc.PhoneCodeHash
 	cm.pendingPhone = phone
+	cm.authStage = "WAITING_CODE"
 	cm.mu.Unlock()
 
 	return sc.PhoneCodeHash, nil
 }
 
 func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeHash string) (string, error) {
-	cm.mu.Lock()
+	cm.authMu.Lock()
+	defer cm.authMu.Unlock()
+
+	cm.mu.RLock()
 	client := cm.client
+	newAuthFn := cm.newAuth
 	if phoneCodeHash == "" {
 		phoneCodeHash = cm.phoneCodeHash
 	}
 	if phone == "" {
 		phone = cm.pendingPhone
 	}
-	cm.mu.Unlock()
+	cm.mu.RUnlock()
 
 	if client == nil {
 		return "", errors.New(i18n.T("telegram.notConfigured"))
@@ -1377,21 +1169,71 @@ func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeH
 		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
 	}
 
-	_, err := client.Auth().SignIn(ctx, phone, code, phoneCodeHash)
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return "", errors.New("code is required")
+	}
+
+	var aClient authClient
+	if newAuthFn != nil {
+		aClient = newAuthFn(client)
+	} else {
+		aClient = &realAuthClient{auth: client.Auth()}
+	}
+
+	_, err := aClient.SignIn(ctx, phone, code, phoneCodeHash)
 	if err != nil {
 		if errors.Is(err, auth.ErrPasswordAuthNeeded) || strings.Contains(strings.ToUpper(err.Error()), "SESSION_PASSWORD_NEEDED") {
+			cm.mu.Lock()
+			cm.authStage = "WAITING_2FA"
+			cm.mu.Unlock()
 			return "2fa_required", nil
 		}
-		return "", fmt.Errorf(i18n.T("telegram.invalidCode"), err)
+		return "", formatAuthError("verify_code", err)
+	}
+
+	cm.mu.Lock()
+	cm.authStage = ""
+	proxyRestart := cm.proxyRestart
+	cm.proxyRestart = false
+	apiID := cm.apiID
+	apiHash := cm.apiHash
+	cm.mu.Unlock()
+
+	if user, selfErr := client.Self(ctx); selfErr == nil && user != nil {
+		uInfo := &UserInfo{
+			ID:        user.ID,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Username:  user.Username,
+			Phone:     user.Phone,
+		}
+		cm.mu.Lock()
+		cm.knownUser = uInfo
+		store := cm.sessionStore
+		cm.mu.Unlock()
+		if store != nil {
+			_ = store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo)
+		}
+	}
+
+	if proxyRestart && apiID != 0 && apiHash != "" {
+		go func() {
+			_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+		}()
 	}
 
 	return "ok", nil
 }
 
 func (cm *ClientManager) Verify2FA(ctx context.Context, password string) error {
-	cm.mu.Lock()
+	cm.authMu.Lock()
+	defer cm.authMu.Unlock()
+
+	cm.mu.RLock()
 	client := cm.client
-	cm.mu.Unlock()
+	newAuthFn := cm.newAuth
+	cm.mu.RUnlock()
 
 	if client == nil {
 		return errors.New(i18n.T("telegram.notConfigured"))
@@ -1401,9 +1243,47 @@ func (cm *ClientManager) Verify2FA(ctx context.Context, password string) error {
 		return fmt.Errorf(i18n.T("telegram.connectError"), err)
 	}
 
-	_, err := client.Auth().Password(ctx, password)
+	var aClient authClient
+	if newAuthFn != nil {
+		aClient = newAuthFn(client)
+	} else {
+		aClient = &realAuthClient{auth: client.Auth()}
+	}
+
+	_, err := aClient.Password(ctx, password)
 	if err != nil {
-		return fmt.Errorf(i18n.T("telegram.invalid2FA"), err)
+		return formatAuthError("verify_2fa", err)
+	}
+
+	cm.mu.Lock()
+	cm.authStage = ""
+	proxyRestart := cm.proxyRestart
+	cm.proxyRestart = false
+	apiID := cm.apiID
+	apiHash := cm.apiHash
+	cm.mu.Unlock()
+
+	if user, selfErr := client.Self(ctx); selfErr == nil && user != nil {
+		uInfo := &UserInfo{
+			ID:        user.ID,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Username:  user.Username,
+			Phone:     user.Phone,
+		}
+		cm.mu.Lock()
+		cm.knownUser = uInfo
+		store := cm.sessionStore
+		cm.mu.Unlock()
+		if store != nil {
+			_ = store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo)
+		}
+	}
+
+	if proxyRestart && apiID != 0 && apiHash != "" {
+		go func() {
+			_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+		}()
 	}
 
 	return nil
@@ -1532,19 +1412,41 @@ func (cm *ClientManager) GetSelfInfo(ctx context.Context) (int64, string, error)
 }
 
 func (cm *ClientManager) Logout(ctx context.Context) error {
+	cm.authMu.Lock()
+	defer cm.authMu.Unlock()
+
 	cm.mu.Lock()
 	client := cm.client
 	rawClient := cm.rawClient
+	sessionPath := cm.sessionPath
+	store := cm.sessionStore
 	cm.mu.Unlock()
 
 	if rawClient != nil {
-		_, _ = rawClient.AuthLogOut(ctx)
+		logoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_, _ = rawClient.AuthLogOut(logoutCtx)
+		cancel()
 	} else if client != nil {
-		_, _ = client.API().AuthLogOut(ctx)
+		logoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_, _ = client.API().AuthLogOut(logoutCtx)
+		cancel()
 	}
 
 	cm.stopRunning()
-	_ = os.Remove(cm.sessionPath)
+
+	if sessionPath != "" {
+		_ = os.Remove(sessionPath)
+	}
+	if store != nil {
+		_ = store.ClearTelegramAuthEvidence()
+	}
+
+	cm.mu.Lock()
+	cm.authStage = ""
+	cm.pendingPhone = ""
+	cm.phoneCodeHash = ""
+	cm.knownUser = nil
+	cm.mu.Unlock()
 
 	return nil
 }

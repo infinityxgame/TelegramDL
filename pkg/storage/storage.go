@@ -17,6 +17,7 @@ import (
 
 	"tgdown/pkg/config"
 	"tgdown/pkg/i18n"
+	"tgdown/pkg/telegram"
 )
 
 type DownloadItem struct {
@@ -1693,4 +1694,71 @@ func (s *Storage) DeleteProxy(id int64) error {
 
 	_, err := s.db.Exec("DELETE FROM proxies WHERE id=?", id)
 	return err
+}
+
+func (s *Storage) MarkTelegramAuthPending() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.setConfigKey("tg_auth_pending", "1"); err != nil {
+		return fmt.Errorf("failed to set auth pending: %w", err)
+	}
+	if err := s.setConfigKey("tg_auth_session_id", ""); err != nil {
+		return fmt.Errorf("failed to clear auth session id: %w", err)
+	}
+	if err := s.setConfigKey("tg_auth_user", ""); err != nil {
+		return fmt.Errorf("failed to clear auth user: %w", err)
+	}
+	return nil
+}
+
+func (s *Storage) MarkTelegramAuthorized(sessionID string, user telegram.UserInfo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userBytes, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal auth user: %w", err)
+	}
+	if err := s.setConfigKey("tg_auth_pending", "0"); err != nil {
+		return fmt.Errorf("failed to clear auth pending: %w", err)
+	}
+	if err := s.setConfigKey("tg_auth_session_id", sessionID); err != nil {
+		return fmt.Errorf("failed to save auth session id: %w", err)
+	}
+	if err := s.setConfigKey("tg_auth_user", string(userBytes)); err != nil {
+		return fmt.Errorf("failed to save auth user: %w", err)
+	}
+	return nil
+}
+
+func (s *Storage) GetTelegramAuthEvidence() (string, *telegram.UserInfo, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pendingStr := s.getConfigKey("tg_auth_pending")
+	sessionID := s.getConfigKey("tg_auth_session_id")
+	userStr := s.getConfigKey("tg_auth_user")
+
+	pending := pendingStr == "1"
+	var user *telegram.UserInfo
+	if userStr != "" {
+		var u telegram.UserInfo
+		if err := json.Unmarshal([]byte(userStr), &u); err == nil {
+			user = &u
+		}
+	}
+	return sessionID, user, pending, nil
+}
+
+func (s *Storage) ClearTelegramAuthEvidence() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err1 := s.setConfigKey("tg_auth_pending", "0")
+	err2 := s.setConfigKey("tg_auth_session_id", "")
+	err3 := s.setConfigKey("tg_auth_user", "")
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
+		return err2
+	}
+	return err3
 }

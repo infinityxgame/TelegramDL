@@ -1786,7 +1786,7 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.clientMgr.InitClient(body.APIID, body.APIHash); err != nil {
+	if err := s.clientMgr.InitClientExplicit(body.APIID, body.APIHash, true); err != nil {
 		log.Printf("[SERVER] %s", i18n.T("server.tgInitError", err))
 		s.errorResponse(w, http.StatusInternalServerError, i18n.T("server.tgInitErrorMsg"))
 		return
@@ -1824,7 +1824,15 @@ func (s *Server) handleAuthSendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok", "phone_code_hash": hash})
+	st := s.clientMgr.GetAuthStatus(r.Context())
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"status":          "ok",
+		"phone_code_hash": hash,
+		"state":           "WAITING_CODE",
+		"phone_number":    phone,
+		"configured":      st.Configured,
+		"has_credentials": st.HasCredentials,
+	})
 }
 
 func (s *Server) handleAuthVerifyCode(w http.ResponseWriter, r *http.Request) {

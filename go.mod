@@ -4,9 +4,11 @@ go 1.27.0
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
+	github.com/beevik/ntp v1.5.0
 	github.com/energye/systray v1.0.3
 	github.com/gen2brain/beeep v0.11.2
 	github.com/gorilla/websocket v1.5.3
+	github.com/gotd/log v0.1.0
 	github.com/gotd/td v0.161.0
 	github.com/wailsapp/wails/v3 v3.1.0
 	golang.org/x/net v0.60.0
@@ -34,7 +36,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gotd/ige v0.3.0 // indirect
-	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
 	github.com/jackmordaunt/icns/v3 v3.0.1 // indirect
 	github.com/klauspost/compress v1.19.0 // indirect

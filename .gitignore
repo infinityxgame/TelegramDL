@@ -35,3 +35,4 @@ md_ideas/
 /.task/
 node_modules
 /logs
+/.zcode
