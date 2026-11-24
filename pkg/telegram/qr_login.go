@@ -166,7 +166,7 @@ func (cm *ClientManager) MarkQRLogin2FAComplete() {
 }
 
 // Keep the QR polling state bounded even if a client leaves the login dialog open.
-func (cm *ClientManager) expireQRLoginState() {
+func (cm *ClientManager) ExpireQRLoginState() {
 	cm.qrLoginMu.Lock()
 	if cm.qrLoginStatus.ExpiresAt > 0 && time.Now().Unix() > cm.qrLoginStatus.ExpiresAt+300 {
 		cm.qrLoginStatus = QRLoginStatus{Status: "EXPIRED"}
