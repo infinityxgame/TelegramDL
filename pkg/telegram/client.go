@@ -75,7 +75,6 @@ type ClientManager struct {
 	qrLoginMu          sync.Mutex
 	qrLoginCancel      context.CancelFunc
 	qrLoginSignal      chan struct{}
-	qrLoginHandlerSet  bool
 	qrLoginStatus      QRLoginStatus
 	generation         uint64
 	connected          bool
@@ -453,7 +452,6 @@ func NewClientManager() *ClientManager {
 		}
 		return nil
 	})
-	cm.qrLoginHandlerSet = true
 	return cm
 }
 
