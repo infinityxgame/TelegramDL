@@ -1339,6 +1339,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/auth/credentials", s.handleAuthCredentials)
 	mux.HandleFunc("/api/auth/send-code", s.handleAuthSendCode)
+	mux.HandleFunc("/api/auth/resend-code", s.handleAuthResendCode)
 	mux.HandleFunc("/api/auth/verify-code", s.handleAuthVerifyCode)
 	mux.HandleFunc("/api/auth/verify-2fa", s.handleAuthVerify2FA)
 	mux.HandleFunc("/api/auth/qr/start", s.handleAuthQRStart)
@@ -1838,6 +1839,26 @@ func (s *Server) handleAuthSendCode(w http.ResponseWriter, r *http.Request) {
 		"phone_number":    phone,
 		"configured":      st.Configured,
 		"has_credentials": st.HasCredentials,
+		"can_resend":      s.clientMgr.CanResendAuthCode(),
+	})
+}
+
+func (s *Server) handleAuthResendCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.requestMethodNotAllowed"))
+		return
+	}
+
+	hash, err := s.clientMgr.ResendCode(r.Context())
+	if err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"status":          "ok",
+		"phone_code_hash": hash,
+		"can_resend":      s.clientMgr.CanResendAuthCode(),
 	})
 }
 
