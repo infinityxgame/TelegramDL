@@ -52,6 +52,8 @@ type mockAuthClient struct {
 	statusErr error
 	sentCode  tg.AuthSentCodeClass
 	sendErr   error
+	resendCode tg.AuthSentCodeClass
+	resendErr error
 	signErr   error
 	passErr   error
 }
@@ -62,6 +64,10 @@ func (m *mockAuthClient) Status(ctx context.Context) (*auth.Status, error) {
 
 func (m *mockAuthClient) SendCode(ctx context.Context, phone string, opts auth.SendCodeOptions) (tg.AuthSentCodeClass, error) {
 	return m.sentCode, m.sendErr
+}
+
+func (m *mockAuthClient) ResendCode(ctx context.Context, phone, phoneCodeHash string) (tg.AuthSentCodeClass, error) {
+	return m.resendCode, m.resendErr
 }
 
 func (m *mockAuthClient) SignIn(ctx context.Context, phone, code, phoneCodeHash string) (tg.AuthAuthorizationClass, error) {
