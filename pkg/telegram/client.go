@@ -1126,9 +1126,12 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	client := cm.client
 	newAuthFn := cm.newAuth
 	connected := cm.connected
+	generation := cm.generation
+	transport := cm.transport
 	cm.mu.RUnlock()
 
 	if client == nil || !connected {
+		log.Printf("[TG AUTH] SendCode abortado: cliente no disponible (connected=%t, generation=%d, transport=%s)", connected, generation, transport)
 		return "", errors.New(i18n.T("telegram.notConnected"))
 	}
 
@@ -1144,8 +1147,21 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 		aClient = &realAuthClient{auth: client.Auth()}
 	}
 
+	startedAt := time.Now()
+	log.Printf("[TG AUTH] SendCode iniciado (generation=%d, transport=%s)", generation, transport)
 	sentCode, err := aClient.SendCode(ctx, phone, auth.SendCodeOptions{})
+	elapsed := time.Since(startedAt).Round(time.Millisecond)
+
+	cm.mu.RLock()
+	clientStillCurrent := cm.client == client && cm.generation == generation
+	connectedAfter := cm.connected
+	transportAfter := cm.transport
+	generationAfter := cm.generation
+	cm.mu.RUnlock()
+
 	if err != nil {
+		log.Printf("[TG AUTH] SendCode falló tras %s (generation=%d, cliente_actual=%t, connected=%t, generation_actual=%d, transport_actual=%s): %v",
+			elapsed, generation, clientStillCurrent, connectedAfter, generationAfter, transportAfter, err)
 		return "", formatAuthError("send_code", err)
 	}
 
@@ -1165,8 +1181,8 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	if timeout, exists := sc.GetTimeout(); exists {
 		timeoutLabel = fmt.Sprintf("%ds", timeout)
 	}
-	log.Printf("[TG AUTH] Solicitud de código aceptada; método de entrega: %T; siguiente método: %s; timeout: %s",
-		sc.Type, nextTypeLabel, timeoutLabel)
+	log.Printf("[TG AUTH] Solicitud de código aceptada tras %s; método de entrega: %T; siguiente método: %s; timeout: %s; cliente_actual=%t; connected=%t; generation=%d->%d; transport=%s->%s",
+		elapsed, sc.Type, nextTypeLabel, timeoutLabel, clientStillCurrent, connectedAfter, generation, generationAfter, transport, transportAfter)
 
 	cm.mu.Lock()
 	cm.phoneCodeHash = sc.PhoneCodeHash
