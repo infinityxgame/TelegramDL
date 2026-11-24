@@ -559,8 +559,7 @@ func (cm *ClientManager) openDownloadPoolFor(client managedClient) error {
 	return nil
 }
 
-func (cm *ClientManager) serveConnected(gen uint64, runCtx context.Context, client managedClient) error {
-	gaps := updates.New(updates.Config{Handler: cm.dispatcher})
+func (cm *ClientManager) serveConnected(gen uint64, runCtx context.Context, client managedClient, gaps *updates.Manager) error {
 	if err := cm.openDownloadPoolFor(client); err != nil {
 		log.Printf("[TG CLIENT] Download pool deferred: %v", err)
 	}
@@ -614,6 +613,8 @@ func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
 			return
 		}
 		opts := cm.baseOptions(gen)
+		gaps := updates.New(updates.Config{Handler: cm.dispatcher})
+		opts.UpdateHandler = gaps
 		readySignal := make(chan struct{})
 		var readyOnce sync.Once
 		markReady := func() {
@@ -676,7 +677,7 @@ func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
 					log.Printf("[TG CLIENT] Could not refresh dialogs: %v", err)
 				}
 			}()
-			return cm.serveConnected(gen, runCtx, client)
+			return cm.serveConnected(gen, runCtx, client, gaps)
 		})
 		timer.Stop()
 		cancelAttempt(nil)
