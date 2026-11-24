@@ -1046,34 +1046,34 @@ const cancelBack = () => {
 
 /* Step Content */
 .auth-method-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  width: min(100%, 400px);
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
   margin: 0 auto;
-  padding: 3px;
-  background: var(--user-bg-base);
-  border: 1px solid var(--user-border);
-  border-radius: 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 .auth-method-tab {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 5px 9px;
-  max-width: 190px;
-  justify-self: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 11px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--user-text-dim);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.18s ease, color 0.18s ease;
 }
 .auth-method-tab:hover:not(:disabled) {
   color: var(--user-text);
@@ -1081,30 +1081,37 @@ const cancelBack = () => {
 }
 .auth-method-tab.active {
   color: #fff;
-  background: var(--user-primary, #278bd5);
-  border-color: var(--user-primary, #278bd5);
-  box-shadow: 0 3px 10px rgba(39, 139, 213, 0.22);
+  background: rgba(56, 167, 255, 0.16);
+  border-color: rgba(56, 167, 255, 0.28);
+  box-shadow: none;
 }
 .auth-method-tab:disabled { opacity: 0.6; cursor: not-allowed; }
 .qr-code-frame {
   display: grid;
   place-items: center;
-  width: 100%;
-  padding: 14px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   box-sizing: border-box;
 }
 .qr-code-frame img {
   display: block;
-  width: min(300px, 100%);
+  width: min(240px, 100%);
   height: auto;
   aspect-ratio: 1;
   object-fit: contain;
   image-rendering: pixelated;
 }
-.qr-login-panel .qr-back-btn { align-self: stretch; }
-.qr-retry-btn { align-self: stretch; }
+.qr-login-panel .qr-back-btn,
+.qr-login-panel .qr-retry-btn {
+  align-self: center;
+  width: auto;
+  min-width: 112px;
+  min-height: 36px;
+  padding: 8px 16px;
+}
 
 .qr-login-option {
   display: flex;
@@ -1123,12 +1130,8 @@ const cancelBack = () => {
   font-size: 12px;
 }
 .qr-login-panel img {
-  width: 220px;
-  height: 220px;
   max-width: 100%;
-  background: white;
-  padding: 8px;
-  border-radius: 12px;
+  image-rendering: pixelated;
 }
 .step-content {
   display: flex;
