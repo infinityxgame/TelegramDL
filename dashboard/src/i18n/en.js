@@ -603,7 +603,7 @@ export default {
     qrPreparing: 'Preparing QR code…',
     sendCode: 'Send Code',
     codeTitle: 'Verification Code',
-    codeText: 'Telegram has sent a code to your app or by SMS to {phone}.',
+    codeText: 'Telegram sends the code to an active app session first. Check the official Telegram chat on your other devices. If Telegram offers another route, you can request it manually.',
     codeLabel: 'Received code',
     resendCode: 'Didn’t arrive? Try another delivery method',
     codePlaceholder: '12345',
