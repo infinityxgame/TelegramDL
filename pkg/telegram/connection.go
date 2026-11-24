@@ -579,6 +579,18 @@ func (cm *ClientManager) serveConnected(gen uint64, runCtx context.Context, clie
 		if err == nil && self != nil {
 			cm.rememberAuthorized(self)
 			log.Printf("[TG CLIENT] %s", i18n.T("telegram.sessionActive", self.FirstName, self.LastName, self.Username, self.ID))
+
+			// Dialogs requieren una sesión autenticada. No lanzar Messages.GetDialogs
+			// al arrancar un cliente todavía pendiente de teléfono/código: además de
+			// ser una petición inválida en ese estado, podía competir con auth.sendCode.
+			go func() {
+				dialogCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if err := cm.FetchDialogs(dialogCtx); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("[TG CLIENT] Could not refresh dialogs: %v", err)
+				}
+			}()
+
 			return gaps.Run(runCtx, client.API(), self.ID, updates.AuthOptions{IsBot: false})
 		}
 		if err != nil && !auth.IsUnauthorized(err) && !errors.Is(err, context.Canceled) {
@@ -679,13 +691,6 @@ func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
 		})
 		err := client.Run(attemptCtx, func(runCtx context.Context) error {
 			markReady()
-			go func() {
-				dialogCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
-				if err := cm.FetchDialogs(dialogCtx); err != nil && !errors.Is(err, context.Canceled) {
-					log.Printf("[TG CLIENT] Could not refresh dialogs: %v", err)
-				}
-			}()
 			return cm.serveConnected(gen, runCtx, client, gaps)
 		})
 		timer.Stop()
