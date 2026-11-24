@@ -104,6 +104,7 @@ type ClientManager struct {
 	newAuth              func(*telegram.Client) authClient
 	phoneCodeHash        string
 	pendingPhone         string
+	authCodeCanResend    bool
 	dispatcher           tg.UpdateDispatcher
 	dispatcherRegistered bool
 	channelAccessHashes  map[int64]int64
@@ -1184,12 +1185,77 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	log.Printf("[TG AUTH] Solicitud de código aceptada tras %s; método de entrega: %T; siguiente método: %s; timeout: %s; cliente_actual=%t; connected=%t; generation=%d->%d; transport=%s->%s",
 		elapsed, sc.Type, nextTypeLabel, timeoutLabel, clientStillCurrent, connectedAfter, generation, generationAfter, transport, transportAfter)
 
+	_, canResend := sc.GetNextType()
 	cm.mu.Lock()
 	cm.phoneCodeHash = sc.PhoneCodeHash
 	cm.pendingPhone = phone
+	cm.authCodeCanResend = canResend
 	cm.authStage = "WAITING_CODE"
 	cm.mu.Unlock()
 
+	return sc.PhoneCodeHash, nil
+}
+
+// CanResendAuthCode indica si Telegram ofreció un método alternativo para la
+// solicitud de código pendiente. El envío inicial siempre usa SendCode normal.
+func (cm *ClientManager) CanResendAuthCode() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.authCodeCanResend
+}
+
+// ResendCode solicita un método alternativo únicamente cuando Telegram lo
+// anunció en la respuesta anterior. Nunca se ejecuta automáticamente.
+func (cm *ClientManager) ResendCode(ctx context.Context) (string, error) {
+	cm.authMu.Lock()
+	defer cm.authMu.Unlock()
+
+	cm.mu.RLock()
+	phone := cm.pendingPhone
+	phoneCodeHash := cm.phoneCodeHash
+	canResend := cm.authCodeCanResend
+	cm.mu.RUnlock()
+	if phone == "" || phoneCodeHash == "" {
+		return "", errors.New("no pending Telegram login code")
+	}
+	if !canResend {
+		return "", errors.New("Telegram has not offered an alternative delivery method")
+	}
+
+	if err := cm.WaitReady(ctx); err != nil {
+		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
+	}
+
+	cm.mu.RLock()
+	client := cm.client
+	newAuthFn := cm.newAuth
+	connected := cm.connected
+	cm.mu.RUnlock()
+	if client == nil || !connected {
+		return "", errors.New(i18n.T("telegram.notConnected"))
+	}
+
+	var aClient authClient
+	if newAuthFn != nil {
+		aClient = newAuthFn(client)
+	} else {
+		aClient = &realAuthClient{auth: client.Auth()}
+	}
+
+	sentCode, err := aClient.ResendCode(ctx, phone, phoneCodeHash)
+	if err != nil {
+		return "", formatAuthError("resend_code", err)
+	}
+	sc, ok := sentCode.(*tg.AuthSentCode)
+	if !ok {
+		return "", errors.New(i18n.T("telegram.unexpectedResponse"))
+	}
+
+	_, canResend = sc.GetNextType()
+	cm.mu.Lock()
+	cm.phoneCodeHash = sc.PhoneCodeHash
+	cm.authCodeCanResend = canResend
+	cm.mu.Unlock()
 	return sc.PhoneCodeHash, nil
 }
 
