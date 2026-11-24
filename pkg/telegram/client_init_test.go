@@ -1,9 +1,12 @@
 package telegram
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gotd/td/tg"
 )
 
 // TestInitClientRechazaAPIIDInvalidoSinDestruirEstado cubre el fix SEC-01:
@@ -61,6 +64,41 @@ func TestHaySesionGuardada(t *testing.T) {
 	var cmNulo *ClientManager
 	if cmNulo.HaySesionGuardada() {
 		t.Error("un ClientManager nil debe devolver false")
+	}
+}
+
+// TestRegisterUpdateHandlersDispatchesMessages cubre la regresión que dejó la
+// escucha muda: el dispatcher se pasaba al manager de updates, pero sin
+// handlers registrados los mensajes se descartaban sin llegar al callback.
+func TestRegisterUpdateHandlersDispatchesMessages(t *testing.T) {
+	cm := &ClientManager{
+		dispatcher:          tg.NewUpdateDispatcher(),
+		channelAccessHashes: make(map[int64]int64),
+		userAccessHashes:    make(map[int64]int64),
+		chatNames:           make(map[int64]string),
+		chatUsernames:       make(map[int64]string),
+	}
+	cm.registerUpdateHandlers()
+
+	var received []*tg.Message
+	cm.SetMessageCallback(func(_ context.Context, _ tg.Entities, msg *tg.Message) error {
+		received = append(received, msg)
+		return nil
+	})
+
+	msg := &tg.Message{ID: 42, Message: "hello"}
+	update := &tg.UpdateNewMessage{Message: msg}
+	if err := cm.dispatcher.Handle(context.Background(), &tg.Updates{
+		Updates: []tg.UpdateClass{update},
+	}); err != nil {
+		t.Fatalf("dispatcher.Handle devolvió error: %v", err)
+	}
+
+	if len(received) != 1 {
+		t.Fatalf("el callback recibió %d mensajes, want 1", len(received))
+	}
+	if received[0].ID != msg.ID {
+		t.Fatalf("mensaje entregado ID=%d, want %d", received[0].ID, msg.ID)
 	}
 }
 

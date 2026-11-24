@@ -447,6 +447,7 @@ func NewClientManager() *ClientManager {
 	}
 	cm.stateChanged = make(chan struct{})
 	cm.qrLoginSignal = make(chan struct{}, 1)
+	cm.registerUpdateHandlers()
 	cm.dispatcher.OnLoginToken(func(_ context.Context, _ tg.Entities, _ *tg.UpdateLoginToken) error {
 		select {
 		case cm.qrLoginSignal <- struct{}{}:
@@ -573,6 +574,47 @@ func (cm *ClientManager) SetMessageCallback(cb func(ctx context.Context, entitie
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.onGenericMessage = cb
+}
+
+// registerUpdateHandlers suscribe el dispatcher a los updates de mensajes.
+// El manager de updates recibe el dispatcher, pero sin handlers registrados
+// los UpdateNewMessage/UpdateNewChannelMessage se descartan en silencio y la
+// escucha no recibe ningún archivo. Se registra una sola vez por manager.
+func (cm *ClientManager) registerUpdateHandlers() {
+	if cm.dispatcherRegistered {
+		return
+	}
+	cm.dispatcher.OnNewMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewMessage) error {
+		return cm.dispatchIncomingMessage(ctx, entities, update.Message)
+	})
+	cm.dispatcher.OnNewChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateNewChannelMessage) error {
+		return cm.dispatchIncomingMessage(ctx, entities, update.Message)
+	})
+	cm.dispatcher.OnEditMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditMessage) error {
+		return cm.dispatchIncomingMessage(ctx, entities, update.Message)
+	})
+	cm.dispatcher.OnEditChannelMessage(func(ctx context.Context, entities tg.Entities, update *tg.UpdateEditChannelMessage) error {
+		return cm.dispatchIncomingMessage(ctx, entities, update.Message)
+	})
+	cm.dispatcherRegistered = true
+}
+
+// dispatchIncomingMessage actualiza las cachés de entidades y entrega el
+// mensaje al callback configurado (la escucha). Los updates de servicio o
+// vacíos no son *tg.Message y se ignoran.
+func (cm *ClientManager) dispatchIncomingMessage(ctx context.Context, entities tg.Entities, message tg.MessageClass) error {
+	cm.cacheEntities(entities)
+	msg, ok := message.(*tg.Message)
+	if !ok {
+		return nil
+	}
+	cm.mu.RLock()
+	cb := cm.onGenericMessage
+	cm.mu.RUnlock()
+	if cb != nil {
+		return cb(ctx, entities, msg)
+	}
+	return nil
 }
 
 func (cm *ClientManager) cacheEntities(entities tg.Entities) {
