@@ -9,6 +9,8 @@ import (
 	"image/png"
 	"log"
 	"runtime/debug"
+	
+	"rsc.io/qr"
 	"strings"
 	"time"
 
@@ -93,7 +95,7 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 		serverExpiry := token.Expires()
 		correctedNow := cm.qrClockNow()
 		log.Printf("[TG AUTH] QR token received; expires_at=%s; corrected_now=%s; remaining=%s", serverExpiry.Format(time.RFC3339), correctedNow.Format(time.RFC3339), serverExpiry.Sub(correctedNow))
-		img, err := token.Image(8)
+		img, err := token.Image(qr.M)
 		if err != nil {
 			return fmt.Errorf("encode Telegram QR: %w", err)
 		}
