@@ -72,6 +72,11 @@ type ClientManager struct {
 	runWg              sync.WaitGroup
 	lifecycleMu        sync.Mutex
 	authMu             sync.Mutex
+	qrLoginMu          sync.Mutex
+	qrLoginCancel      context.CancelFunc
+	qrLoginSignal      chan struct{}
+	qrLoginHandlerSet  bool
+	qrLoginStatus      QRLoginStatus
 	generation         uint64
 	connected          bool
 	stateChanged       chan struct{}
@@ -440,6 +445,15 @@ func NewClientManager() *ClientManager {
 		return &realAuthClient{auth: c.Auth()}
 	}
 	cm.stateChanged = make(chan struct{})
+	cm.qrLoginSignal = make(chan struct{}, 1)
+	cm.dispatcher.OnLoginToken(func(_ context.Context, _ tg.Entities, _ *tg.UpdateLoginToken) error {
+		select {
+		case cm.qrLoginSignal <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+	cm.qrLoginHandlerSet = true
 	return cm
 }
 
