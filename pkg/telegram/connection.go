@@ -658,6 +658,7 @@ func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
 		if !cm.publishClient(gen, transport, client) {
 			return
 		}
+		log.Printf("[TG CLIENT] Iniciando intento MTProto (generation=%d, transport=%s)", gen, transport)
 
 		attemptCtx, cancelAttempt := context.WithCancelCause(ctx)
 		initialTimeout := 12 * time.Second
@@ -702,6 +703,8 @@ func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(context.Cause(attemptCtx), errInitialConnectTimeout) {
 			log.Printf("[TG CLIENT ERROR] %s", i18n.T("telegram.runError", err))
 		}
+		log.Printf("[TG CLIENT] Intento MTProto finalizado (generation=%d, transport=%s, ready=%t, err=%v, context_cause=%v)",
+			gen, transport, wasReady, err, context.Cause(attemptCtx))
 
 		if transport == transportDirect && !wasReady {
 			cm.mu.RLock()
