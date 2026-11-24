@@ -10,7 +10,7 @@ import {
   ArrowLeft,
   Loader2,
   Info,
-  Radio,
+  QrCode,
   Check
 } from '../icons'
 import ProxyModal from './ProxyModal.vue'
@@ -536,7 +536,7 @@ const cancelBack = () => {
             :disabled="loading"
             @click="switchAuthMethod('qr')"
           >
-            <Radio :size="16" />
+            <QrCode :size="15" />
             <span>{{ t('auth.qrMethod') }}</span>
           </button>
         </div>
@@ -592,7 +592,7 @@ const cancelBack = () => {
 
         <div v-else class="qr-login-panel">
           <div class="step-intro">
-            <Radio :size="28" class="icon-accent" />
+            <QrCode :size="26" class="icon-accent" />
             <div>
               <h3>{{ t('auth.qrTitle') }}</h3>
               <p>{{ t('auth.qrInstructions') }}</p>
@@ -1048,8 +1048,10 @@ const cancelBack = () => {
 .auth-method-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 5px;
+  gap: 6px;
+  width: min(100%, 400px);
+  margin: 0 auto;
+  padding: 3px;
   background: var(--user-bg-base);
   border: 1px solid var(--user-border);
   border-radius: 12px;
@@ -1059,14 +1061,17 @@ const cancelBack = () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 8px 12px;
+  min-height: 32px;
+  padding: 5px 9px;
+  max-width: 190px;
+  justify-self: center;
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
   color: var(--user-text-dim);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s ease;
 }
