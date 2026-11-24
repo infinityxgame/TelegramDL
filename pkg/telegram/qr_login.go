@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
 	"image/png"
 	"log"
 	"runtime/debug"
@@ -99,6 +100,10 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 		if err != nil {
 			return fmt.Errorf("encode Telegram QR: %w", err)
 		}
+		// token.Image devuelve el QR a escala mínima. Ampliamos el bitmap
+		// mediante vecino más cercano para conservar bordes nítidos y facilitar
+		// que la cámara del teléfono pueda leerlo.
+		img = scaleQRImage(img, 480)
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, img); err != nil {
 			return fmt.Errorf("encode Telegram QR PNG: %w", err)
@@ -162,6 +167,27 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 	cm.qrLoginCancel = nil
 	cm.qrLoginMu.Unlock()
 	log.Printf("[TG AUTH] QR login completed successfully")
+}
+
+// scaleQRImage amplía una imagen QR cuadrada sin suavizar sus módulos.
+func scaleQRImage(src image.Image, size int) image.Image {
+	if src == nil || size <= 0 {
+		return src
+	}
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return src
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	for y := 0; y < size; y++ {
+		sy := bounds.Min.Y + y*height/size
+		for x := 0; x < size; x++ {
+			sx := bounds.Min.X + x*width/size
+			dst.Set(x, y, src.At(sx, sy))
+		}
+	}
+	return dst
 }
 
 // GetQRLoginStatus devuelve una copia del estado actual del flujo QR.
