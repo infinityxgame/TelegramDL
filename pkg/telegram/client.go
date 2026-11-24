@@ -1313,6 +1313,9 @@ func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeH
 
 	cm.mu.Lock()
 	cm.authStage = ""
+	cm.phoneCodeHash = ""
+	cm.pendingPhone = ""
+	cm.authCodeCanResend = false
 	proxyRestart := cm.proxyRestart
 	cm.proxyRestart = false
 	apiID := cm.apiID
