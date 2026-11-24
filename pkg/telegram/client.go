@@ -1111,6 +1111,81 @@ func formatAuthError(stage string, err error) error {
 	return err
 }
 
+// logAuthPreflight registra evidencia no sensible del estado de MTProto justo antes
+// de solicitar el código. No registra teléfono, credenciales, claves ni hashes.
+func (cm *ClientManager) logAuthPreflight(ctx context.Context, aClient authClient) {
+	cm.mu.RLock()
+	sessionPath := cm.sessionPath
+	transport := cm.transport
+	generation := cm.generation
+	clockRef := cm.clock
+	cm.mu.RUnlock()
+
+	info, statErr := os.Stat(sessionPath)
+	if statErr != nil {
+		log.Printf("[TG AUTH DIAG] sesión local: exists=false; stat_error=%T", statErr)
+	} else {
+		loader := &session.Loader{Storage: &session.FileStorage{Path: sessionPath}}
+		data, loadErr := loader.Load(ctx)
+		if loadErr != nil {
+			log.Printf("[TG AUTH DIAG] sesión local: exists=true; size=%d; load_ok=false; load_error=%T",
+				info.Size(), loadErr)
+		} else if data == nil {
+			log.Printf("[TG AUTH DIAG] sesión local: exists=true; size=%d; load_ok=false; data=nil", info.Size())
+		} else {
+			log.Printf("[TG AUTH DIAG] sesión local: exists=true; size=%d; load_ok=true; dc=%d; auth_key_bytes=%d",
+				info.Size(), data.DC, len(data.AuthKey))
+		}
+	}
+
+	clockState := "not_initialized"
+	if sc, ok := clockRef.(*synchronizedClock); ok && sc != nil {
+		select {
+		case <-sc.ready:
+			clockState = "ready"
+		default:
+			clockState = "syncing"
+		}
+		offset := time.Duration(atomic.LoadInt64(&sc.offset))
+		log.Printf("[TG AUTH DIAG] reloj MTProto: state=%s; ntp_offset=%s; generation=%d; transport=%s",
+			clockState, offset, generation, transport)
+	} else {
+		log.Printf("[TG AUTH DIAG] reloj MTProto: state=%s; generation=%d; transport=%s",
+			clockState, generation, transport)
+	}
+
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	status, statusErr := aClient.Status(statusCtx)
+	if statusErr != nil {
+		log.Printf("[TG AUTH DIAG] estado previo de autorización: query_error=%T; detail=%s",
+			statusErr, safeAuthDiagnosticError(statusErr))
+		return
+	}
+	authorized := status != nil && status.Authorized
+	log.Printf("[TG AUTH DIAG] estado previo de autorización: query_ok=true; authorized=%t",
+		authorized)
+}
+
+// safeAuthDiagnosticError solo devuelve códigos conocidos de Telegram; evita
+// que mensajes arbitrarios puedan incluir datos de la solicitud.
+func safeAuthDiagnosticError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	upper := strings.ToUpper(err.Error())
+	for _, code := range []string{
+		"AUTH_KEY_UNREGISTERED", "AUTH_KEY_INVALID", "AUTH_KEY_PERM_EMPTY",
+		"SESSION_REVOKED", "SESSION_EXPIRED", "API_ID_INVALID",
+		"PHONE_NUMBER_BANNED", "FLOOD_WAIT",
+	} {
+		if strings.Contains(upper, code) {
+			return code
+		}
+	}
+	return "unclassified"
+}
+
 func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, error) {
 	cm.authMu.Lock()
 	defer cm.authMu.Unlock()
@@ -1147,6 +1222,8 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	} else {
 		aClient = &realAuthClient{auth: client.Auth()}
 	}
+
+	cm.logAuthPreflight(ctx, aClient)
 
 	startedAt := time.Now()
 	log.Printf("[TG AUTH] SendCode iniciado (generation=%d, transport=%s)", generation, transport)
