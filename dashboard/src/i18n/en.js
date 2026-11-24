@@ -591,6 +591,11 @@ export default {
     phonePlaceholder: '+34 600 00 00 00 or +1 555 123 4567',
     phoneHelp:
       'Make sure to include the international prefix (e.g. +34 for Spain, +52 for Mexico, +1 for the US).',
+    methodLabel: 'Sign-in method',
+    phoneMethod: 'Phone',
+    qrMethod: 'QR code',
+    qrTitle: 'Sign in with QR code',
+    qrRetry: 'Generate another QR code',
     qrStart: 'Sign in with QR code',
     qrInstructions: 'In Telegram, open Settings → Devices → Link Desktop Device and scan this code.',
     qrAlt: 'QR code to sign in to Telegram',
