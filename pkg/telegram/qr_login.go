@@ -102,6 +102,9 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client
 			return
 		}
 		if strings.Contains(strings.ToUpper(err.Error()), "SESSION_PASSWORD_NEEDED") {
+			cm.mu.Lock()
+			cm.authStage = "WAITING_2FA"
+			cm.mu.Unlock()
 			cm.qrLoginMu.Lock()
 			cm.qrLoginStatus = QRLoginStatus{Status: "WAITING_2FA"}
 			cm.qrLoginMu.Unlock()
@@ -125,6 +128,9 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client
 		return
 	}
 	cm.rememberAuthorized(user)
+	cm.mu.Lock()
+	cm.authStage = ""
+	cm.mu.Unlock()
 	cm.qrLoginMu.Lock()
 	cm.qrLoginStatus = QRLoginStatus{Status: "LOGGED_IN"}
 	cm.qrLoginCancel = nil
