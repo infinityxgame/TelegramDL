@@ -1087,23 +1087,26 @@ const cancelBack = () => {
 }
 .auth-method-tab:disabled { opacity: 0.6; cursor: not-allowed; }
 .qr-code-frame {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: min(260px, 100%);
+  height: auto;
   aspect-ratio: 1 / 1;
   padding: 10px;
   background: #fff;
   border-radius: 12px;
   box-sizing: border-box;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 .qr-code-frame img {
   display: block;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  object-fit: contain;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill;
   image-rendering: pixelated;
 }
 .qr-login-panel .qr-back-btn,
