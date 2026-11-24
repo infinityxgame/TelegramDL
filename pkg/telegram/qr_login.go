@@ -13,7 +13,6 @@ import (
 
 	tdtelegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
-	"rsc.io/qr"
 )
 
 // QRLoginStatus es el estado público del flujo QR. El token nunca se devuelve:
