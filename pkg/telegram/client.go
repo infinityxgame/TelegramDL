@@ -1142,6 +1142,20 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 		return "", errors.New(i18n.T("telegram.unexpectedResponse"))
 	}
 
+	// Diagnóstico de entrega: Telegram puede aceptar la solicitud sin enviar
+	// el código por SMS. Registrar únicamente los tipos y el timeout indicados
+	// por el servidor; nunca el teléfono, el código ni el phone_code_hash.
+	nextTypeLabel := "no indicado"
+	if nextType, exists := sc.GetNextType(); exists {
+		nextTypeLabel = fmt.Sprintf("%T", nextType)
+	}
+	timeoutLabel := "no indicado"
+	if timeout, exists := sc.GetTimeout(); exists {
+		timeoutLabel = fmt.Sprintf("%ds", timeout)
+	}
+	log.Printf("[TG AUTH] Solicitud de código aceptada; método de entrega: %T; siguiente método: %s; timeout: %s",
+		sc.Type, nextTypeLabel, timeoutLabel)
+
 	cm.mu.Lock()
 	cm.phoneCodeHash = sc.PhoneCodeHash
 	cm.pendingPhone = phone
