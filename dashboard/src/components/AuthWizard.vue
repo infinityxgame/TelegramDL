@@ -146,7 +146,13 @@ const apiCall = async (url, body) => {
   }
 }
 
-const { qrImage, qrStatus, qrError, startQRLogin, cancelQRLogin } = useQRLogin({
+const {
+  qrImage,
+  qrStatus,
+  qrError,
+  startQRLogin,
+  cancelQRLogin
+} = useQRLogin({
   authHeaders,
   t,
   authStatus: props.authStatus,
