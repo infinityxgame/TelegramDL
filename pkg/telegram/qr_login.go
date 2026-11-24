@@ -69,12 +69,17 @@ drained:
 	cm.qrLoginCancel = cancel
 	cm.qrLoginStatus = QRLoginStatus{Status: "STARTING"}
 
+	log.Printf("[TG AUTH] QR login starting; current client=%p", client)
 	go cm.runQRLogin(qrCtx, client)
 	return cm.qrLoginStatus, nil
 }
 
 func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Client) {
+	log.Printf("[TG AUTH] QR auth flow entered; client=%p", client)
 	show := func(_ context.Context, token qrlogin.Token) error {
+		serverExpiry := token.Expires()
+		correctedNow := cm.qrClockNow()
+		log.Printf("[TG AUTH] QR token received; expires_at=%s; corrected_now=%s; remaining=%s", serverExpiry.Format(time.RFC3339), correctedNow.Format(time.RFC3339), time.Until(serverExpiry))
 		img, err := token.Image(qr.M)
 		if err != nil {
 			return fmt.Errorf("encode Telegram QR: %w", err)
@@ -94,12 +99,16 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 			}
 		}
 		cm.qrLoginMu.Unlock()
+		log.Printf("[TG AUTH] QR image generated and published; expires_at=%d", token.Expires().Unix())
 		return nil
 	}
 
+	log.Printf("[TG AUTH] Calling gotd QR().Auth()")
 	_, err := client.QR().Auth(ctx, qrlogin.LoggedIn(cm.qrLoginSignal), show)
+	log.Printf("[TG AUTH] gotd QR().Auth() returned; err=%v; context_err=%v", err, ctx.Err())
 	if err != nil {
 		if ctx.Err() != nil {
+			log.Printf("[TG AUTH] QR auth flow stopped because its context was cancelled: %v", ctx.Err())
 			return
 		}
 		if strings.Contains(strings.ToUpper(err.Error()), "SESSION_PASSWORD_NEEDED") {
@@ -150,6 +159,7 @@ func (cm *ClientManager) GetQRLoginStatus() QRLoginStatus {
 // CancelQRLogin cancela el flujo QR actual sin cerrar el cliente MTProto.
 func (cm *ClientManager) CancelQRLogin() {
 	cm.qrLoginMu.Lock()
+	previousStatus := cm.qrLoginStatus.Status
 	cancel := cm.qrLoginCancel
 	cm.qrLoginCancel = nil
 	if cm.qrLoginStatus.Status != "LOGGED_IN" {
@@ -157,7 +167,10 @@ func (cm *ClientManager) CancelQRLogin() {
 	}
 	cm.qrLoginMu.Unlock()
 	if cancel != nil {
+		log.Printf("[TG AUTH] Cancelling QR login; previous_status=%s", previousStatus)
 		cancel()
+	} else if previousStatus != "" && previousStatus != "LOGGED_IN" {
+		log.Printf("[TG AUTH] QR status reset without active cancel function; previous_status=%s", previousStatus)
 	}
 }
 
@@ -172,10 +185,24 @@ func (cm *ClientManager) MarkQRLogin2FAComplete() {
 	cm.qrLoginMu.Unlock()
 }
 
+// qrClockNow devuelve la hora corregida por NTP que también utiliza gotd para
+// generar los message IDs de MTProto. Los expires_at de Telegram son timestamps
+// del servidor; compararlos con el reloj local sin corregir puede expirar un QR
+// prematuramente cuando el reloj de Windows está adelantado.
+func (cm *ClientManager) qrClockNow() time.Time {
+	if cm.clock != nil {
+		return cm.clock.Now()
+	}
+	return time.Now()
+}
+
 // Mantiene acotado el estado QR si se deja abierta la pantalla de acceso.
 func (cm *ClientManager) ExpireQRLoginState() {
+	now := cm.qrClockNow().Unix()
 	cm.qrLoginMu.Lock()
-	if cm.qrLoginStatus.ExpiresAt > 0 && time.Now().Unix() > cm.qrLoginStatus.ExpiresAt+300 {
+	expiresAt := cm.qrLoginStatus.ExpiresAt
+	if cm.qrLoginStatus.Status == "WAITING_SCAN" && expiresAt > 0 && now > expiresAt+300 {
+		log.Printf("[TG AUTH] QR state expired; corrected_now=%d; token_expires_at=%d; grace_seconds=300", now, expiresAt)
 		cm.qrLoginStatus = QRLoginStatus{Status: "EXPIRED"}
 	}
 	cm.qrLoginMu.Unlock()
