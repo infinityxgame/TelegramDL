@@ -80,7 +80,12 @@ export function useQRLogin({ authHeaders, t, authStatus, emit, apiCall }) {
     }
   }
 
-  onUnmounted(stopQRPolling)
+  onUnmounted(() => {
+    stopQRPolling()
+    if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+      void cancelQRLogin()
+    }
+  })
 
   return {
     qrImage,
