@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	tdtelegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"rsc.io/qr"
 )
@@ -72,7 +73,7 @@ drained:
 	return cm.qrLoginStatus, nil
 }
 
-func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client) {
+func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Client) {
 	show := func(_ context.Context, token qrlogin.Token) error {
 		img, err := token.Image(qr.M)
 		if err != nil {
