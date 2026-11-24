@@ -617,6 +617,7 @@ export default {
     codeText:
       'Telegram ha enviado un código a tu aplicación o por SMS a {phone}.',
     codeLabel: 'Código recibido',
+    resendCode: '¿No llegó? Probar otro método de entrega',
     codePlaceholder: '12345',
     verify: 'Verificar',
     tfaTitle: 'Verificación en 2 Pasos (2FA)',
