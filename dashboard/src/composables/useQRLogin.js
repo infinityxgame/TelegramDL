@@ -23,7 +23,19 @@ export function useQRLogin({ authHeaders, t, authStatus, emit, apiCall }) {
       if (data.status === 'WAITING_2FA') {
         stopQRPolling()
         qrImage.value = ''
-        emit('auth-success', { ...authStatus, state: 'WAITING_2FA' })
+        // No reutilizar authStatus: el composable puede conservar una copia
+        // anterior a la configuración de credenciales. El servidor es la
+        // fuente de verdad y debe conservar has_credentials=true para que
+        // AuthWizard vaya directamente al paso de 2FA.
+        const statusRes = await fetch('/api/auth/status', {
+          headers: authHeaders()
+        })
+        const authData = await statusRes.json()
+        emit('auth-success', {
+          ...authData,
+          authenticated: false,
+          state: 'WAITING_2FA'
+        })
       } else if (data.status === 'LOGGED_IN') {
         stopQRPolling()
         qrImage.value = ''
