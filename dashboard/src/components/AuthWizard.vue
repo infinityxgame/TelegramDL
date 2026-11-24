@@ -18,6 +18,7 @@ import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
 import { openExternal } from '../composables/useExternalLink'
 import { useI18n } from '../i18n'
 import { isLoopbackHost } from '../utils/loopback.js'
+import { useQRLogin } from '../composables/useQRLogin'
 
 const { authHeaders } = useAuthToken()
 const { t, locale, setLocale, splitOn } = useI18n()
@@ -95,71 +96,6 @@ watch(
 
 const loading = ref(false)
 const errorMessage = ref('')
-const qrImage = ref('')
-const qrStatus = ref('')
-const qrError = ref('')
-let qrPollTimer = null
-
-const stopQRPolling = () => {
-  if (qrPollTimer) clearInterval(qrPollTimer)
-  qrPollTimer = null
-}
-
-const pollQRStatus = async () => {
-  try {
-    const res = await fetch('/api/auth/qr/status', { headers: authHeaders() })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.detail || t('auth.errProcess'))
-    qrStatus.value = data.status || ''
-    if (data.image) qrImage.value = data.image
-    if (data.status === 'WAITING_2FA') {
-      stopQRPolling()
-      qrImage.value = ''
-      emit('auth-success', { ...props.authStatus, state: 'WAITING_2FA' })
-    } else if (data.status === 'LOGGED_IN') {
-      stopQRPolling()
-      qrImage.value = ''
-      const statusRes = await fetch('/api/auth/status', { headers: authHeaders() })
-      const authData = await statusRes.json()
-      emit('auth-success', { ...authData, authenticated: true, state: 'LOGGED_IN' })
-    } else if (data.status === 'ERROR') {
-      stopQRPolling()
-      qrError.value = data.error || t('auth.errProcess')
-    } else if (data.status === 'EXPIRED' || data.status === 'CANCELLED') {
-      stopQRPolling()
-      qrImage.value = ''
-    }
-  } catch (err) {
-    stopQRPolling()
-    qrError.value = err.message
-  }
-}
-
-const startQRLogin = async () => {
-  if (loading.value) return
-  qrError.value = ''
-  qrImage.value = ''
-  const data = await apiCall('/api/auth/qr/start', {})
-  qrStatus.value = data.status || 'STARTING'
-  await pollQRStatus()
-  if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
-    stopQRPolling()
-    qrPollTimer = setInterval(pollQRStatus, 3000)
-  }
-}
-
-const cancelQRLogin = async () => {
-  stopQRPolling()
-  try {
-    await apiCall('/api/auth/qr/cancel', {})
-  } finally {
-    qrImage.value = ''
-    qrStatus.value = 'CANCELLED'
-  }
-}
-
-onUnmounted(() => stopQRPolling())
-
 // Un error pertenece al paso en el que se produjo: al movernos de paso deja de
 // tener sentido y se limpia, para que no viaje a la pantalla siguiente.
 watch(currentStep, () => {
@@ -209,6 +145,14 @@ const apiCall = async (url, body) => {
     loading.value = false
   }
 }
+
+const { qrImage, qrStatus, qrError, startQRLogin, cancelQRLogin } = useQRLogin({
+  authHeaders,
+  t,
+  authStatus: props.authStatus,
+  emit,
+  apiCall
+})
 
 const saveCredentials = async () => {
   if (loading.value) return
