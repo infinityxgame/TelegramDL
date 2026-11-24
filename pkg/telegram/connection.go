@@ -44,6 +44,7 @@ type sessionEvidenceStore interface {
 type authClient interface {
 	Status(ctx context.Context) (*auth.Status, error)
 	SendCode(ctx context.Context, phone string, opts auth.SendCodeOptions) (tg.AuthSentCodeClass, error)
+	ResendCode(ctx context.Context, phone, phoneCodeHash string) (tg.AuthSentCodeClass, error)
 	SignIn(ctx context.Context, phone, code, phoneCodeHash string) (tg.AuthAuthorizationClass, error)
 	Password(ctx context.Context, password string) (tg.AuthAuthorizationClass, error)
 }
@@ -58,6 +59,10 @@ func (r *realAuthClient) Status(ctx context.Context) (*auth.Status, error) {
 
 func (r *realAuthClient) SendCode(ctx context.Context, phone string, opts auth.SendCodeOptions) (tg.AuthSentCodeClass, error) {
 	return r.auth.SendCode(ctx, phone, opts)
+}
+
+func (r *realAuthClient) ResendCode(ctx context.Context, phone, phoneCodeHash string) (tg.AuthSentCodeClass, error) {
+	return r.auth.ResendCode(ctx, phone, phoneCodeHash)
 }
 
 func (r *realAuthClient) SignIn(ctx context.Context, phone, code, phoneCodeHash string) (tg.AuthAuthorizationClass, error) {
