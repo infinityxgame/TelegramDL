@@ -1114,7 +1114,7 @@ func formatAuthError(stage string, err error) error {
 
 // logAuthPreflight registra evidencia no sensible del estado de MTProto justo antes
 // de solicitar el código. No registra teléfono, credenciales, claves ni hashes.
-func (cm *ClientManager) logAuthPreflight(ctx context.Context, aClient authClient) {
+func (cm *ClientManager) logAuthPreflight(ctx context.Context) {
 	cm.mu.RLock()
 	sessionPath := cm.sessionPath
 	transport := cm.transport
@@ -1155,17 +1155,6 @@ func (cm *ClientManager) logAuthPreflight(ctx context.Context, aClient authClien
 			clockState, generation, transport)
 	}
 
-	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	status, statusErr := aClient.Status(statusCtx)
-	if statusErr != nil {
-		log.Printf("[TG AUTH DIAG] estado previo de autorización: query_error=%T; detail=%s",
-			statusErr, safeAuthDiagnosticError(statusErr))
-		return
-	}
-	authorized := status != nil && status.Authorized
-	log.Printf("[TG AUTH DIAG] estado previo de autorización: query_ok=true; authorized=%t",
-		authorized)
 }
 
 // safeAuthDiagnosticError solo devuelve códigos conocidos de Telegram; evita
@@ -1185,6 +1174,23 @@ func safeAuthDiagnosticError(err error) string {
 		}
 	}
 	return "unclassified"
+}
+
+// logAuthPostflight consulta el estado de autorización solo después de que
+// auth.sendCode haya respondido. gotd indica que SendCode debe ser la primera
+// llamada del flujo de autenticación.
+func (cm *ClientManager) logAuthPostflight(ctx context.Context, aClient authClient) {
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	status, statusErr := aClient.Status(statusCtx)
+	if statusErr != nil {
+		log.Printf("[TG AUTH DIAG] estado posterior a SendCode: query_error=%T; detail=%s",
+			statusErr, safeAuthDiagnosticError(statusErr))
+		return
+	}
+	authorized := status != nil && status.Authorized
+	log.Printf("[TG AUTH DIAG] estado posterior a SendCode: query_ok=true; authorized=%t",
+		authorized)
 }
 
 func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, error) {
@@ -1224,12 +1230,16 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 		aClient = &realAuthClient{auth: client.Auth()}
 	}
 
-	cm.logAuthPreflight(ctx, aClient)
+	cm.logAuthPreflight(ctx)
 
 	startedAt := time.Now()
 	log.Printf("[TG AUTH] SendCode iniciado (generation=%d, transport=%s)", generation, transport)
 	sentCode, err := aClient.SendCode(ctx, phone, auth.SendCodeOptions{})
 	elapsed := time.Since(startedAt).Round(time.Millisecond)
+
+	if err == nil {
+		cm.logAuthPostflight(ctx, aClient)
+	}
 
 	cm.mu.RLock()
 	clientStillCurrent := cm.client == client && cm.generation == generation
