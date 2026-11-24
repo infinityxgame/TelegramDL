@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"log"
 	"runtime/debug"
@@ -96,14 +97,14 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 		serverExpiry := token.Expires()
 		correctedNow := cm.qrClockNow()
 		log.Printf("[TG AUTH] QR token received; expires_at=%s; corrected_now=%s; remaining=%s", serverExpiry.Format(time.RFC3339), correctedNow.Format(time.RFC3339), serverExpiry.Sub(correctedNow))
-		img, err := token.Image(qr.M)
+		// Renderizamos directamente la matriz QR. token.Image() de rsc.io/qr
+		// expone un image.Image cuyo At() no aplica Code.Scale; al escalarlo
+		// como una imagen normal deja el QR diminuto en la esquina superior.
+		code, err := qr.Encode(token.URL(), qr.M)
 		if err != nil {
 			return fmt.Errorf("encode Telegram QR: %w", err)
 		}
-		// token.Image devuelve el QR a escala mínima. Ampliamos el bitmap
-		// mediante vecino más cercano para conservar bordes nítidos y facilitar
-		// que la cámara del teléfono pueda leerlo.
-		img = scaleQRImage(img, 480)
+		img := renderQRImage(code, 8)
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, img); err != nil {
 			return fmt.Errorf("encode Telegram QR PNG: %w", err)
@@ -169,25 +170,37 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 	log.Printf("[TG AUTH] QR login completed successfully")
 }
 
-// scaleQRImage amplía una imagen QR cuadrada sin suavizar sus módulos.
-func scaleQRImage(src image.Image, size int) image.Image {
-	if src == nil || size <= 0 {
-		return src
+// renderQRImage dibuja la matriz del QR respetando sus módulos y la zona
+// silenciosa obligatoria de cuatro módulos alrededor del código.
+func renderQRImage(code *qr.Code, scale int) image.Image {
+	if code == nil || scale <= 0 {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
 	}
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width <= 0 || height <= 0 {
-		return src
-	}
-	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	quietZone := 4
+	size := (code.Size + quietZone*2) * scale
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	black := color.RGBA{A: 255}
 	for y := 0; y < size; y++ {
-		sy := bounds.Min.Y + y*height/size
 		for x := 0; x < size; x++ {
-			sx := bounds.Min.X + x*width/size
-			dst.Set(x, y, src.At(sx, sy))
+			img.SetRGBA(x, y, white)
 		}
 	}
-	return dst
+	for y := 0; y < code.Size; y++ {
+		for x := 0; x < code.Size; x++ {
+			if !code.Black(x, y) {
+				continue
+			}
+			left := (x + quietZone) * scale
+			top := (y + quietZone) * scale
+			for py := top; py < top+scale; py++ {
+				for px := left; px < left+scale; px++ {
+					img.SetRGBA(px, py, black)
+				}
+			}
+		}
+	}
+	return img
 }
 
 // GetQRLoginStatus devuelve una copia del estado actual del flujo QR.
