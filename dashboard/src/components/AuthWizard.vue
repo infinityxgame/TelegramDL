@@ -82,6 +82,7 @@ const apiId = ref('')
 const apiHash = ref('')
 const phoneNumber = ref(props.authStatus.phone_number || '')
 const code = ref('')
+const canResendCode = ref(false)
 const password = ref('')
 
 watch(
@@ -211,12 +212,19 @@ const sendCode = async () => {
     cleanPhone = '+' + cleanPhone
   }
   phoneNumber.value = cleanPhone
-  await apiCall('/api/auth/send-code', { phone_number: cleanPhone })
+  const data = await apiCall('/api/auth/send-code', { phone_number: cleanPhone })
+  canResendCode.value = Boolean(data.can_resend)
   emit('auth-success', {
     ...props.authStatus,
     state: 'WAITING_CODE',
     phone_number: cleanPhone
   })
+}
+
+const resendCode = async () => {
+  if (loading.value || !canResendCode.value) return
+  const data = await apiCall('/api/auth/resend-code', {})
+  canResendCode.value = Boolean(data.can_resend)
 }
 
 const verifyCode = async () => {
@@ -664,6 +672,16 @@ const cancelBack = () => {
             @keyup.enter="verifyCode"
           />
         </div>
+
+        <button
+          v-if="canResendCode"
+          class="auth-button secondary full-width"
+          :disabled="loading"
+          @click="resendCode"
+        >
+          <Loader2 v-if="loading" class="spin" :size="16" />
+          <span>{{ t('auth.resendCode') }}</span>
+        </button>
 
         <div class="button-group">
           <button
