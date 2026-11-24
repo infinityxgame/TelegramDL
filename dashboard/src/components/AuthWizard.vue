@@ -127,6 +127,7 @@ const pollQRStatus = async () => {
       qrError.value = data.error || t('auth.errProcess')
     } else if (data.status === 'EXPIRED' || data.status === 'CANCELLED') {
       stopQRPolling()
+      qrImage.value = ''
     }
   } catch (err) {
     stopQRPolling()
