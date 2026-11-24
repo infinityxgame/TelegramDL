@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   KeyRound,
   Phone,
@@ -95,6 +95,67 @@ watch(
 
 const loading = ref(false)
 const errorMessage = ref('')
+const qrImage = ref('')
+const qrStatus = ref('')
+const qrError = ref('')
+let qrPollTimer = null
+
+const stopQRPolling = () => {
+  if (qrPollTimer) clearInterval(qrPollTimer)
+  qrPollTimer = null
+}
+
+const pollQRStatus = async () => {
+  try {
+    const res = await fetch('/api/auth/qr/status', { headers: authHeaders() })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || t('auth.errProcess'))
+    qrStatus.value = data.status || ''
+    if (data.image) qrImage.value = data.image
+    if (data.status === 'WAITING_2FA') {
+      stopQRPolling()
+      qrImage.value = ''
+      emit('auth-success', { ...props.authStatus, state: 'WAITING_2FA' })
+    } else if (data.status === 'LOGGED_IN') {
+      stopQRPolling()
+      qrImage.value = ''
+      const statusRes = await fetch('/api/auth/status', { headers: authHeaders() })
+      const authData = await statusRes.json()
+      emit('auth-success', { ...authData, authenticated: true, state: 'LOGGED_IN' })
+    } else if (data.status === 'ERROR') {
+      stopQRPolling()
+      qrError.value = data.error || t('auth.errProcess')
+    } else if (data.status === 'EXPIRED' || data.status === 'CANCELLED') {
+      stopQRPolling()
+    }
+  } catch (err) {
+    stopQRPolling()
+    qrError.value = err.message
+  }
+}
+
+const startQRLogin = async () => {
+  if (loading.value) return
+  qrError.value = ''
+  qrImage.value = ''
+  const data = await apiCall('/api/auth/qr/start', {})
+  qrStatus.value = data.status || 'STARTING'
+  await pollQRStatus()
+  stopQRPolling()
+  qrPollTimer = setInterval(pollQRStatus, 3000)
+}
+
+const cancelQRLogin = async () => {
+  stopQRPolling()
+  try {
+    await apiCall('/api/auth/qr/cancel', {})
+  } finally {
+    qrImage.value = ''
+    qrStatus.value = 'CANCELLED'
+  }
+}
+
+onUnmounted(() => stopQRPolling())
 
 // Un error pertenece al paso en el que se produjo: al movernos de paso deja de
 // tener sentido y se limpia, para que no viaje a la pantalla siguiente.
@@ -530,6 +591,28 @@ const cancelBack = () => {
             </template>
           </button>
         </div>
+
+        <div class="qr-login-option">
+          <button
+            class="auth-button secondary full-width"
+            :disabled="loading"
+            @click="startQRLogin"
+          >
+            {{ t('auth.qrStart') }}
+          </button>
+          <div v-if="qrImage" class="qr-login-panel">
+            <p>{{ t('auth.qrInstructions') }}</p>
+            <img :src="qrImage" :alt="t('auth.qrAlt')" />
+            <small>{{ t('auth.qrWaiting') }}</small>
+            <button class="auth-button secondary" @click="cancelQRLogin">
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+          <p v-else-if="qrStatus === 'STARTING'" class="help-text">
+            {{ t('auth.qrPreparing') }}
+          </p>
+          <p v-if="qrError" class="auth-alert danger" role="alert">{{ qrError }}</p>
+        </div>
       </div>
 
       <!-- Step 3: Código de Verificación -->
@@ -944,6 +1027,30 @@ const cancelBack = () => {
 }
 
 /* Step Content */
+.qr-login-option {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--user-border);
+}
+.qr-login-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--user-text-dim);
+  font-size: 12px;
+}
+.qr-login-panel img {
+  width: 220px;
+  height: 220px;
+  max-width: 100%;
+  background: white;
+  padding: 8px;
+  border-radius: 12px;
+}
 .step-content {
   display: flex;
   flex-direction: column;
