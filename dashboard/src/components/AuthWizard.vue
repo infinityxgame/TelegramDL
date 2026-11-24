@@ -240,6 +240,9 @@ const goBack = async () => {
   errorMessage.value = ''
 
   if (currentStep.value === 2) {
+    if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+      await cancelQRLogin()
+    }
     stepOverride.value = 1
     return
   }
