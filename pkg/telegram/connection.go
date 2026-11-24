@@ -100,15 +100,20 @@ func (r *realManagedClient) Self(ctx context.Context) (*tg.User, error) {
 
 type synchronizedClock struct {
 	offset int64
+	ready  chan struct{}
 }
 
 func newSynchronizedClock() *synchronizedClock {
-	sc := &synchronizedClock{}
+	sc := &synchronizedClock{ready: make(chan struct{})}
 	go sc.syncNTP()
 	return sc
 }
 
 func (c *synchronizedClock) syncNTP() {
+	// MTProto no debe crear su primer message ID antes de conocer el desfase
+	// del reloj. Cerramos ready tanto si NTP funciona como si agota los
+	// servidores, para no bloquear indefinidamente el arranque.
+	defer close(c.ready)
 	servers := []string{"pool.ntp.org", "time.google.com", "time.cloudflare.com"}
 	for _, server := range servers {
 		response, err := ntp.QueryWithOptions(server, ntp.QueryOptions{Timeout: 2 * time.Second})
@@ -585,6 +590,21 @@ func (cm *ClientManager) serveConnected(gen uint64, runCtx context.Context, clie
 }
 
 func (cm *ClientManager) supervise(gen uint64, ctx context.Context) {
+	// Esperar a que termine el intento NTP ANTES de construir el primer
+	// cliente MTProto. Si el reloj local está desfasado, crear el cliente
+	// antes de aplicar el offset puede dejar su generador de message IDs
+	// inicializado con una hora incorrecta incluso después de sincronizar.
+	cm.mu.RLock()
+	syncClock, hasSyncClock := cm.clock.(*synchronizedClock)
+	cm.mu.RUnlock()
+	if hasSyncClock {
+		select {
+		case <-syncClock.ready:
+		case <-ctx.Done():
+			return
+		}
+	}
+
 	transport := transportDirect
 	if shouldEnableWebSocket() {
 		transport = transportWS
