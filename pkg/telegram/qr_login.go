@@ -125,6 +125,7 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *telegram.Client
 		cm.qrLoginStatus = QRLoginStatus{Status: "ERROR", Error: selfErr.Error()}
 		cm.qrLoginCancel = nil
 		cm.qrLoginMu.Unlock()
+		log.Printf("[TG AUTH] QR login completed but user lookup failed: %v", selfErr)
 		return
 	}
 	cm.rememberAuthorized(user)
@@ -170,7 +171,7 @@ func (cm *ClientManager) MarkQRLogin2FAComplete() {
 	cm.qrLoginMu.Unlock()
 }
 
-// Keep the QR polling state bounded even if a client leaves the login dialog open.
+// Mantiene acotado el estado QR si se deja abierta la pantalla de acceso.
 func (cm *ClientManager) ExpireQRLoginState() {
 	cm.qrLoginMu.Lock()
 	if cm.qrLoginStatus.ExpiresAt > 0 && time.Now().Unix() > cm.qrLoginStatus.ExpiresAt+300 {
