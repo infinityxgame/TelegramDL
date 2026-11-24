@@ -277,6 +277,9 @@ func (cm *ClientManager) WaitReady(ctx context.Context) error {
 }
 
 func (cm *ClientManager) stopRunningLocked() {
+	// A QR token belongs to the current MTProto client. Cancel its polling
+	// before replacing the client so it cannot authenticate on a stale key.
+	cm.CancelQRLogin()
 	cm.mu.Lock()
 	cm.generation++
 	cancel := cm.cancelRun
