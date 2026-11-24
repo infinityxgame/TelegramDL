@@ -537,7 +537,7 @@ const cancelBack = () => {
           </button>
           <button
             class="auth-button primary"
-            :disabled="loading"
+            :disabled="loading || qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
             @click="sendCode"
           >
             <Loader2 v-if="loading" class="spin" :size="18" />
@@ -551,7 +551,7 @@ const cancelBack = () => {
         <div class="qr-login-option">
           <button
             class="auth-button secondary full-width"
-            :disabled="loading"
+            :disabled="loading || qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
             @click="startQRLogin"
           >
             {{ t('auth.qrStart') }}
