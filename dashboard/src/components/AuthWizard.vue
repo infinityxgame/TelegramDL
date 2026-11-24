@@ -1089,18 +1089,20 @@ const cancelBack = () => {
 .qr-code-frame {
   display: grid;
   place-items: center;
-  width: fit-content;
-  max-width: 100%;
+  width: min(260px, 100%);
+  aspect-ratio: 1 / 1;
   padding: 10px;
   background: #fff;
   border-radius: 12px;
   box-sizing: border-box;
+  flex: 0 0 auto;
 }
 .qr-code-frame img {
   display: block;
-  width: min(240px, 100%);
-  height: auto;
-  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   image-rendering: pixelated;
 }
