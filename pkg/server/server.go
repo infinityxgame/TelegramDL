@@ -324,6 +324,9 @@ var rutasSetup = map[string]bool{
 	"/api/auth/send-code":   true,
 	"/api/auth/verify-code": true,
 	"/api/auth/verify-2fa":  true,
+	"/api/auth/qr/start":    true,
+	"/api/auth/qr/status":   true,
+	"/api/auth/qr/cancel":   true,
 	"/api/auth/logout":      true,
 }
 
@@ -530,7 +533,7 @@ func (s *Server) haySesionGuardada() bool {
 // codigo y detalle indican la respuesta exacta (429/405/403/415) y retryAfter
 // los segundos de la cabecera Retry-After (0 fuera del 429).
 func (s *Server) setupSinToken(r *http.Request) (ok bool, codigo int, detalle string, retryAfter int) {
-	esMutacion := r.URL.Path != "/api/auth/status"
+	esMutacion := r.URL.Path != "/api/auth/status" && r.URL.Path != "/api/auth/qr/status"
 	origin := requestOrigin(r)
 
 	// 1) Con sesión guardada, configuración solo con token: aquí ni se mira
@@ -1338,6 +1341,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/send-code", s.handleAuthSendCode)
 	mux.HandleFunc("/api/auth/verify-code", s.handleAuthVerifyCode)
 	mux.HandleFunc("/api/auth/verify-2fa", s.handleAuthVerify2FA)
+	mux.HandleFunc("/api/auth/qr/start", s.handleAuthQRStart)
+	mux.HandleFunc("/api/auth/qr/status", s.handleAuthQRStatus)
+	mux.HandleFunc("/api/auth/qr/cancel", s.handleAuthQRCancel)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
 	// Público: indica si hay credenciales de Telegram configuradas (sin token)
 	mux.HandleFunc(hasCredentialsAPIPath, s.handleHasCredentials)
@@ -1878,6 +1884,37 @@ func (s *Server) handleAuthVerifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.jsonResponse(w, http.StatusOK, response)
+}
+
+func (s *Server) handleAuthQRStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.requestMethodNotAllowed"))
+		return
+	}
+	status, err := s.clientMgr.StartQRLogin(r.Context())
+	if err != nil {
+		s.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.jsonResponse(w, http.StatusOK, status)
+}
+
+func (s *Server) handleAuthQRStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.requestMethodNotAllowed"))
+		return
+	}
+	s.clientMgr.ExpireQRLoginState()
+	s.jsonResponse(w, http.StatusOK, s.clientMgr.GetQRLoginStatus())
+}
+
+func (s *Server) handleAuthQRCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.requestMethodNotAllowed"))
+		return
+	}
+	s.clientMgr.CancelQRLogin()
+	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "CANCELLED"})
 }
 
 func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
