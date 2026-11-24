@@ -74,11 +74,11 @@ drained:
 	cm.qrLoginStatus = QRLoginStatus{Status: "STARTING"}
 
 	log.Printf("[TG AUTH] QR login starting; current client=%p", client)
-	go cm.runQRLogin(qrCtx, client)
+	go cm.runQRLogin(qrCtx, client, apiID, apiHash)
 	return cm.qrLoginStatus, nil
 }
 
-func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Client) {
+func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Client, apiID int, apiHash string) {
 	// Un panic en esta goroutine no debe derribar todo TelegramDL. Convertimos
 	// cualquier fallo inesperado del flujo QR en un estado visible para la UI.
 	defer func() {
@@ -93,10 +93,19 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 		}
 	}()
 	log.Printf("[TG AUTH] QR auth flow entered; client=%p", client)
+	// gotd usa clock.System por defecto. TelegramDL sincroniza el reloj por NTP,
+	// por lo que el flujo QR debe usar exactamente el mismo reloj corregido.
+	qr := qrlogin.NewQR(client.API(), apiID, apiHash, qrlogin.Options{
+		Migrate: client.MigrateTo,
+		Clock:   cm.clock,
+	})
+	lastShownToken := ""
 	show := func(_ context.Context, token qrlogin.Token) error {
-		serverExpiry := token.Expires()
-		correctedNow := cm.qrClockNow()
-		log.Printf("[TG AUTH] QR token received; expires_at=%s; corrected_now=%s; remaining=%s", serverExpiry.Format(time.RFC3339), correctedNow.Format(time.RFC3339), serverExpiry.Sub(correctedNow))
+		tokenID := token.String()
+		if tokenID == lastShownToken {
+			return nil
+		}
+		renewed := lastShownToken != ""
 		// Renderizamos directamente la matriz QR. token.Image() de rsc.io/qr
 		// expone un image.Image cuyo At() no aplica Code.Scale; al escalarlo
 		// como una imagen normal deja el QR diminuto en la esquina superior.
@@ -120,13 +129,17 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 			}
 		}
 		cm.qrLoginMu.Unlock()
-		log.Printf("[TG AUTH] QR image generated and published; expires_at=%d", token.Expires().Unix())
+		lastShownToken = tokenID
+		action := "generated"
+		if renewed {
+			action = "renewed"
+		}
+		log.Printf("[TG AUTH] QR code %s; expires_at=%s", action, token.Expires().Format(time.RFC3339))
 		return nil
 	}
 
-	log.Printf("[TG AUTH] Calling gotd QR().Auth()")
-	_, err := client.QR().Auth(ctx, qrlogin.LoggedIn(cm.qrLoginSignal), show)
-	log.Printf("[TG AUTH] gotd QR().Auth() returned; err=%v; context_err=%v", err, ctx.Err())
+	log.Printf("[TG AUTH] Starting QR authorization")
+	_, err := qr.Auth(ctx, qrlogin.LoggedIn(cm.qrLoginSignal), show)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Printf("[TG AUTH] QR auth flow stopped because its context was cancelled: %v", ctx.Err())
