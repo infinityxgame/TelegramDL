@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image/png"
 	"log"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -74,6 +75,19 @@ drained:
 }
 
 func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Client) {
+	// Un panic en esta goroutine no debe derribar todo TelegramDL. Convertimos
+	// cualquier fallo inesperado del flujo QR en un estado visible para la UI.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[TG AUTH] QR login panic recovered: %v\\n%s", recovered, debug.Stack())
+			cm.qrLoginMu.Lock()
+			if ctx.Err() == nil {
+				cm.qrLoginStatus = QRLoginStatus{Status: "ERROR", Error: fmt.Sprintf("QR login failed unexpectedly: %v", recovered)}
+			}
+		cm.qrLoginCancel = nil
+			cm.qrLoginMu.Unlock()
+		}
+	}()
 	log.Printf("[TG AUTH] QR auth flow entered; client=%p", client)
 	show := func(_ context.Context, token qrlogin.Token) error {
 		serverExpiry := token.Expires()
