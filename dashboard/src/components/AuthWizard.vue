@@ -10,7 +10,7 @@ import {
   ArrowLeft,
   Loader2,
   Info,
-  Radio,
+  QrCode,
   Check
 } from '../icons'
 import ProxyModal from './ProxyModal.vue'
@@ -18,6 +18,7 @@ import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
 import { openExternal } from '../composables/useExternalLink'
 import { useI18n } from '../i18n'
 import { isLoopbackHost } from '../utils/loopback.js'
+import { useQRLogin } from '../composables/useQRLogin'
 
 const { authHeaders } = useAuthToken()
 const { t, locale, setLocale, splitOn } = useI18n()
@@ -46,6 +47,7 @@ const emit = defineEmits([
 ])
 
 const showProxyModal = ref(false)
+const authMethod = ref('phone')
 
 // Paso que dicta el servidor segun el estado real de la sesion de Telegram.
 const serverStep = computed(() => {
@@ -95,7 +97,6 @@ watch(
 
 const loading = ref(false)
 const errorMessage = ref('')
-
 // Un error pertenece al paso en el que se produjo: al movernos de paso deja de
 // tener sentido y se limpia, para que no viaje a la pantalla siguiente.
 watch(currentStep, () => {
@@ -143,6 +144,36 @@ const apiCall = async (url, body) => {
     throw err
   } finally {
     loading.value = false
+  }
+}
+
+const {
+  qrImage,
+  qrStatus,
+  qrError,
+  startQRLogin,
+  cancelQRLogin
+} = useQRLogin({
+  authHeaders,
+  t,
+  authStatus: props.authStatus,
+  emit,
+  apiCall
+})
+
+// Alterna entre los dos métodos sin mantener dos flujos de autenticación activos.
+const switchAuthMethod = async (method) => {
+  if (loading.value || authMethod.value === method) return
+  if (method === 'phone') {
+    if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+      await cancelQRLogin()
+    }
+    authMethod.value = 'phone'
+    return
+  }
+  authMethod.value = 'qr'
+  if (qrStatus.value !== 'WAITING_SCAN' && qrStatus.value !== 'STARTING') {
+    await startQRLogin()
   }
 }
 
@@ -232,6 +263,9 @@ const goBack = async () => {
   errorMessage.value = ''
 
   if (currentStep.value === 2) {
+    if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+      await cancelQRLogin()
+    }
     stepOverride.value = 1
     return
   }
@@ -478,56 +512,123 @@ const cancelBack = () => {
         </div>
       </div>
 
-      <!-- Step 2: Teléfono -->
+      <!-- Step 2: Método de autenticación -->
       <div v-else-if="currentStep === 2" class="step-content">
-        <div class="step-intro">
-          <Phone :size="28" class="icon-accent" />
-          <div>
-            <h3>{{ t('auth.phoneTitle') }}</h3>
-            <p>{{ t('auth.phoneText') }}</p>
-          </div>
-        </div>
-
-        <div
-          v-if="errorMessage"
-          class="auth-alert danger"
-          role="alert"
-          aria-live="polite"
-        >
-          <AlertCircle :size="18" class="alert-icon" />
-          <span>{{ errorMessage }}</span>
-        </div>
-
-        <div class="form-group">
-          <label>{{ t('auth.phoneLabel') }}</label>
-          <input
-            v-model="phoneNumber"
-            type="tel"
-            :placeholder="t('auth.phonePlaceholder')"
-            @keyup.enter="sendCode"
-          />
-          <small class="help-text">{{ t('auth.phoneHelp') }}</small>
-        </div>
-
-        <div class="button-group">
+        <div class="auth-method-switch" role="tablist" :aria-label="t('auth.methodLabel')">
           <button
-            class="auth-button secondary btn-back"
+            type="button"
+            class="auth-method-tab"
+            :class="{ active: authMethod === 'phone' }"
+            :aria-selected="authMethod === 'phone'"
+            role="tab"
+            :disabled="loading"
+            @click="switchAuthMethod('phone')"
+          >
+            <Phone :size="16" />
+            <span>{{ t('auth.phoneMethod') }}</span>
+          </button>
+          <button
+            type="button"
+            class="auth-method-tab"
+            :class="{ active: authMethod === 'qr' }"
+            :aria-selected="authMethod === 'qr'"
+            role="tab"
+            :disabled="loading"
+            @click="switchAuthMethod('qr')"
+          >
+            <QrCode :size="15" />
+            <span>{{ t('auth.qrMethod') }}</span>
+          </button>
+        </div>
+
+        <template v-if="authMethod === 'phone'">
+          <div class="step-intro">
+            <Phone :size="28" class="icon-accent" />
+            <div>
+              <h3>{{ t('auth.phoneTitle') }}</h3>
+              <p>{{ t('auth.phoneText') }}</p>
+            </div>
+          </div>
+
+          <div
+            v-if="errorMessage"
+            class="auth-alert danger"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertCircle :size="18" class="alert-icon" />
+            <span>{{ errorMessage }}</span>
+          </div>
+
+          <div class="form-group">
+            <label>{{ t('auth.phoneLabel') }}</label>
+            <input
+              v-model="phoneNumber"
+              type="tel"
+              :placeholder="t('auth.phonePlaceholder')"
+              @keyup.enter="sendCode"
+            />
+            <small class="help-text">{{ t('auth.phoneHelp') }}</small>
+          </div>
+
+          <div class="button-group">
+            <button
+              class="auth-button secondary btn-back"
+              :disabled="loading"
+              @click="goBack"
+            >
+              <ArrowLeft :size="16" />
+              <span>{{ t('common.back') }}</span>
+            </button>
+            <button class="auth-button primary" :disabled="loading" @click="sendCode">
+              <Loader2 v-if="loading" class="spin" :size="18" />
+              <template v-else>
+                <span>{{ t('auth.sendCode') }}</span>
+                <ArrowRight :size="18" />
+              </template>
+            </button>
+          </div>
+        </template>
+
+        <div v-else class="qr-login-panel">
+          <div class="step-intro">
+            <QrCode :size="26" class="icon-accent" />
+            <div>
+              <h3>{{ t('auth.qrTitle') }}</h3>
+              <p>{{ t('auth.qrInstructions') }}</p>
+            </div>
+          </div>
+          <div v-if="qrImage" class="qr-code-frame">
+            <img :src="qrImage" :alt="t('auth.qrAlt')" />
+          </div>
+          <p v-if="qrStatus === 'WAITING_SCAN'">{{ t('auth.qrWaiting') }}</p>
+          <p v-else-if="qrStatus === 'STARTING'" class="help-text">{{ t('auth.qrPreparing') }}</p>
+          <p v-else-if="!qrError" class="help-text">{{ t('auth.qrPreparing') }}</p>
+          <p v-if="qrError" class="auth-alert danger" role="alert">{{ qrError }}</p>
+          <button
+            v-if="qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
+            class="auth-button secondary"
+            :disabled="loading"
+            @click="switchAuthMethod('phone')"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            v-else
+            class="auth-button primary qr-retry-btn"
+            :disabled="loading"
+            @click="startQRLogin"
+          >
+            <Loader2 v-if="loading" class="spin" :size="18" />
+            <span v-else>{{ t('auth.qrRetry') }}</span>
+          </button>
+          <button
+            class="auth-button secondary qr-back-btn"
             :disabled="loading"
             @click="goBack"
           >
             <ArrowLeft :size="16" />
             <span>{{ t('common.back') }}</span>
-          </button>
-          <button
-            class="auth-button primary"
-            :disabled="loading"
-            @click="sendCode"
-          >
-            <Loader2 v-if="loading" class="spin" :size="18" />
-            <template v-else>
-              <span>{{ t('auth.sendCode') }}</span>
-              <ArrowRight :size="18" />
-            </template>
           </button>
         </div>
       </div>
@@ -944,6 +1045,99 @@ const cancelBack = () => {
 }
 
 /* Step Content */
+.auth-method-switch {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.auth-method-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--user-text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.auth-method-tab:hover:not(:disabled) {
+  color: var(--user-text);
+  background: var(--user-surface-light);
+}
+.auth-method-tab.active {
+  color: #fff;
+  background: rgba(56, 167, 255, 0.16);
+  border-color: rgba(56, 167, 255, 0.28);
+  box-shadow: none;
+}
+.auth-method-tab:disabled { opacity: 0.6; cursor: not-allowed; }
+.qr-code-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(260px, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  padding: 10px;
+  background: #fff;
+  border-radius: 12px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+.qr-code-frame img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill;
+  image-rendering: pixelated;
+}
+.qr-login-panel .qr-back-btn,
+.qr-login-panel .qr-retry-btn {
+  align-self: center;
+  width: auto;
+  min-width: 112px;
+  min-height: 36px;
+  padding: 8px 16px;
+}
+
+.qr-login-option {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--user-border);
+}
+.qr-login-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--user-text-dim);
+  font-size: 12px;
+}
+.qr-login-panel img {
+  max-width: 100%;
+  image-rendering: pixelated;
+}
 .step-content {
   display: flex;
   flex-direction: column;

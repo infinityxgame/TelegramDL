@@ -602,6 +602,16 @@ export default {
     phonePlaceholder: '+34 600 00 00 00 o +1 555 123 4567',
     phoneHelp:
       'Asegúrate de incluir el prefijo internacional (ej. +34 para España, +52 para México, +1 para EE.UU.).',
+    methodLabel: 'Método de inicio de sesión',
+    phoneMethod: 'Teléfono',
+    qrMethod: 'Código QR',
+    qrTitle: 'Iniciar sesión con código QR',
+    qrRetry: 'Generar otro código QR',
+    qrStart: 'Iniciar sesión con código QR',
+    qrInstructions: 'En Telegram, abre Ajustes → Dispositivos → Vincular dispositivo de escritorio y escanea este código.',
+    qrAlt: 'Código QR para iniciar sesión en Telegram',
+    qrWaiting: 'Esperando a que Telegram confirme el inicio de sesión…',
+    qrPreparing: 'Preparando el código QR…',
     sendCode: 'Enviar Código',
     codeTitle: 'Código de Verificación',
     codeText:

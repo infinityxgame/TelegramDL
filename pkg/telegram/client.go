@@ -72,6 +72,10 @@ type ClientManager struct {
 	runWg              sync.WaitGroup
 	lifecycleMu        sync.Mutex
 	authMu             sync.Mutex
+	qrLoginMu          sync.Mutex
+	qrLoginCancel      context.CancelFunc
+	qrLoginSignal      chan struct{}
+	qrLoginStatus      QRLoginStatus
 	generation         uint64
 	connected          bool
 	stateChanged       chan struct{}
@@ -440,6 +444,14 @@ func NewClientManager() *ClientManager {
 		return &realAuthClient{auth: c.Auth()}
 	}
 	cm.stateChanged = make(chan struct{})
+	cm.qrLoginSignal = make(chan struct{}, 1)
+	cm.dispatcher.OnLoginToken(func(_ context.Context, _ tg.Entities, _ *tg.UpdateLoginToken) error {
+		select {
+		case cm.qrLoginSignal <- struct{}{}:
+		default:
+		}
+		return nil
+	})
 	return cm
 }
 
@@ -1102,17 +1114,22 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 	cm.authMu.Lock()
 	defer cm.authMu.Unlock()
 
+	if err := cm.WaitReady(ctx); err != nil {
+		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
+	}
+
+	// WaitReady puede esperar mientras el supervisor sustituye el cliente
+	// (por ejemplo, al pasar de conexión directa a WebSocket). Por eso la
+	// referencia debe obtenerse DESPUÉS de esperar a que el cliente vigente
+	// esté listo.
 	cm.mu.RLock()
 	client := cm.client
 	newAuthFn := cm.newAuth
+	connected := cm.connected
 	cm.mu.RUnlock()
 
-	if client == nil {
-		return "", errors.New(i18n.T("telegram.notConfigured"))
-	}
-
-	if err := cm.WaitReady(ctx); err != nil {
-		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
+	if client == nil || !connected {
+		return "", errors.New(i18n.T("telegram.notConnected"))
 	}
 
 	phone = normalizePhone(phone)
@@ -1137,6 +1154,20 @@ func (cm *ClientManager) SendCode(ctx context.Context, phone string) (string, er
 		return "", errors.New(i18n.T("telegram.unexpectedResponse"))
 	}
 
+	// Diagnóstico de entrega: Telegram puede aceptar la solicitud sin enviar
+	// el código por SMS. Registrar únicamente los tipos y el timeout indicados
+	// por el servidor; nunca el teléfono, el código ni el phone_code_hash.
+	nextTypeLabel := "no indicado"
+	if nextType, exists := sc.GetNextType(); exists {
+		nextTypeLabel = fmt.Sprintf("%T", nextType)
+	}
+	timeoutLabel := "no indicado"
+	if timeout, exists := sc.GetTimeout(); exists {
+		timeoutLabel = fmt.Sprintf("%ds", timeout)
+	}
+	log.Printf("[TG AUTH] Solicitud de código aceptada; método de entrega: %T; siguiente método: %s; timeout: %s",
+		sc.Type, nextTypeLabel, timeoutLabel)
+
 	cm.mu.Lock()
 	cm.phoneCodeHash = sc.PhoneCodeHash
 	cm.pendingPhone = phone
@@ -1151,8 +1182,6 @@ func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeH
 	defer cm.authMu.Unlock()
 
 	cm.mu.RLock()
-	client := cm.client
-	newAuthFn := cm.newAuth
 	if phoneCodeHash == "" {
 		phoneCodeHash = cm.phoneCodeHash
 	}
@@ -1161,12 +1190,20 @@ func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeH
 	}
 	cm.mu.RUnlock()
 
-	if client == nil {
-		return "", errors.New(i18n.T("telegram.notConfigured"))
-	}
-
 	if err := cm.WaitReady(ctx); err != nil {
 		return "", fmt.Errorf(i18n.T("telegram.connectError"), err)
+	}
+
+	// La reconexión puede reemplazar cm.client mientras WaitReady espera.
+	// Capturamos el cliente y el factory de autenticación al terminar la espera.
+	cm.mu.RLock()
+	client := cm.client
+	newAuthFn := cm.newAuth
+	connected := cm.connected
+	cm.mu.RUnlock()
+
+	if client == nil || !connected {
+		return "", errors.New(i18n.T("telegram.notConnected"))
 	}
 
 	code = strings.TrimSpace(code)
@@ -1230,17 +1267,20 @@ func (cm *ClientManager) Verify2FA(ctx context.Context, password string) error {
 	cm.authMu.Lock()
 	defer cm.authMu.Unlock()
 
+	if err := cm.WaitReady(ctx); err != nil {
+		return fmt.Errorf(i18n.T("telegram.connectError"), err)
+	}
+
+	// Igual que en SendCode y VerifyCode, no conservar una referencia anterior
+	// a una reconexión del supervisor.
 	cm.mu.RLock()
 	client := cm.client
 	newAuthFn := cm.newAuth
+	connected := cm.connected
 	cm.mu.RUnlock()
 
-	if client == nil {
-		return errors.New(i18n.T("telegram.notConfigured"))
-	}
-
-	if err := cm.WaitReady(ctx); err != nil {
-		return fmt.Errorf(i18n.T("telegram.connectError"), err)
+	if client == nil || !connected {
+		return errors.New(i18n.T("telegram.notConnected"))
 	}
 
 	var aClient authClient
@@ -1286,6 +1326,7 @@ func (cm *ClientManager) Verify2FA(ctx context.Context, password string) error {
 		}()
 	}
 
+	cm.MarkQRLogin2FAComplete()
 	return nil
 }
 
