@@ -615,7 +615,7 @@ export default {
     sendCode: 'Enviar Código',
     codeTitle: 'Código de Verificación',
     codeText:
-      'Telegram ha enviado un código a tu aplicación o por SMS a {phone}.',
+      'Telegram envía primero el código a una sesión abierta de la aplicación. Revisa el chat oficial de Telegram en tus otros dispositivos. Si ofrece otra vía, podrás solicitarla manualmente.',
     codeLabel: 'Código recibido',
     resendCode: '¿No llegó? Probar otro método de entrega',
     codePlaceholder: '12345',
