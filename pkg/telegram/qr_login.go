@@ -12,7 +12,7 @@ import (
 	"log"
 	"runtime/debug"
 	
-	"rsc.io/qr"
+	rscqr "rsc.io/qr"
 	"strings"
 	"time"
 
@@ -109,7 +109,7 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 		// Renderizamos directamente la matriz QR. token.Image() de rsc.io/qr
 		// expone un image.Image cuyo At() no aplica Code.Scale; al escalarlo
 		// como una imagen normal deja el QR diminuto en la esquina superior.
-		code, err := qr.Encode(token.URL(), qr.M)
+		code, err := rscqr.Encode(token.URL(), rscqr.M)
 		if err != nil {
 			return fmt.Errorf("encode Telegram QR: %w", err)
 		}
@@ -185,7 +185,7 @@ func (cm *ClientManager) runQRLogin(ctx context.Context, client *tdtelegram.Clie
 
 // renderQRImage dibuja la matriz del QR respetando sus módulos y la zona
 // silenciosa obligatoria de cuatro módulos alrededor del código.
-func renderQRImage(code *qr.Code, scale int) image.Image {
+func renderQRImage(code *rscqr.Code, scale int) image.Image {
 	if code == nil || scale <= 0 {
 		return image.NewRGBA(image.Rect(0, 0, 1, 1))
 	}
