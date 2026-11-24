@@ -47,6 +47,7 @@ const emit = defineEmits([
 ])
 
 const showProxyModal = ref(false)
+const authMethod = ref('phone')
 
 // Paso que dicta el servidor segun el estado real de la sesion de Telegram.
 const serverStep = computed(() => {
@@ -159,6 +160,22 @@ const {
   emit,
   apiCall
 })
+
+// Alterna entre los dos métodos sin mantener dos flujos de autenticación activos.
+const switchAuthMethod = async (method) => {
+  if (loading.value || authMethod.value === method) return
+  if (method === 'phone') {
+    if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
+      await cancelQRLogin()
+    }
+    authMethod.value = 'phone'
+    return
+  }
+  authMethod.value = 'qr'
+  if (qrStatus.value !== 'WAITING_SCAN' && qrStatus.value !== 'STARTING') {
+    await startQRLogin()
+  }
+}
 
 const saveCredentials = async () => {
   if (loading.value) return
@@ -495,79 +512,124 @@ const cancelBack = () => {
         </div>
       </div>
 
-      <!-- Step 2: Teléfono -->
+      <!-- Step 2: Método de autenticación -->
       <div v-else-if="currentStep === 2" class="step-content">
-        <div class="step-intro">
-          <Phone :size="28" class="icon-accent" />
-          <div>
-            <h3>{{ t('auth.phoneTitle') }}</h3>
-            <p>{{ t('auth.phoneText') }}</p>
-          </div>
-        </div>
-
-        <div
-          v-if="errorMessage"
-          class="auth-alert danger"
-          role="alert"
-          aria-live="polite"
-        >
-          <AlertCircle :size="18" class="alert-icon" />
-          <span>{{ errorMessage }}</span>
-        </div>
-
-        <div class="form-group">
-          <label>{{ t('auth.phoneLabel') }}</label>
-          <input
-            v-model="phoneNumber"
-            type="tel"
-            :placeholder="t('auth.phonePlaceholder')"
-            @keyup.enter="sendCode"
-          />
-          <small class="help-text">{{ t('auth.phoneHelp') }}</small>
-        </div>
-
-        <div class="button-group">
+        <div class="auth-method-switch" role="tablist" :aria-label="t('auth.methodLabel')">
           <button
-            class="auth-button secondary btn-back"
+            type="button"
+            class="auth-method-tab"
+            :class="{ active: authMethod === 'phone' }"
+            :aria-selected="authMethod === 'phone'"
+            role="tab"
+            :disabled="loading"
+            @click="switchAuthMethod('phone')"
+          >
+            <Phone :size="16" />
+            <span>{{ t('auth.phoneMethod') }}</span>
+          </button>
+          <button
+            type="button"
+            class="auth-method-tab"
+            :class="{ active: authMethod === 'qr' }"
+            :aria-selected="authMethod === 'qr'"
+            role="tab"
+            :disabled="loading"
+            @click="switchAuthMethod('qr')"
+          >
+            <Radio :size="16" />
+            <span>{{ t('auth.qrMethod') }}</span>
+          </button>
+        </div>
+
+        <template v-if="authMethod === 'phone'">
+          <div class="step-intro">
+            <Phone :size="28" class="icon-accent" />
+            <div>
+              <h3>{{ t('auth.phoneTitle') }}</h3>
+              <p>{{ t('auth.phoneText') }}</p>
+            </div>
+          </div>
+
+          <div
+            v-if="errorMessage"
+            class="auth-alert danger"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertCircle :size="18" class="alert-icon" />
+            <span>{{ errorMessage }}</span>
+          </div>
+
+          <div class="form-group">
+            <label>{{ t('auth.phoneLabel') }}</label>
+            <input
+              v-model="phoneNumber"
+              type="tel"
+              :placeholder="t('auth.phonePlaceholder')"
+              @keyup.enter="sendCode"
+            />
+            <small class="help-text">{{ t('auth.phoneHelp') }}</small>
+          </div>
+
+          <div class="button-group">
+            <button
+              class="auth-button secondary btn-back"
+              :disabled="loading"
+              @click="goBack"
+            >
+              <ArrowLeft :size="16" />
+              <span>{{ t('common.back') }}</span>
+            </button>
+            <button class="auth-button primary" :disabled="loading" @click="sendCode">
+              <Loader2 v-if="loading" class="spin" :size="18" />
+              <template v-else>
+                <span>{{ t('auth.sendCode') }}</span>
+                <ArrowRight :size="18" />
+              </template>
+            </button>
+          </div>
+        </template>
+
+        <div v-else class="qr-login-panel">
+          <div class="step-intro">
+            <Radio :size="28" class="icon-accent" />
+            <div>
+              <h3>{{ t('auth.qrTitle') }}</h3>
+              <p>{{ t('auth.qrInstructions') }}</p>
+            </div>
+          </div>
+          <div v-if="qrImage" class="qr-code-frame">
+            <img :src="qrImage" :alt="t('auth.qrAlt')" />
+          </div>
+          <p v-if="qrStatus === 'WAITING_SCAN'">{{ t('auth.qrWaiting') }}</p>
+          <p v-else-if="qrStatus === 'STARTING'" class="help-text">{{ t('auth.qrPreparing') }}</p>
+          <p v-else-if="!qrError" class="help-text">{{ t('auth.qrPreparing') }}</p>
+          <p v-if="qrError" class="auth-alert danger" role="alert">{{ qrError }}</p>
+          <button
+            v-if="qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
+            class="auth-button secondary"
+            :disabled="loading"
+            @click="switchAuthMethod('phone')"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            v-else
+            class="auth-button primary qr-retry-btn"
+            :disabled="loading"
+            @click="startQRLogin"
+          >
+            <Loader2 v-if="loading" class="spin" :size="18" />
+            <span v-else>{{ t('auth.qrRetry') }}</span>
+          </button>
+          <button
+            class="auth-button secondary qr-back-btn"
             :disabled="loading"
             @click="goBack"
           >
             <ArrowLeft :size="16" />
             <span>{{ t('common.back') }}</span>
           </button>
-          <button
-            class="auth-button primary"
-            :disabled="loading || qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
-            @click="sendCode"
-          >
-            <Loader2 v-if="loading" class="spin" :size="18" />
-            <template v-else>
-              <span>{{ t('auth.sendCode') }}</span>
-              <ArrowRight :size="18" />
-            </template>
-          </button>
-        </div>
-
-        <div class="qr-login-option">
-          <button
-            class="auth-button secondary full-width"
-            :disabled="loading || qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
-            @click="startQRLogin"
-          >
-            {{ t('auth.qrStart') }}
-          </button>
-          <div v-if="qrImage" class="qr-login-panel">
-            <p>{{ t('auth.qrInstructions') }}</p>
-            <img :src="qrImage" :alt="t('auth.qrAlt')" />
-            <small>{{ t('auth.qrWaiting') }}</small>
-            <button class="auth-button secondary" @click="cancelQRLogin">
-              {{ t('common.cancel') }}
-            </button>
-          </div>
-          <p v-else-if="qrStatus === 'STARTING'" class="help-text">
-            {{ t('auth.qrPreparing') }}
-          </p>
-          <p v-if="qrError" class="auth-alert danger" role="alert">{{ qrError }}</p>
         </div>
       </div>
 
@@ -983,6 +1045,62 @@ const cancelBack = () => {
 }
 
 /* Step Content */
+.auth-method-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 5px;
+  background: var(--user-bg-base);
+  border: 1px solid var(--user-border);
+  border-radius: 12px;
+}
+.auth-method-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--user-text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.auth-method-tab:hover:not(:disabled) {
+  color: var(--user-text);
+  background: var(--user-surface-light);
+}
+.auth-method-tab.active {
+  color: #fff;
+  background: var(--user-primary, #278bd5);
+  border-color: var(--user-primary, #278bd5);
+  box-shadow: 0 3px 10px rgba(39, 139, 213, 0.22);
+}
+.auth-method-tab:disabled { opacity: 0.6; cursor: not-allowed; }
+.qr-code-frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 14px;
+  background: #fff;
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+.qr-code-frame img {
+  display: block;
+  width: min(300px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.qr-login-panel .qr-back-btn { align-self: stretch; }
+.qr-retry-btn { align-self: stretch; }
+
 .qr-login-option {
   display: flex;
   flex-direction: column;
