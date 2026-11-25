@@ -5534,8 +5534,14 @@ func (s *Server) botHistoryDetail(index, offset int) (string, map[string]any) {
 }
 
 func (s *Server) handleBotHistoryCallback(ctx context.Context, n *notifier.Notifier, messageID int64, data string) {
-	parts := strings.Split(data, ":")
-	if len(parts) < 3 || s.downloader == nil {
+	log.Printf("[BOT HISTORY] Callback recibido: message_id=%d data=%q", messageID, data)
+	parts := strings.SplitN(data, ":", 4)
+	if len(parts) < 3 {
+		log.Printf("[BOT HISTORY] Callback ignorado: formato inválido: %q", data)
+		return
+	}
+	if s.downloader == nil {
+		log.Printf("[BOT HISTORY] Callback ignorado: downloader no inicializado")
 		return
 	}
 	parseOffset := func(raw string) (int, bool) {
@@ -5546,43 +5552,59 @@ func (s *Server) handleBotHistoryCallback(ctx context.Context, n *notifier.Notif
 	case "page", "back":
 		offset, ok := parseOffset(parts[2])
 		if !ok {
+			log.Printf("[BOT HISTORY] Offset inválido en callback %q", data)
 			return
 		}
 		text, keyboard := s.botHistoryPage(offset)
-		_ = n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard)
+		if err := n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard); err != nil {
+			log.Printf("[BOT HISTORY] No se pudo mostrar página %d: %v", offset, err)
+		}
 	case "select":
 		if len(parts) != 4 {
+			log.Printf("[BOT HISTORY] Callback select mal formado: %q", data)
 			return
 		}
 		offset, ok1 := parseOffset(parts[2])
 		index, err := strconv.Atoi(parts[3])
 		if !ok1 || err != nil || index < 0 {
+			log.Printf("[BOT HISTORY] Índice/offset inválido en callback select: %q", data)
 			return
 		}
 		text, keyboard := s.botHistoryDetail(index, offset)
-		_ = n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard)
+		if err := n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard); err != nil {
+			log.Printf("[BOT HISTORY] No se pudo abrir detalle (índice=%d offset=%d): %v", index, offset, err)
+		}
 	case "retry", "delete":
 		if len(parts) != 4 {
+			log.Printf("[BOT HISTORY] Callback %s mal formado: %q", parts[1], data)
 			return
 		}
 		itemID := parts[2]
 		offset, ok := parseOffset(parts[3])
 		if !ok {
+			log.Printf("[BOT HISTORY] Offset inválido en callback %q", data)
 			return
 		}
 		item, found := s.downloader.GetItem(itemID)
 		if !found {
+			log.Printf("[BOT HISTORY] No existe el elemento solicitado: id=%q action=%s", itemID, parts[1])
 			text, keyboard := s.botHistoryPage(offset)
-			_ = n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard)
+			if err := n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard); err != nil {
+				log.Printf("[BOT HISTORY] No se pudo refrescar historial tras no encontrar %s: %v", itemID, err)
+			}
 			return
 		}
+		log.Printf("[BOT HISTORY] Acción solicitada: action=%s id=%s status=%s file=%q", parts[1], itemID, item.Status, item.FileName)
 		if parts[1] == "delete" {
 			if err := s.downloader.DeleteDownload(itemID, item.Status != "completed"); err != nil {
 				log.Printf("[BOT HISTORY] No se pudo eliminar %s: %v", itemID, err)
 				msg := "No se pudo eliminar el registro: " + html.EscapeString(err.Error())
-				_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
+				if editErr := n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}}); editErr != nil {
+					log.Printf("[BOT HISTORY] Tampoco se pudo informar el error de eliminación: %v", editErr)
+				}
 				return
 			}
+			log.Printf("[BOT HISTORY] DeleteDownload terminó sin error: id=%s", itemID)
 			s.broadcastState()
 			text, keyboard := s.botHistoryPage(offset)
 			if err := n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard); err != nil {
@@ -5591,19 +5613,22 @@ func (s *Server) handleBotHistoryCallback(ctx context.Context, n *notifier.Notif
 			return
 		}
 
-		// ResumeDownload conserva el ID y activa forceDuplicate cuando el
-		// registro ya estaba completado. QueueItem no sirve para reintentar
-		// aquí: su protección ChatID+MessageID puede devolver la tarea antigua
-		// como si fuera una nueva y no lanzar ninguna descarga.
 		if err := s.downloader.ResumeDownload(ctx, itemID); err != nil {
 			log.Printf("[BOT HISTORY] No se pudo reintentar %s: %v", itemID, err)
 			msg := "No se pudo reintentar la descarga: " + html.EscapeString(err.Error())
-			_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
+			if editErr := n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}}); editErr != nil {
+				log.Printf("[BOT HISTORY] Tampoco se pudo informar el error de reintento: %v", editErr)
+			}
 			return
 		}
+		log.Printf("[BOT HISTORY] ResumeDownload aceptó el reintento: id=%s", itemID)
 		s.broadcastState()
 		msg := "Reintento añadido a la cola: <b>" + html.EscapeString(item.FileName) + "</b>"
-		_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
+		if err := n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}}); err != nil {
+			log.Printf("[BOT HISTORY] No se pudo confirmar reintento %s en Telegram: %v", itemID, err)
+		}
+	default:
+		log.Printf("[BOT HISTORY] Acción desconocida en callback: %q", data)
 	}
 }
 
