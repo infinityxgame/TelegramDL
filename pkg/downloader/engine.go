@@ -639,11 +639,16 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 		}
 	}
 
-	if deleteFile && filePath != "" {
+	if filePath != "" {
 		if fileOwned {
-			_ = os.Remove(filePath)
+			// Al eliminar una entrada del historial, el parcial (.temp) ya no
+			// puede reanudarse desde ella y se limpia siempre. El archivo final
+			// solo se elimina cuando el usuario lo solicita explícitamente.
 			_ = os.Remove(filePath + ".temp")
-		} else {
+			if deleteFile {
+				_ = os.Remove(filePath)
+			}
+		} else if deleteFile {
 			log.Printf("[ENGINE] %s", i18n.T("downloader.entryKeptFile", id, filePath))
 		}
 	}
