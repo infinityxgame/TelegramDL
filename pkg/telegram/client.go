@@ -52,6 +52,7 @@ type AuthStatus struct {
 	Phone          string    `json:"phone_number,omitempty"`
 	PhoneLegacy    string    `json:"phone,omitempty"`
 	Online         bool      `json:"online"`
+	ConnectionError string    `json:"connection_error,omitempty"`
 	SessionKnown   bool      `json:"session_known"`
 	User           *UserInfo `json:"user,omitempty"`
 }
@@ -890,15 +891,31 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	pendingPhone := cm.pendingPhone
 	store := cm.sessionStore
 	sessPath := cm.sessionPath
+	lastConnErr := cm.lastConnErr
 	cm.mu.RUnlock()
+	connectionError := ""
+	if lastConnErr != nil {
+		connectionError = lastConnErr.Error()
+	}
 
-	if apiID == 0 || apiHash == "" || client == nil {
+	if apiID == 0 || apiHash == "" {
 		return AuthStatus{
 			Configured:     false,
 			HasCredentials: false,
 			Authorized:     false,
 			Authenticated:  false,
 			State:          "UNCONFIGURED",
+		}
+	}
+	if client == nil {
+		return AuthStatus{
+			Configured:     true,
+			HasCredentials: true,
+			Authorized:     false,
+			Authenticated:  false,
+			State:          "CONNECTING",
+			Online:         false,
+			ConnectionError: connectionError,
 		}
 	}
 
@@ -936,6 +953,7 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 				SessionKnown:   true,
 				Online:         false,
 				User:           savedUser,
+				ConnectionError: connectionError,
 			}
 		}
 		if authStage != "" {
@@ -957,6 +975,7 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			Authenticated:  false,
 			State:          "CONNECTING",
 			Online:         false,
+			ConnectionError: connectionError,
 		}
 	}
 
