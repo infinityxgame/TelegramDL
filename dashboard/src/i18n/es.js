@@ -427,6 +427,10 @@ export default {
     langNote:
       'La primera vez se detecta el idioma de tu sistema automáticamente. Tu elección se guarda y se aplica también al registro de actividad.',
     remoteTitle: 'Acceso remoto',
+    remoteAccessToggle: 'Permitir acceso desde la red',
+    remoteAccessToggleDesc: 'Activado: escucha en todas las interfaces (0.0.0.0). Desactivado: solo este equipo (127.0.0.1).',
+    remoteRestartNotice: 'Guardado. Reinicia TelegramDL para aplicar {host}.',
+
     remoteSub: 'Token para controlar TelegramDL desde otro dispositivo',
     remoteDesc:
       'Con este token puedes controlar TelegramDL desde otro dispositivo (celular, otra PC). No abras este puerto directamente a internet: combínalo con una VPN como {vpn} o un túnel como Cloudflare Tunnel, y pega el token en la pantalla de login remoto.',
