@@ -5577,27 +5577,33 @@ func (s *Server) handleBotHistoryCallback(ctx context.Context, n *notifier.Notif
 			return
 		}
 		if parts[1] == "delete" {
-			_ = s.downloader.DeleteDownload(itemID, item.Status != "completed")
+			if err := s.downloader.DeleteDownload(itemID, item.Status != "completed"); err != nil {
+				log.Printf("[BOT HISTORY] No se pudo eliminar %s: %v", itemID, err)
+				msg := "No se pudo eliminar el registro: " + html.EscapeString(err.Error())
+				_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
+				return
+			}
 			s.broadcastState()
 			text, keyboard := s.botHistoryPage(offset)
-			_ = n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard)
+			if err := n.EditMessageTextKeyboardSync(ctx, messageID, text, keyboard); err != nil {
+				log.Printf("[BOT HISTORY] No se pudo actualizar el historial tras eliminar %s: %v", itemID, err)
+			}
 			return
 		}
-		retry := *item
-		retry.ID = config.NewID()
-		retry.JobID = config.NewID()
-		retry.Status = "queued"
-		retry.Speed = "0 B/s"
-		retry.CreatedAt = 0
-		retry.UpdatedAt = 0
-		if s.downloader.QueueItem(retry) != "" {
-			_ = s.downloader.DeleteDownload(itemID, item.Status != "completed")
-			s.broadcastState()
-			msg := "Reintento añadido a la cola: <b>" + html.EscapeString(retry.FileName) + "</b>"
+
+		// ResumeDownload conserva el ID y activa forceDuplicate cuando el
+		// registro ya estaba completado. QueueItem no sirve para reintentar
+		// aquí: su protección ChatID+MessageID puede devolver la tarea antigua
+		// como si fuera una nueva y no lanzar ninguna descarga.
+		if err := s.downloader.ResumeDownload(ctx, itemID); err != nil {
+			log.Printf("[BOT HISTORY] No se pudo reintentar %s: %v", itemID, err)
+			msg := "No se pudo reintentar la descarga: " + html.EscapeString(err.Error())
 			_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
-		} else {
-			_ = n.EditMessageTextKeyboardSync(ctx, messageID, "No se pudo añadir el reintento a la cola.", map[string]any{"inline_keyboard": [][]map[string]string{}})
+			return
 		}
+		s.broadcastState()
+		msg := "Reintento añadido a la cola: <b>" + html.EscapeString(item.FileName) + "</b>"
+		_ = n.EditMessageTextKeyboardSync(ctx, messageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
 	}
 }
 
