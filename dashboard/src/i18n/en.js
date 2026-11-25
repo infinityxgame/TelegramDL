@@ -592,6 +592,7 @@ export default {
     connectRetry: 'Retry connection',
     connectTimeout: 'Telegram did not finish connecting in time. Your credentials were saved; retry without entering them again.',
     connectFailed: 'Could not check Telegram connection. Your credentials were saved; retry the connection.',
+    connectErrorDetails: 'Telegram connection reports: {error}',
     editCredentials: 'Edit credentials',
     phoneTitle: 'Phone Number',
     phoneText: 'Enter your phone number registered on Telegram.',
