@@ -148,13 +148,7 @@ const apiCall = async (url, body) => {
   }
 }
 
-const {
-  qrImage,
-  qrStatus,
-  qrError,
-  startQRLogin,
-  cancelQRLogin
-} = useQRLogin({
+const { qrImage, qrStatus, qrError, startQRLogin, cancelQRLogin } = useQRLogin({
   authHeaders,
   t,
   authStatus: props.authStatus,
@@ -212,7 +206,9 @@ const sendCode = async () => {
     cleanPhone = '+' + cleanPhone
   }
   phoneNumber.value = cleanPhone
-  const data = await apiCall('/api/auth/send-code', { phone_number: cleanPhone })
+  const data = await apiCall('/api/auth/send-code', {
+    phone_number: cleanPhone
+  })
   canResendCode.value = Boolean(data.can_resend)
   emit('auth-success', {
     ...props.authStatus,
@@ -522,7 +518,11 @@ const cancelBack = () => {
 
       <!-- Step 2: Método de autenticación -->
       <div v-else-if="currentStep === 2" class="step-content">
-        <div class="auth-method-switch" role="tablist" :aria-label="t('auth.methodLabel')">
+        <div
+          class="auth-method-switch"
+          role="tablist"
+          :aria-label="t('auth.methodLabel')"
+        >
           <button
             type="button"
             class="auth-method-tab"
@@ -588,7 +588,11 @@ const cancelBack = () => {
               <ArrowLeft :size="16" />
               <span>{{ t('common.back') }}</span>
             </button>
-            <button class="auth-button primary" :disabled="loading" @click="sendCode">
+            <button
+              class="auth-button primary"
+              :disabled="loading"
+              @click="sendCode"
+            >
               <Loader2 v-if="loading" class="spin" :size="18" />
               <template v-else>
                 <span>{{ t('auth.sendCode') }}</span>
@@ -609,35 +613,45 @@ const cancelBack = () => {
           <div v-if="qrImage" class="qr-code-frame">
             <img :src="qrImage" :alt="t('auth.qrAlt')" />
           </div>
-          <p v-if="qrStatus === 'WAITING_SCAN'">{{ t('auth.qrWaiting') }}</p>
-          <p v-else-if="qrStatus === 'STARTING'" class="help-text">{{ t('auth.qrPreparing') }}</p>
-          <p v-else-if="!qrError" class="help-text">{{ t('auth.qrPreparing') }}</p>
-          <p v-if="qrError" class="auth-alert danger" role="alert">{{ qrError }}</p>
-          <button
-            v-if="qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
-            class="auth-button secondary"
-            :disabled="loading"
-            @click="switchAuthMethod('phone')"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            v-else
-            class="auth-button primary qr-retry-btn"
-            :disabled="loading"
-            @click="startQRLogin"
-          >
-            <Loader2 v-if="loading" class="spin" :size="18" />
-            <span v-else>{{ t('auth.qrRetry') }}</span>
-          </button>
-          <button
-            class="auth-button secondary qr-back-btn"
-            :disabled="loading"
-            @click="goBack"
-          >
-            <ArrowLeft :size="16" />
-            <span>{{ t('common.back') }}</span>
-          </button>
+          <p v-if="qrStatus === 'WAITING_SCAN'" class="qr-status">
+            {{ t('auth.qrWaiting') }}
+          </p>
+          <p v-else-if="qrStatus === 'STARTING'" class="help-text qr-status">
+            {{ t('auth.qrPreparing') }}
+          </p>
+          <p v-else-if="!qrError" class="help-text qr-status">
+            {{ t('auth.qrPreparing') }}
+          </p>
+          <p v-if="qrError" class="auth-alert danger" role="alert">
+            {{ qrError }}
+          </p>
+          <div class="button-group">
+            <button
+              class="auth-button secondary btn-back"
+              :disabled="loading"
+              @click="goBack"
+            >
+              <ArrowLeft :size="16" />
+              <span>{{ t('common.back') }}</span>
+            </button>
+            <button
+              v-if="qrStatus === 'WAITING_SCAN' || qrStatus === 'STARTING'"
+              class="auth-button secondary"
+              :disabled="loading"
+              @click="switchAuthMethod('phone')"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              v-else
+              class="auth-button primary"
+              :disabled="loading"
+              @click="startQRLogin"
+            >
+              <Loader2 v-if="loading" class="spin" :size="18" />
+              <span v-else>{{ t('auth.qrRetry') }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -836,6 +850,11 @@ const cancelBack = () => {
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
   animation: modalRise 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
+  /* Si el contenido no cabe en la ventana, la tarjeta se desplaza por dentro
+     en vez de salirse por abajo. */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
 }
 
 .auth-header {
@@ -1091,7 +1110,9 @@ const cancelBack = () => {
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
 .auth-method-tab:hover:not(:disabled) {
   color: var(--user-text);
@@ -1103,17 +1124,21 @@ const cancelBack = () => {
   border-color: rgba(56, 167, 255, 0.28);
   box-shadow: none;
 }
-.auth-method-tab:disabled { opacity: 0.6; cursor: not-allowed; }
+.auth-method-tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .qr-code-frame {
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: min(260px, 100%);
   height: auto;
   aspect-ratio: 1 / 1;
-  padding: 10px;
+  padding: 4px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-sizing: border-box;
   flex: 0 0 auto;
   overflow: hidden;
@@ -1127,30 +1152,20 @@ const cancelBack = () => {
   object-fit: fill;
   image-rendering: pixelated;
 }
-.qr-login-panel .qr-back-btn,
-.qr-login-panel .qr-retry-btn {
-  align-self: center;
-  width: auto;
-  min-width: 112px;
-  min-height: 36px;
-  padding: 8px 16px;
-}
-
-.qr-login-option {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid var(--user-border);
-}
 .qr-login-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
-  text-align: center;
+  text-align: left;
   color: var(--user-text-dim);
   font-size: 12px;
+}
+.qr-login-panel > p {
+  margin: 0;
+}
+.qr-login-panel .qr-status {
+  text-align: center;
 }
 .qr-login-panel img {
   max-width: 100%;
@@ -1377,6 +1392,46 @@ const cancelBack = () => {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+/* Pantallas bajas (p. ej. 1366x768): se compacta la tarjeta para que quepa
+   entera; si aun asi no cabe, el max-height de .auth-card permite desplazarla. */
+@media (max-height: 800px) {
+  .auth-overlay {
+    padding: 12px;
+  }
+
+  .auth-card {
+    padding: 20px 24px;
+    max-height: calc(100dvh - 24px);
+  }
+
+  .auth-header {
+    margin-bottom: 16px;
+  }
+
+  .auth-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .auth-header h2 {
+    font-size: 18px;
+  }
+
+  .stepper {
+    margin-bottom: 16px;
+    padding: 6px 0;
+  }
+
+  .step-content {
+    gap: 12px;
+  }
+
+  .qr-code-frame {
+    width: min(210px, 100%);
   }
 }
 </style>
