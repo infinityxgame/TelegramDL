@@ -130,6 +130,10 @@ watch(
 
 const loading = ref(false)
 const errorMessage = ref('')
+const credentialsSaved = ref(
+  props.authStatus.has_credentials === true && props.authStatus.state === 'CONNECTING'
+)
+const connecting = ref(false)
 // Un error pertenece al paso en el que se produjo: al movernos de paso deja de
 // tener sentido y se limpia, para que no viaje a la pantalla siguiente.
 watch(currentStep, () => {
@@ -204,6 +208,57 @@ const switchAuthMethod = async (method) => {
   }
 }
 
+const pollConnectionStatus = async () => {
+  if (connecting.value) return
+  connecting.value = true
+  errorMessage.value = ''
+  const deadline = Date.now() + 45000
+  try {
+    while (Date.now() < deadline) {
+      const res = await fetch('/api/auth/status', {
+        headers: { ...authHeaders(), 'X-TGDL-Request': '1' }
+      })
+      const text = await res.text()
+      if (!text) throw new Error(t('auth.errNoResponse'))
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch {
+        throw new Error(t('auth.errInvalidResponse'))
+      }
+      if (!res.ok) throw new Error(data.detail || data.error || t('auth.errProcess'))
+      const state = data.state
+      if (state === 'NEED_PHONE' || state === 'NOT_LOGGED_IN' || state === 'WAITING_CODE' || state === 'WAITING_2FA' || state === 'LOGGED_IN') {
+        emit('auth-success', data)
+        credentialsSaved.value = true
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    }
+    errorMessage.value = t('auth.connectTimeout')
+  } catch (err) {
+    errorMessage.value = err.message || t('auth.connectFailed')
+  } finally {
+    connecting.value = false
+  }
+}
+
+const retryConnection = () => {
+  if (connecting.value) return
+  pollConnectionStatus()
+}
+
+watch(
+  () => props.authStatus.state,
+  (state) => {
+    if (state === 'CONNECTING' && props.authStatus.has_credentials) {
+      credentialsSaved.value = true
+      pollConnectionStatus()
+    }
+  },
+  { immediate: true }
+)
+
 const saveCredentials = async () => {
   if (loading.value) return
   const trimmedApiId = apiId.value.trim()
@@ -224,7 +279,9 @@ const saveCredentials = async () => {
     api_id: trimmedApiId,
     api_hash: trimmedApiHash
   })
+  credentialsSaved.value = true
   emit('auth-success', data)
+  if (data.state === 'CONNECTING') pollConnectionStatus()
 }
 
 const sendCode = async () => {
@@ -466,8 +523,32 @@ const cancelBack = () => {
         </div>
       </div>
 
-      <!-- Step 1: Credenciales API -->
+      <!-- Step 1: API credentials / connection status -->
       <div v-if="currentStep === 1" class="step-content">
+        <div v-if="credentialsSaved" class="connection-state">
+          <div class="step-intro">
+            <Loader2 v-if="connecting" class="spin icon-accent" :size="28" />
+            <AlertCircle v-else class="icon-accent" :size="28" />
+            <div>
+              <h3>{{ connecting ? t('auth.connectingTitle') : t('auth.connectFailedTitle') }}</h3>
+              <p>{{ connecting ? t('auth.connectingText') : t('auth.connectFailedText') }}</p>
+            </div>
+          </div>
+          <div v-if="errorMessage" class="auth-alert danger" role="alert" aria-live="polite">
+            <AlertCircle :size="18" class="alert-icon" />
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div class="button-group">
+            <button class="auth-button primary full-width" :disabled="connecting" @click="retryConnection">
+              <Loader2 v-if="connecting" class="spin" :size="18" />
+              <span v-else>{{ t('auth.connectRetry') }}</span>
+            </button>
+            <button class="auth-button secondary full-width" :disabled="connecting" @click="credentialsSaved = false">
+              {{ t('auth.editCredentials') }}
+            </button>
+          </div>
+        </div>
+        <div v-else>
         <div class="step-intro">
           <KeyRound :size="28" class="icon-accent" />
           <div>
@@ -547,6 +628,7 @@ const cancelBack = () => {
               <ArrowRight :size="18" />
             </template>
           </button>
+        </div>
         </div>
       </div>
 
