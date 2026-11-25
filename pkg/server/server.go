@@ -5451,8 +5451,6 @@ func (s *Server) runStatusUpdater(ctx context.Context, token string, chatID int6
 }
 
 // botHistoryItems devuelve solo entradas terminales, en el mismo orden que el historial del panel.
-// botHistoryItems devuelve solo entradas terminales, en el mismo orden que el historial del panel.
-// botHistoryItems devuelve solo entradas terminales, en el mismo orden que el historial del panel.
 func (s *Server) botHistoryItems() []storage.DownloadItem {
 	if s.downloader == nil {
 		return nil
