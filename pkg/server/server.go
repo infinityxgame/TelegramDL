@@ -4738,8 +4738,10 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			if up.CallbackQuery != nil {
 				cb := up.CallbackQuery
 				if cb.Message == nil {
+					log.Printf("[BOT HISTORY] Callback sin mensaje asociado: id=%s data=%q", cb.ID, cb.Data)
 					continue
 				}
+				log.Printf("[BOT HISTORY] Update callback recibido: id=%s from=%d chat=%d message=%d data=%q", cb.ID, cb.From.ID, cb.Message.Chat.ID, cb.Message.MessageID, cb.Data)
 				cbChatID := cb.Message.Chat.ID
 				normCbChatID := notifier.NormalizeChatID(cbChatID, topicID != nil && *topicID > 0)
 				if authorizedChatID != 0 && normCbChatID != normAuthChatID && cbChatID != authorizedChatID && cb.From.ID != authorizedChatID {
@@ -4752,7 +4754,9 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 					replyThreadID = topicID
 				}
 				n := notifier.NewNotifier(token, normAuthChatID, replyThreadID)
-				_ = n.AnswerCallbackQuerySync(ctx, cb.ID)
+				if err := n.AnswerCallbackQuerySync(ctx, cb.ID); err != nil {
+					log.Printf("[BOT HISTORY] No se pudo confirmar callback %s: %v", cb.ID, err)
+				}
 				if strings.HasPrefix(cb.Data, "hist:") {
 					s.handleBotHistoryCallback(ctx, n, cb.Message.MessageID, cb.Data)
 					continue
