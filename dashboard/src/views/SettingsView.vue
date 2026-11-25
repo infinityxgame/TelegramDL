@@ -135,7 +135,6 @@ onMounted(async () => {
     }
     serverInfo.value = data
     remoteAccessEnabled.value = !isLoopbackHost(data.host)
-    remoteAccessEnabled.value = !isLoopbackHost(data.host)
   } catch (err) {
     // Regla 5: nunca en silencio. Sin datos no se pinta el aviso, pero el
     // fallo queda registrado para poder diagnosticarlo.
@@ -1671,13 +1670,14 @@ const sendTestNotification = async () => {
                   <strong>{{ t('settings.remoteAccessToggle') }}</strong>
                   <small>{{ t('settings.remoteAccessToggleDesc') }}</small>
                 </div>
-                <label>
+                <label class="switch">
                   <input
                     type="checkbox"
                     :checked="remoteAccessEnabled"
                     :disabled="changingRemoteAccess || !serverInfo"
                     @change="setRemoteAccess($event.target.checked)"
                   />
+                  <span></span>
                 </label>
               </div>
               <small v-if="remoteAccessNotice" class="setting-note">
