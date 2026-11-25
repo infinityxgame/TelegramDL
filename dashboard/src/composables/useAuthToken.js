@@ -35,7 +35,7 @@ const STORAGE_KEY = 'tgdl_api_token'
 // o ir directos a la pantalla del token, en vez de mostrar una y cambiarla un
 // parpadeo después.
 export const hasStoredToken = () => {
-  if (isWailsRuntime() || isLocalView()) return true
+  if (isWailsRuntime()) return true
   try {
     return !!localStorage.getItem(STORAGE_KEY)
   } catch {
@@ -57,20 +57,6 @@ export function useAuthToken() {
         token.value = localStorage.getItem(STORAGE_KEY) || ''
       } catch {
         token.value = ''
-      }
-    }
-
-    if (!token.value && isLocalView()) {
-      try {
-        const response = await fetch('/api/auth/local-token')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.token) {
-            token.value = data.token
-          }
-        }
-      } catch (e) {
-        console.error(t('console.wailsTokenError'), e)
       }
     }
 

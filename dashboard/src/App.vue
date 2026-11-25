@@ -100,9 +100,8 @@ const checkTelegramCredentials = async () => {
     if (!response.ok) return false
     const data = await response.json()
     if (data.language) setLocale(data.language)
-    // is_configured indica que hay credenciales Y sesión activa
-    // Si solo hay credenciales pero no sesión, devolvemos false para mostrar AuthWizard
-    hasTelegramCredentials.value = data.is_configured === true
+    // Si la app ya tiene credenciales o está configurada, se requiere autenticación por token en navegadores
+    hasTelegramCredentials.value = data.has_credentials === true || data.is_configured === true
     return hasTelegramCredentials.value
   } catch {
     // Si falla, asumimos que no hay credenciales por seguridad
