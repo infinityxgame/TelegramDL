@@ -96,6 +96,30 @@ const serverInfo = ref(null)
 const networkExposed = computed(
   () => serverInfo.value !== null && !isLoopbackHost(serverInfo.value.host)
 )
+const remoteAccessEnabled = ref(false)
+const changingRemoteAccess = ref(false)
+const remoteAccessNotice = ref('')
+
+const setRemoteAccess = async (enabled) => {
+  if (changingRemoteAccess.value) return
+  changingRemoteAccess.value = true
+  remoteAccessNotice.value = ''
+  try {
+    const response = await fetch('/api/system/binding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ remote_enabled: enabled })
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.detail || data.error || t('common.serverError'))
+    remoteAccessEnabled.value = enabled
+    remoteAccessNotice.value = t('settings.remoteRestartNotice', { host: data.host })
+  } catch (err) {
+    remoteAccessNotice.value = err.message
+  } finally {
+    changingRemoteAccess.value = false
+  }
+}
 
 onMounted(async () => {
   fetchSavedProxies()
@@ -110,6 +134,7 @@ onMounted(async () => {
       throw new Error(data.detail || data.error || t('common.serverError'))
     }
     serverInfo.value = data
+    remoteAccessEnabled.value = !isLoopbackHost(data.host)
     remoteAccessEnabled.value = !isLoopbackHost(data.host)
   } catch (err) {
     // Regla 5: nunca en silencio. Sin datos no se pinta el aviso, pero el
@@ -1640,6 +1665,24 @@ const sendTestNotification = async () => {
                   readonly
                 />
               </div>
+
+              <div class="setting-line" style="margin-top: 14px">
+                <div>
+                  <strong>{{ t('settings.remoteAccessToggle') }}</strong>
+                  <small>{{ t('settings.remoteAccessToggleDesc') }}</small>
+                </div>
+                <label>
+                  <input
+                    type="checkbox"
+                    :checked="remoteAccessEnabled"
+                    :disabled="changingRemoteAccess || !serverInfo"
+                    @change="setRemoteAccess($event.target.checked)"
+                  />
+                </label>
+              </div>
+              <small v-if="remoteAccessNotice" class="setting-note">
+                {{ remoteAccessNotice }}
+              </small>
 
               <div
                 class="settings-actions"
