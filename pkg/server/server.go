@@ -5579,14 +5579,18 @@ func (s *Server) handleBotHistoryCallback(ctx context.Context, n *notifier.Notif
 			log.Printf("[BOT HISTORY] No se pudo abrir detalle (índice=%d offset=%d): %v", index, offset, err)
 		}
 	case "retry", "delete":
-		if len(parts) != 4 {
+		// Los IDs de descargas de scanner incluyen ':'. El offset es siempre
+		// el último segmento, por lo que no se debe dividir el ID por ':'.
+		last := strings.LastIndex(data, ":")
+		prefix := "hist:" + parts[1] + ":"
+		if last <= len(prefix) || !strings.HasPrefix(data, prefix) {
 			log.Printf("[BOT HISTORY] Callback %s mal formado: %q", parts[1], data)
 			return
 		}
-		itemID := parts[2]
-		offset, ok := parseOffset(parts[3])
-		if !ok {
-			log.Printf("[BOT HISTORY] Offset inválido en callback %q", data)
+		itemID := data[len(prefix):last]
+		offset, ok := parseOffset(data[last+1:])
+		if !ok || itemID == "" {
+			log.Printf("[BOT HISTORY] ID/offset inválido en callback %q", data)
 			return
 		}
 		item, found := s.downloader.GetItem(itemID)
