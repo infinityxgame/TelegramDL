@@ -5633,22 +5633,3 @@ func (s *Server) handleBotFileNameCallback(ctx context.Context, n *notifier.Noti
 	}
 }
 
-func (s *Server) botHistoryPage(offset int) (string, map[string]any) {
-	items := s.botHistoryItems(); if offset < 0 { offset = 0 }; if offset >= len(items) && len(items) > 0 { offset = ((len(items)-1)/10)*10 }
-	end := offset + 10; if end > len(items) { end = len(items) }
-	if len(items) == 0 { return "📂 <b>Historial de descargas</b>\n\nNo hay descargas completadas o canceladas.", map[string]any{"inline_keyboard": [][]map[string]string{}} }
-	var lines []string; var rows [][]map[string]string
-	for i := offset; i < end; i++ { item := items[i]; label := "cancelado"; if item.Status == "completed" { label = "completado" }; name := item.FileName; if name == "" { name = item.ID }; lines = append(lines, fmt.Sprintf("%d. %s (%s)", i+1, html.EscapeString(name), label)); rows = append(rows, []map[string]string{{"text": fmt.Sprintf("%d", i+1), "callback_data": fmt.Sprintf("hist:select:%d:%d", offset, i-offset)}}) }
-	if end < len(items) { rows = append(rows, []map[string]string{{"text": "➡️ Siguiente", "callback_data": fmt.Sprintf("hist:page:%d", end)}}) }
-	if offset > 0 { rows = append(rows, []map[string]string{{"text": "⬅️ Anterior", "callback_data": fmt.Sprintf("hist:page:%d", offset-10)}}) }
-	return fmt.Sprintf("📂 <b>Historial de descargas</b> (%d–%d de %d)\n\n%s", offset+1, end, len(items), strings.Join(lines, "\n")), map[string]any{"inline_keyboard": rows}
-}
-
-func (s *Server) botHistoryDetail(index, offset int) (string, map[string]any) {
-	items := s.botHistoryItems(); absolute := offset + index
-	if index < 0 || absolute >= len(items) { text, keyboard := s.botHistoryPage(offset); return text, keyboard }
-	item := items[absolute]; name := item.FileName; if name == "" { name = item.ID }; status := "Cancelado"; if item.Status == "completed" { status = "Completado" }
-	text := fmt.Sprintf("📄 <b>%s</b>\n\nEstado: %s", html.EscapeString(name), status)
-	buttons := []map[string]string{{"text":"⬅️ Atrás", "callback_data":fmt.Sprintf("hist:back:%d", offset)}, {"text":"🔄 Reintentar", "callback_data":fmt.Sprintf("hist:retry:%s:%d", item.ID, offset)}, {"text":"🗑 Eliminar", "callback_data":fmt.Sprintf("hist:delete:%s:%d", item.ID, offset)}}
-	return text, map[string]any{"inline_keyboard": [][]map[string]string{buttons}}
-}
