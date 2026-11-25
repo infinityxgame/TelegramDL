@@ -156,11 +156,13 @@ export default {
     cancelAllText:
       '¿Estás seguro de que quieres cancelar todas las descargas activas y en cola?',
     cancelAllConfirm: 'Sí, cancelar todo',
-    deleteTitle: 'Borrar archivo',
-    deleteText:
-      '¿Estás seguro de que quieres eliminar "{name}" del servidor? Esta acción no se puede deshacer.',
-    deleteConfirm: 'Sí, borrar archivo',
+    deleteTitle: 'Eliminar descarga',
+    deleteChoiceText:
+      '¿Qué quieres hacer con "{name}"? Puedes quitarla del historial sin borrar el archivo descargado, o eliminar también el archivo físico.',
+    deleteConfirm: 'Borrar archivo',
+    deleteHistoryOnly: 'Solo historial',
     deletedMsg: 'Archivo borrado',
+    historyRemovedMsg: 'Descarga eliminada del historial',
     floodBannerTitle: 'Límite de velocidad de Telegram (FLOOD_WAIT)',
     floodBannerText:
       'Telegram ha limitado temporalmente las peticiones. Las descargas se reanudarán automáticamente al terminar la cuenta atrás.',
