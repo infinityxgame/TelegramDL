@@ -5618,17 +5618,36 @@ func (s *Server) handleBotFileNameCallback(ctx context.Context, n *notifier.Noti
 		delete(s.pendingBotChoices, key)
 	}
 	s.mu.Unlock()
-	if !found {
+
+	chosenName := ""
+	if found {
+		chosenName = choice.OrigName
+		if parts[1] == "capt" && choice.CaptName != "" {
+			chosenName = choice.CaptName
+		}
+	} else if s.clientMgr != nil {
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+		if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
+			tgMsg, err := s.downloader.FetchMessage(fetchCtx, chatID, int(msgID))
+			if err == nil && tgMsg != nil {
+				mediaInfo := downloader.ExtractMediaInfo(tgMsg)
+				if mediaInfo != nil {
+					if parts[1] == "capt" && mediaInfo.CaptionFileName != "" {
+						chosenName = mediaInfo.CaptionFileName
+					} else {
+						chosenName = mediaInfo.OriginalFileName
+					}
+				}
+			}
+		}
+		fetchCancel()
+	}
+	if chosenName == "" {
 		return
 	}
-	name := choice.OrigName
-	if parts[1] == "capt" && choice.CaptName != "" {
-		name = choice.CaptName
-	}
-	item := storage.DownloadItem{ID: config.NewID(), JobID: config.NewID(), MessageID: choice.MsgID, ChatID: choice.ChatID, Status: "queued", Source: "bot", FileName: name}
+	item := storage.DownloadItem{ID: config.NewID(), JobID: config.NewID(), MessageID: msgID, ChatID: chatID, Status: "queued", Source: "bot", FileName: chosenName}
 	if s.downloader.QueueItem(item) != "" {
 		s.broadcastState()
-		_ = n.EditMessageTextSync(ctx, messageID, i18n.T("notifier.botFileQueued", html.EscapeString(name)))
+		_ = n.EditMessageTextSync(ctx, messageID, i18n.T("notifier.botFileQueued", html.EscapeString(chosenName)))
 	}
 }
-
