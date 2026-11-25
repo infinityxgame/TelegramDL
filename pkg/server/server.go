@@ -4760,6 +4760,23 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				n := notifier.NewNotifier(token, normAuthChatID, replyThreadID)
 				_ = n.AnswerCallbackQuerySync(ctx, cb.ID)
 
+				// Historial del bot: callbacks de paginación, selección y acciones.
+				if strings.HasPrefix(data, "hist:") {
+					parts := strings.Split(data, ":")
+					if len(parts) >= 3 && s.downloader != nil {
+						switch parts[1] {
+						case "page":
+							offset, err := strconv.Atoi(parts[2])
+							if err == nil && offset >= 0 { text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) }
+						case "select":
+							if len(parts) == 4 { offset, e1 := strconv.Atoi(parts[2]); index, e2 := strconv.Atoi(parts[3]); if e1 == nil && e2 == nil && index >= 0 { text, keyboard := s.botHistoryDetail(index, offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) } }
+						case "back":
+							offset, err := strconv.Atoi(parts[2]); if err == nil && offset >= 0 { text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) }
+						case "retry", "delete":
+							if len(parts) == 4 { id, offset := parts[2], 0; offset, err := strconv.Atoi(parts[3]); if err == nil { item, found := s.downloader.GetItem(id); if found { if parts[1] == "delete" { _ = s.downloader.DeleteDownload(id, true); s.broadcastState(); text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) } else if item.Status == "cancelled" || item.Status == "failed" { retry := *item; _ = s.downloader.DeleteDownload(id, true); retry.ID = config.NewID(); retry.JobID = config.NewID(); retry.Status = "queued"; retry.Speed = "0 B/s"; retry.CreatedAt = 0; retry.UpdatedAt = 0; if s.downloader.QueueItem(retry) != "" { s.broadcastState(); _ = n.EditMessageTextSync(ctx, cb.Message.MessageID, "✅ Reintentando: <b>"+html.EscapeString(retry.FileName)+"</b>") } else { _ = n.EditMessageTextSync(ctx, cb.Message.MessageID, "❌ No se pudo añadir a la cola.") } } } } }
+					}
+					continue
+				}
 				if strings.HasPrefix(data, "fn:orig:") || strings.HasPrefix(data, "fn:capt:") {
 					parts := strings.Split(data, ":")
 					if len(parts) == 4 {
@@ -5009,6 +5026,12 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			if cmd == "/start" || cmd == "/help" {
 				replyText := i18n.T("notifier.botStart")
 				n.SendMessage(ctx, replyText)
+				continue
+			}
+
+			if cmd == "/history" {
+				text, keyboard := s.botHistoryPage(0)
+				if err := n.SendMessageWithKeyboardSync(ctx, text, keyboard); err != nil { log.Printf("[BOT LISTENER] /history: %v", err) }
 				continue
 			}
 
@@ -5507,4 +5530,33 @@ func (s *Server) runStatusUpdater(ctx context.Context, token string, chatID int6
 			}
 		}
 	}
+}
+
+// botHistoryItems devuelve solo entradas terminales, en el mismo orden que el historial del panel.
+func (s *Server) botHistoryItems() []storage.DownloadItem {
+	if s.downloader == nil { return nil }
+	items := s.downloader.GetDownloads()
+	filtered := make([]storage.DownloadItem, 0, len(items))
+	for _, item := range items { if item.Status == "completed" || item.Status == "cancelled" || item.Status == "failed" { filtered = append(filtered, item) } }
+	return filtered
+}
+
+func (s *Server) botHistoryPage(offset int) (string, map[string]any) {
+	items := s.botHistoryItems(); if offset < 0 { offset = 0 }; if offset >= len(items) && len(items) > 0 { offset = ((len(items)-1)/10)*10 }
+	end := offset + 10; if end > len(items) { end = len(items) }
+	if len(items) == 0 { return "📂 <b>Historial de descargas</b>\n\nNo hay descargas completadas o canceladas.", map[string]any{"inline_keyboard": [][]map[string]string{}} }
+	var lines []string; var rows [][]map[string]string
+	for i := offset; i < end; i++ { item := items[i]; label := "cancelado"; if item.Status == "completed" { label = "completado" }; name := item.FileName; if name == "" { name = item.ID }; lines = append(lines, fmt.Sprintf("%d. %s (%s)", i+1, html.EscapeString(name), label)); rows = append(rows, []map[string]string{{"text": fmt.Sprintf("%d", i+1), "callback_data": fmt.Sprintf("hist:select:%d:%d", offset, i-offset)}}) }
+	if end < len(items) { rows = append(rows, []map[string]string{{"text": "➡️ Siguiente", "callback_data": fmt.Sprintf("hist:page:%d", end)}}) }
+	if offset > 0 { rows = append(rows, []map[string]string{{"text": "⬅️ Anterior", "callback_data": fmt.Sprintf("hist:page:%d", offset-10)}}) }
+	return fmt.Sprintf("📂 <b>Historial de descargas</b> (%d–%d de %d)\n\n%s", offset+1, end, len(items), strings.Join(lines, "\n")), map[string]any{"inline_keyboard": rows}
+}
+
+func (s *Server) botHistoryDetail(index, offset int) (string, map[string]any) {
+	items := s.botHistoryItems(); absolute := offset + index
+	if index < 0 || absolute >= len(items) { text, keyboard := s.botHistoryPage(offset); return text, keyboard }
+	item := items[absolute]; name := item.FileName; if name == "" { name = item.ID }; status := "Cancelado"; if item.Status == "completed" { status = "Completado" }
+	text := fmt.Sprintf("📄 <b>%s</b>\n\nEstado: %s", html.EscapeString(name), status)
+	buttons := []map[string]string{{"text":"⬅️ Atrás", "callback_data":fmt.Sprintf("hist:back:%d", offset)}, {"text":"🔄 Reintentar", "callback_data":fmt.Sprintf("hist:retry:%s:%d", item.ID, offset)}, {"text":"🗑 Eliminar", "callback_data":fmt.Sprintf("hist:delete:%s:%d", item.ID, offset)}}
+	return text, map[string]any{"inline_keyboard": [][]map[string]string{buttons}}
 }
