@@ -1,12 +1,12 @@
 {
 	"fixed": {
-		"file_version": "2.7.6",
-		"product_version": "2.7.6"
+		"file_version": "2.7.7",
+		"product_version": "2.7.7"
 	},
 	"info": {
 		"0409": {
-			"FileVersion": "2.7.6",
-			"ProductVersion": "2.7.6",
+			"FileVersion": "2.7.7",
+			"ProductVersion": "2.7.7",
 			"CompanyName": "Infinityxgame",
 			"FileDescription": "Telegram Downloader Desktop",
 			"LegalCopyright": "Copyright 2026, Infinityxgame",
