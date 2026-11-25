@@ -61,20 +61,22 @@ const isLocalView = () => {
 // donde no existe ninguna ventana del sistema que mostrar.
 const show = async () => {
   // 1. Dentro de la aplicación de escritorio: puente nativo de Wails.
-  if (isWailsRuntime() && window.go?.main?.App?.SelectDirectory) {
-    try {
-      const selected = await window.go.main.App.SelectDirectory()
-      if (selected) {
-        emit('update:modelValue', selected)
+  if (isWailsRuntime()) {
+    // En la aplicación nativa se usa exclusivamente el selector de Wails.
+    // Cancelar (ruta vacía) o un error no debe abrir el explorador remoto.
+    if (window.go?.main?.App?.SelectDirectory) {
+      try {
+        const selected = await window.go.main.App.SelectDirectory()
+        if (selected) emit('update:modelValue', selected)
+      } catch (err) {
+        console.warn(t('console.wailsDirectoryFallback'), err)
       }
-      return
-    } catch (err) {
-      console.warn(t('console.wailsDirectoryFallback'), err)
     }
+    return
   }
 
-  // 2. Navegador en el propio equipo: le pedimos a la aplicación que abra ese
-  // mismo diálogo. El servidor rechaza esta llamada si no viene de local.
+  // 2. Navegador local: le pedimos a la aplicación que abra el diálogo del SO.
+  // Tanto cancelación como fallo terminan aquí; no se muestra el explorador remoto.
   if (isLocalView()) {
     try {
       const response = await fetch('/api/fs/pick', {
@@ -83,18 +85,15 @@ const show = async () => {
       })
       if (response.ok) {
         const data = await response.json().catch(() => ({}))
-        if (data.path) {
-          emit('update:modelValue', data.path)
-        }
-        // Sin ruta significa que se cerró el diálogo sin elegir: no abrimos nada más.
-        return
+        if (data.path) emit('update:modelValue', data.path)
       }
     } catch (err) {
       console.warn(t('console.nativePickerUnavailable'), err)
     }
+    return
   }
 
-  // 3. Acceso remoto (o sin ventana nativa): explorador propio del panel.
+  // 3. Solo acceso remoto: explorador propio del panel.
   open.value = true
   await browse(null)
 }
