@@ -791,23 +791,29 @@ const cancelAllDownloads = async () => {
 }
 
 const deleteDownload = async (item) => {
+  const removeEntry = async (deleteFile) => {
+    try {
+      await api(
+        `/api/downloads/${encodeURIComponent(item.id)}?delete_file=${deleteFile}`,
+        { method: 'DELETE' }
+      )
+      showMessage(
+        deleteFile ? t('downloads.deletedMsg') : t('downloads.historyRemovedMsg')
+      )
+      await fetchDownloads()
+    } catch (err) {
+      showMessage(err.message, true)
+    }
+  }
+
   openConfirm({
     title: t('downloads.deleteTitle'),
-    message: t('downloads.deleteText', { name: item.file_name }),
+    message: t('downloads.deleteChoiceText', { name: item.file_name }),
     confirmText: t('downloads.deleteConfirm'),
+    cancelText: t('downloads.deleteHistoryOnly'),
     type: 'danger',
-    action: async () => {
-      try {
-        await api(
-          `/api/downloads/${encodeURIComponent(item.id)}?delete_file=true`,
-          { method: 'DELETE' }
-        )
-        showMessage(t('downloads.deletedMsg'))
-        await fetchDownloads()
-      } catch (err) {
-        showMessage(err.message, true)
-      }
-    }
+    action: () => removeEntry(true),
+    cancelAction: () => removeEntry(false)
   })
 }
 
