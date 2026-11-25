@@ -1004,6 +1004,7 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 				SessionKnown:   true,
 				Online:         false,
 				User:           savedUser,
+				ConnectionError: connectionError,
 			}
 		}
 		if authStage != "" {
@@ -1758,8 +1759,3 @@ func shouldDisableIPv6() bool {
 	for _, arg := range os.Args[1:] {
 		a := strings.ToLower(strings.TrimSpace(arg))
 		if a == "--no-ipv6" || a == "-no-ipv6" || a == "/no-ipv6" || a == "--disable-ipv6" {
-			return true
-		}
-	}
-	return false
-}
