@@ -1799,11 +1799,8 @@ func (s *Server) handleAuthCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Esperar un momento para que el cliente MTProto tenga tiempo de iniciar
-	// la conexión antes de consultar su estado. Esto evita race conditions
-	// donde el cliente aún no está listo cuando consultamos GetAuthStatus.
-	time.Sleep(500 * time.Millisecond)
-
+	// La conexión es asíncrona: devolvemos CONNECTING sin una espera fija.
+	// El frontend consulta /api/auth/status hasta que el cliente esté listo.
 	s.jsonResponse(w, http.StatusOK, s.clientMgr.GetAuthStatus(r.Context()))
 }
 
