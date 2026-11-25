@@ -1738,6 +1738,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"authorized":      st.Authorized,
 		"authenticated":   st.Authenticated,
 		"state":           st.State,
+		"connection_error": st.ConnectionError,
 		"phone":           st.Phone,
 		"user":            st.User,
 		"language":        configuredLang,
