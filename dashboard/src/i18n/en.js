@@ -415,6 +415,10 @@ export default {
     langNote:
       'The first time, your system language is detected automatically. Your choice is saved and also applies to the activity log.',
     remoteTitle: 'Remote access',
+    remoteAccessToggle: 'Allow access from the network',
+    remoteAccessToggleDesc: 'On: listen on all network interfaces (0.0.0.0). Off: this computer only (127.0.0.1).',
+    remoteRestartNotice: 'Saved. Restart TelegramDL to apply {host}.',
+
     remoteSub: 'Token to control TelegramDL from another device',
     remoteDesc:
       'With this token you can control TelegramDL from another device (phone, another PC). Do not expose this port directly to the internet: combine it with a VPN like {vpn} or a tunnel like Cloudflare Tunnel, and paste the token on the remote login screen.',
