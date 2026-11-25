@@ -110,6 +110,7 @@ onMounted(async () => {
       throw new Error(data.detail || data.error || t('common.serverError'))
     }
     serverInfo.value = data
+    remoteAccessEnabled.value = !isLoopbackHost(data.host)
   } catch (err) {
     // Regla 5: nunca en silencio. Sin datos no se pinta el aviso, pero el
     // fallo queda registrado para poder diagnosticarlo.
