@@ -100,8 +100,10 @@ const checkTelegramCredentials = async () => {
     if (!response.ok) return false
     const data = await response.json()
     if (data.language) setLocale(data.language)
-    // Si la app ya tiene credenciales o está configurada, se requiere autenticación por token en navegadores
-    hasTelegramCredentials.value = data.has_credentials === true || data.is_configured === true
+    // Si la app ya tiene credenciales o está configurada, se requiere
+    // autenticación por token en navegadores.
+    hasTelegramCredentials.value =
+      data.has_credentials === true || data.is_configured === true
     return hasTelegramCredentials.value
   } catch {
     // Si falla, asumimos que no hay credenciales por seguridad
@@ -188,6 +190,11 @@ let updateCheckTimer
 let disposed = false
 let syncingSettings = false
 let wailsEventsSubscribed = false
+// Marca que este panel acaba de regenerar el token: el servidor cierra todos
+// los WebSocket con 4401, incluido el de esta pestaña, y ese cierre no debe
+// mandarla a la pantalla de token porque ya tiene el nuevo.
+let tokenRotationInFlight = false
+let tokenRotationTimer = null
 const settingsSavePending = ref(false)
 const websocketConnected = ref(false)
 const bootstrapping = ref(true)
@@ -324,20 +331,63 @@ const showMessage = (txt, isError = false) => {
 
 const { modal, openConfirm, handleConfirm, handleCancel } = useConfirmModal()
 
+// Borra la sesión de panel guardada en el navegador. Sin esto, una pestaña con
+// `tgdl_auth` antiguo pintaría el shell vacío («Servicio desconectado») aunque
+// no haya token válido.
+const clearStoredSession = () => {
+  try {
+    localStorage.removeItem('tgdl_auth')
+    localStorage.removeItem('tgdl_user')
+  } catch {
+    // Sin almacenamiento disponible no hay sesión guardada que borrar.
+  }
+  authStatus.value = {
+    ...authStatus.value,
+    authenticated: false,
+    state: 'UNCONFIGURED',
+    user: null
+  }
+}
+
+// Devuelve el panel a la pantalla de token cuando el token guardado deja de
+// valer (401 HTTP o cierre 4401 del WebSocket por rotación) y detiene los
+// bucles de arranque para no inundar el servidor con 401 cada segundo.
+let returningToLogin = false
+const returnToLogin = async () => {
+  if (returningToLogin) return
+  returningToLogin = true
+  try {
+    clearToken()
+    clearStoredSession()
+    disposed = true
+    clearTimeout(timer)
+    clearTimeout(reconnectTimer)
+    clearInterval(updateCheckTimer)
+    socket?.close()
+    socket = undefined
+    websocketConnected.value = false
+    // Con credenciales se pide el token; sin ellas toca configurar Telegram.
+    const hasCreds = await checkTelegramCredentials()
+    needsRemoteLogin.value = hasCreds
+    bootstrapping.value = false
+    await loadPublicTheme()
+  } finally {
+    returningToLogin = false
+  }
+}
+
 const api = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
     headers: { ...(options.headers || {}), ...authHeaders() }
   })
   if (response.status === 401) {
-    if (!isWailsRuntime()) {
-      clearToken()
-      // Verificar si hay credenciales de Telegram configuradas antes de decidir
-      // qué pantalla mostrar. Si no hay credenciales, se debe mostrar el AuthWizard
-      // para configurar Telegram primero. Si hay credenciales, se muestra RemoteLogin.
-      const hasCreds = await checkTelegramCredentials()
-      needsRemoteLogin.value = hasCreds
-      loadPublicTheme()
+    if (isWailsRuntime()) {
+      // En la ventana nativa el token puede haber rotado en el servidor: se
+      // refresca por el binding para que la siguiente petición vuelva a entrar.
+      await initToken()
+    } else {
+      await returnToLogin()
     }
     throw new Error(t('common.unauthorized'))
   }
@@ -553,6 +603,11 @@ const regenerateToken = () => {
     confirmText: t('settings.regenConfirm'),
     type: 'danger',
     action: async () => {
+      // El servidor rota el token y cierra con 4401 todos los WebSocket,
+      // también el de esta pestaña: se marca la rotación antes de pedirla para
+      // que ese cierre no se confunda con un token ajeno invalidado.
+      tokenRotationInFlight = true
+      clearTimeout(tokenRotationTimer)
       try {
         let newToken = ''
         if (isWailsRuntime() && window.go?.main?.App?.RegenerateLocalToken) {
@@ -564,9 +619,18 @@ const regenerateToken = () => {
           newToken = data.token
         }
         setToken(newToken)
+        // El WebSocket de esta pestaña se cerró con la rotación: se reconecta
+        // aquí ya con el token nuevo.
+        if (!isWailsRuntime()) connectWebSocket()
         showMessage(t('settings.regenOk'))
       } catch (err) {
         showMessage(err.message, true)
+      } finally {
+        // Margen para que llegue el cierre 4401 que provocó la rotación; a
+        // partir de ahí, un 4401 sí significa volver a pedir el token.
+        tokenRotationTimer = setTimeout(() => {
+          tokenRotationInFlight = false
+        }, 5000)
       }
     }
   })
@@ -1083,13 +1147,18 @@ const connectWebSocket = async () => {
     return
   }
 
+  // Sin token no se abre el WebSocket: el handshake daría 401 y solo dejaría
+  // el aviso de «Servicio desconectado» reintentando cada dos segundos. Sin
+  // token la pantalla que manda es la de acceso.
+  if (!token.value) {
+    websocketConnected.value = false
+    return
+  }
+
   // El token viaja como subprotocolo, no en la URL. Las URL completas quedan
   // registradas en cualquier proxy o túnel por el que pase la conexión, que es
   // justo lo que se usa para el acceso remoto; la cabecera del subprotocolo no.
-  const protocols = ['tgdl-v1']
-  if (token.value) {
-    protocols.push(token.value)
-  }
+  const protocols = ['tgdl-v1', token.value]
 
   const wsUrl =
     window.location.host && !window.location.host.includes('wails')
@@ -1097,11 +1166,14 @@ const connectWebSocket = async () => {
       : 'ws://127.0.0.1:8000/api/ws'
 
   try {
-    socket = new WebSocket(wsUrl, protocols)
-    socket.onopen = () => {
-      websocketConnected.value = true
+    // Referencia local: los handlers de una conexión ya reemplazada no deben
+    // tocar el estado de la conexión nueva.
+    const ws = new WebSocket(wsUrl, protocols)
+    socket = ws
+    ws.onopen = () => {
+      if (socket === ws) websocketConnected.value = true
     }
-    socket.onmessage = (event) => {
+    ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'state') {
@@ -1111,12 +1183,20 @@ const connectWebSocket = async () => {
         console.error(e)
       }
     }
-    socket.onclose = () => {
+    ws.onclose = (event) => {
+      if (socket !== ws) return
       websocketConnected.value = false
+      // 4401: el servidor rotó el token y este panel quedó fuera. Si la
+      // rotación la hizo esta misma pestaña, ya tiene el nuevo y reconecta
+      // desde regenerateToken(); si no, hay que volver a pedirlo.
+      if (event?.code === 4401) {
+        if (!tokenRotationInFlight) returnToLogin()
+        return
+      }
       if (!disposed) reconnectTimer = setTimeout(connectWebSocket, 2000)
     }
-    socket.onerror = () => {
-      socket?.close()
+    ws.onerror = () => {
+      ws.close()
     }
   } catch {
     websocketConnected.value = false
@@ -1132,7 +1212,11 @@ const startApp = async () => {
   scheduleDownloadsPoll()
 
   // Iniciamos el ciclo de actualizaciones de fondo inmediatamente para evitar esperas
-  setTimeout(() => checkForUpdates(false), 1000)
+  // La comprobación diferida no debe dispararse si el panel ya volvió a la
+  // pantalla de acceso (sin token solo generaría un 401 en el registro).
+  setTimeout(() => {
+    if (isWailsRuntime() || token.value) checkForUpdates(false)
+  }, 1000)
   // Cada 5 minutos: la API de GitHub solo admite 60 peticiones por hora y por
   // IP, y a 2 minutos se agotaba la cuota sin necesidad.
   updateCheckTimer = setInterval(() => checkForUpdates(false), 5 * 60 * 1000)
@@ -1229,6 +1313,10 @@ onMounted(async () => {
     await startApp()
   } else {
     bootstrapping.value = false
+    // No hay token: cualquier sesión de panel que quedara guardada ya no vale,
+    // así que se borra para no pintar el shell vacío con «Servicio
+    // desconectado» en lugar de la pantalla de acceso.
+    clearStoredSession()
     // Verificar si hay credenciales de Telegram configuradas antes de decidir
     // qué pantalla mostrar. Si no hay credenciales, se debe mostrar el AuthWizard
     // para configurar Telegram primero. Si hay credenciales, se muestra RemoteLogin.
@@ -1248,6 +1336,7 @@ onUnmounted(() => {
   clearInterval(updateCheckTimer)
   clearTimeout(saveTimer)
   clearTimeout(reconnectTimer)
+  clearTimeout(tokenRotationTimer)
   clearInterval(countdownPulse)
   socket?.close()
 })
@@ -1358,7 +1447,7 @@ onUnmounted(() => {
 
     <!-- Asistente de Autenticación -->
     <AuthWizard
-      v-else-if="!authStatus.authenticated"
+      v-else-if="!authStatus.authenticated || !token"
       :auth-status="authStatus"
       :settings="settings"
       @auth-success="onAuthSuccess"

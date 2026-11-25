@@ -3,19 +3,27 @@
 // - En la app de escritorio (Wails), el token se obtiene automáticamente por
 //   el binding nativo `window.go.main.App.GetLocalToken()`: el usuario nunca
 //   tiene que escribirlo.
-// - En un navegador local (127.0.0.1 / localhost), el token se obtiene
-//   automáticamente del endpoint de loopback `/api/auth/local-token`.
-// - En un navegador remoto (celular, otra PC vía Tailscale/túnel) no existe
-//   ese acceso local, así que se pide una vez y se guarda en localStorage.
+// - En cualquier navegador, incluido el del propio equipo (127.0.0.1 /
+//   localhost), se pide una vez y se guarda en localStorage. No se toma del
+//   endpoint de loopback: abrir el panel en un navegador siempre exige token.
+// - El token guardado se conserva hasta que caduque o se regenere en Ajustes;
+//   entonces la pantalla de acceso vuelve a pedirlo.
 import { ref } from 'vue'
 import { t } from '../i18n'
 
 const token = ref('')
 const ready = ref(false)
 
+// isWailsRuntime distingue la ventana nativa del panel abierto en un navegador.
+//
+// No sirve mirar `window._wails` ni `window.go` a secas: @wailsio/runtime crea
+// `window._wails` en cualquier navegador y main.js publica `window.go.main.App`
+// siempre, así que ambos existen también en web. Solo la app nativa inyecta el
+// objeto `environment` (internal/runtime de Wails) y solo su webview sirve el
+// panel desde wails.localhost.
 export const isWailsRuntime = () =>
   typeof window !== 'undefined' &&
-  (window.location.host.includes('wails') || !!window._wails || !!window.wails)
+  (window.location.host.includes('wails') || !!window._wails?.environment?.OS)
 
 export const isLocalView = () => {
   if (typeof window === 'undefined') return false
