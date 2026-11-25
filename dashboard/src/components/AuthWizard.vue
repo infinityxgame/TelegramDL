@@ -130,6 +130,7 @@ watch(
 
 const loading = ref(false)
 const errorMessage = ref('')
+const connectionWarning = ref('')
 const credentialsSaved = ref(
   props.authStatus.has_credentials === true && props.authStatus.state === 'CONNECTING'
 )
@@ -212,6 +213,7 @@ const pollConnectionStatus = async () => {
   if (connecting.value) return
   connecting.value = true
   errorMessage.value = ''
+  connectionWarning.value = ''
   const deadline = Date.now() + 45000
   try {
     while (Date.now() < deadline) {
@@ -228,8 +230,10 @@ const pollConnectionStatus = async () => {
       }
       if (!res.ok) throw new Error(data.detail || data.error || t('auth.errProcess'))
       const state = data.state
+      if (data.connection_error) connectionWarning.value = t('auth.connectErrorDetails', { error: data.connection_error })
       if (state === 'NEED_PHONE' || state === 'NOT_LOGGED_IN' || state === 'WAITING_CODE' || state === 'WAITING_2FA' || state === 'LOGGED_IN') {
         emit('auth-success', data)
+        connectionWarning.value = ''
         credentialsSaved.value = true
         return
       }
@@ -537,6 +541,10 @@ const cancelBack = () => {
           <div v-if="errorMessage" class="auth-alert danger" role="alert" aria-live="polite">
             <AlertCircle :size="18" class="alert-icon" />
             <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="connectionWarning" class="info-banner" role="status" aria-live="polite">
+            <Info :size="16" />
+            <span>{{ connectionWarning }}</span>
           </div>
           <div class="button-group">
             <button class="auth-button primary full-width" :disabled="connecting" @click="retryConnection">
