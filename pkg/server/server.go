@@ -1425,6 +1425,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/fs/pick", s.handleFSPick)
 	mux.HandleFunc("/api/system/disk", s.handleSystemDisk)
 	mux.HandleFunc("/api/system/info", s.handleSystemInfo)
+	mux.HandleFunc("/api/system/binding", s.handleServerBinding)
 	mux.HandleFunc("/api/server/info", s.handleSystemInfo)
 
 	// Updates (Soporta tanto singular /update/ como plural /updates/)
@@ -4099,6 +4100,34 @@ func (s *Server) handleSystemDisk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.jsonResponse(w, http.StatusOK, disk)
+}
+
+
+func (s *Server) handleServerBinding(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+	if strings.TrimSpace(os.Getenv("TGDL_BIND_HOST")) != "" || strings.TrimSpace(os.Getenv("BIND_HOST")) != "" {
+		s.errorResponse(w, http.StatusConflict, "La dirección está controlada por una variable de entorno y no puede cambiarse desde Ajustes.")
+		return
+	}
+	var req struct {
+		RemoteEnabled bool `json:"remote_enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, i18n.T("server.invalidData"))
+		return
+	}
+	host := "127.0.0.1"
+	if req.RemoteEnabled {
+		host = "0.0.0.0"
+	}
+	if err := s.storage.SaveServerBinding(host, config.GetServerPort()); err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.jsonResponse(w, http.StatusOK, map[string]any{"host": host, "restart_required": true})
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
