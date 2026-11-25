@@ -4996,19 +4996,121 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 				continue
 			}
 
-			if text == "/start" || text == "/help" {
+			fields := strings.Fields(text)
+			cmd := ""
+			if len(fields) > 0 {
+				cmd = fields[0]
+				if idx := strings.Index(cmd, "@"); idx != -1 {
+					cmd = cmd[:idx]
+				}
+				cmd = strings.ToLower(cmd)
+			}
+
+			if cmd == "/start" || cmd == "/help" {
 				replyText := i18n.T("notifier.botStart")
 				n.SendMessage(ctx, replyText)
 				continue
 			}
 
-			if strings.HasPrefix(text, "/status") {
+			if cmd == "/status" {
 				initialText := s.buildStatusMessageText()
 				msgID, err := n.SendMessageGetIDSync(ctx, initialText)
 				if err == nil && msgID > 0 {
 					go s.runStatusUpdater(ctx, token, normAuthChatID, replyThreadID, msgID)
 				} else if err != nil {
 					log.Printf("[BOT LISTENER] %s", i18n.T("notifier.sendError", err))
+				}
+				continue
+			}
+
+			if cmd == "/skip" {
+				if s.downloader == nil {
+					n.SendMessage(ctx, i18n.T("notifier.statusNoDownloader"))
+					continue
+				}
+				downloads := s.downloader.GetDownloads()
+				var toSkip *storage.DownloadItem
+				for _, item := range downloads {
+					if item.Status == "downloading" {
+						cp := item
+						toSkip = &cp
+						break
+					}
+				}
+				if toSkip == nil {
+					for _, item := range downloads {
+						if item.Status == "queued" {
+							cp := item
+							toSkip = &cp
+							break
+						}
+					}
+				}
+				if toSkip != nil {
+					if err := s.downloader.CancelDownload(toSkip.ID); err == nil {
+						s.broadcastState()
+						fileName := toSkip.FileName
+						if fileName == "" {
+							fileName = toSkip.ID
+						}
+						n.SendMessage(ctx, i18n.T("notifier.botSkipped", html.EscapeString(fileName)))
+					} else {
+						n.SendMessage(ctx, i18n.T("notifier.botNoActiveToSkip"))
+					}
+				} else {
+					n.SendMessage(ctx, i18n.T("notifier.botNoActiveToSkip"))
+				}
+				continue
+			}
+
+			if cmd == "/pause" {
+				if s.downloader == nil {
+					n.SendMessage(ctx, i18n.T("notifier.statusNoDownloader"))
+					continue
+				}
+				downloads := s.downloader.GetDownloads()
+				activeCount := 0
+				pausedCount := 0
+				for _, item := range downloads {
+					if item.Status == "downloading" || item.Status == "queued" {
+						activeCount++
+					} else if item.Status == "paused" {
+						pausedCount++
+					}
+				}
+				if activeCount > 0 {
+					s.downloader.PauseAll()
+					s.broadcastState()
+					n.SendMessage(ctx, i18n.T("notifier.botQueuePaused"))
+				} else if pausedCount > 0 {
+					s.downloader.ResumeAll(ctx)
+					s.broadcastState()
+					n.SendMessage(ctx, i18n.T("notifier.botQueueResumed"))
+				} else {
+					n.SendMessage(ctx, i18n.T("notifier.botNoActiveToPause"))
+				}
+				continue
+			}
+
+			if cmd == "/cancel" || cmd == "/cancelall" || cmd == "/cancel_all" {
+				if s.downloader == nil {
+					n.SendMessage(ctx, i18n.T("notifier.statusNoDownloader"))
+					continue
+				}
+				downloads := s.downloader.GetDownloads()
+				hasNonTerminal := false
+				for _, item := range downloads {
+					if item.Status == "downloading" || item.Status == "queued" || item.Status == "paused" {
+						hasNonTerminal = true
+						break
+					}
+				}
+				if hasNonTerminal {
+					s.downloader.CancelAll()
+					s.broadcastState()
+					n.SendMessage(ctx, i18n.T("notifier.botQueueCancelled"))
+				} else {
+					n.SendMessage(ctx, i18n.T("notifier.botNoActiveToCancel"))
 				}
 				continue
 			}
