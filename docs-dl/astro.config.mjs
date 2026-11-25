@@ -45,6 +45,13 @@ export default defineConfig({
 					link: '/getting-started',
 				},
 				{
+					label: 'Conexión y Autenticación',
+					translations: {
+						en: 'Connection & Authentication',
+					},
+					link: '/connection-auth',
+				},
+				{
 					label: 'Funcionalidades',
 					translations: {
 						en: 'Features',

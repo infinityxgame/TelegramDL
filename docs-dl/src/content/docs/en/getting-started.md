@@ -40,7 +40,7 @@ To connect to the Telegram MTProto network, you need personal **API ID** and **A
 4. Copy the generated values: `App api_id` and `App api_hash`.
 
 :::caution[IMPORTANT]
-Never share your `API ID`, `API HASH`, or session files (`tg_session-json`) with third parties for one's own safety.
+Never share your `API ID`, `API HASH`, or the generated session file (`~/.tgdown/tg_session.json`) with third parties for your own safety.
 :::
 
 ---
@@ -48,14 +48,18 @@ Never share your `API ID`, `API HASH`, or session files (`tg_session-json`) with
 ## Initial Configuration
 
 ### Graphical wizard on first startup
-When opening TelegramDL for the first time—whether via the native application or the browser using `--server` mode—the interface will display an interactive wizard that asks you to...:
+When opening TelegramDL for the first time—whether via the native application or the browser using `--server` mode—the interface displays an interactive wizard that asks you to:
 1. `API ID` and `API HASH`.
-2. International phone number format (e.g. `+12025550123`).
-3. Verification code (sent via the official Telegram app or SMS).
+2. The sign-in method: **Phone** or **QR code**.
+3. If you choose phone, the international number (e.g. `+12025550123`) and the verification code. If you choose QR, the wizard shows a code to scan from **Telegram → Settings → Devices → Link Desktop Device**.
 4. Two-Factor Authentication (2FA) password, if enabled on your account.
 
 :::tip[Proxy Connection]
 If you are connecting from a country or network with Telegram restrictions, the startup wizard includes a quick **Proxy** button to test and enable your connection before or during authentication.
+:::
+
+:::note[Synchronized clock]
+TelegramDL queries NTP servers at startup and corrects the clock offset internally. No configuration is required, but keeping the system clock on automatic time is recommended. See [Connection & Authentication](/TelegramDL/en/connection-auth/) for details and troubleshooting.
 :::
 
 Once finished, you can start using the program.

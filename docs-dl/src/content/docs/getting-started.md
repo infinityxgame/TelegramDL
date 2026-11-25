@@ -40,7 +40,7 @@ Para conectarte a la red MTProto de Telegram necesitas un **API ID** y un **API 
 4. Copia los valores generados: `App api_id` y `App api_hash`.
 
 :::caution[IMPORTANTE]
-Nunca compartas tu `API ID`, `API HASH`, ni los archivos de sesión generados (`tg_session.jsontg_session.json`) con terceros por seguridad propia.
+Nunca compartas tu `API ID`, `API HASH`, ni el archivo de sesión generado (`~/.tgdown/tg_session.json`) con terceros por seguridad propia.
 :::
 
 ---
@@ -51,12 +51,16 @@ Nunca compartas tu `API ID`, `API HASH`, ni los archivos de sesión generados (`
 
 Al abrir TelegramDL por primera vez ya sea por la aplicación nativa o por el navegador mediante el modo `--server` la interfaz mostrará un asistente interactivo que te solicitará:
 1. `API ID` y `API HASH`.
-2. Número de teléfono internacional (ejemplo: `+34600000000`).
-3. Código de verificación (enviado por la app oficial de Telegram o SMS).
+2. El método de acceso: **Teléfono** o **Código QR**.
+3. Si eliges teléfono, el número internacional (ejemplo: `+34600000000`) y el código de verificación. Si eliges QR, el asistente muestra un código para escanear desde **Telegram → Ajustes → Dispositivos → Vincular dispositivo de escritorio**.
 4. Contraseña de verificación en dos pasos (2FA), en caso de tenerla activada.
 
 :::tip[Acceso mediante Proxy]
 Si te encuentras en un país o red con restricciones de acceso a Telegram, la pantalla del asistente inicial incluye un botón rápido de **Proxy** para probar y activar tu conexión antes o durante la autenticación.
+:::
+
+:::note[Reloj sincronizado]
+TelegramDL consulta servidores NTP al arrancar y corrige internamente el desfase del reloj. No tienes que configurar nada, pero es recomendable mantener la hora del sistema en modo automático. Consulta [Conexión y Autenticación](/TelegramDL/connection-auth/) para los detalles y la solución de problemas.
 :::
 
 Al terminar puede comenzar a usar el programa

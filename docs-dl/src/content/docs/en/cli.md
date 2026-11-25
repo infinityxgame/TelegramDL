@@ -150,3 +150,7 @@ If you launch TelegramDL without flags in a network where direct MTProto is bloc
 2. If the connection times out due to DPI blocking, TelegramDL automatically catches the network error.
 3. It transparently retries connecting via WebSocket (`dcs.Websocket`), restoring full session connectivity without requiring manual flags or re-login.
 
+:::note
+Switching transports does not restart the authentication flow: if you were already on the code or QR step, TelegramDL keeps that state. See [Connection & Authentication](/TelegramDL/en/connection-auth/) for the full connection and clock lifecycle.
+:::
+

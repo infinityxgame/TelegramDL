@@ -7,6 +7,18 @@ description: Resumen de capacidades y arquitectura del motor de descargas de Tel
 
 ---
 
+## Autenticación flexible y conexión estable
+
+- **Dos métodos de acceso**: inicia sesión con tu número de teléfono o escaneando un **código QR** desde Telegram. Puedes cambiar de método sin reiniciar la aplicación.
+- **Reloj sincronizado por NTP**: TelegramDL corrige el desfase del reloj antes de crear el cliente MTProto, evitando fallos de sesión y caducidades prematuras del QR.
+- **Conexión supervisada**: si el transporte directo no está disponible, se reintenta por WebSocket; las reconexiones no obligan a volver a autenticarse.
+- **Sesión persistente**: el estado `WAITING_CODE` o `WAITING_2FA` se conserva durante una reconexión, y una caída temporal se muestra como `CONNECTING` en lugar de reiniciar el asistente.
+- **Entrega alternativa del código**: si Telegram ofrece otro método de entrega, el asistente permite solicitarlo manualmente.
+
+Consulta [Conexión y Autenticación](/TelegramDL/connection-auth/) para el flujo completo y la solución de problemas.
+
+---
+
 ## Formatos de Enlace Soportados
 
 TelegramDL cuenta con un analizador sintáctico inteligente (`pkg/downloader/parser.go`) capaz de procesar enlaces directos, rangos continuos y enlaces de temas en supergrupos:

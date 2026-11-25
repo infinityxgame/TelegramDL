@@ -150,3 +150,7 @@ Si ejecutas TelegramDL sin ningún flag especial en una red corporativa que bloq
 2. Si la conexión falla o sufre un *timeout* por bloqueo DPI, TelegramDL captura el error automáticamente.
 3. Se reintenta de forma transparente la conexión mediante transporte WebSocket (`dcs.Websocket`), permitiendo iniciar sesión y descargar sin intervención manual ni tener que volver a loguearse.
 
+:::note
+El cambio de transporte no reinicia el flujo de autenticación: si ya estabas en el paso del código o del QR, TelegramDL conserva ese estado. Consulta [Conexión y Autenticación](/TelegramDL/connection-auth/) para el ciclo completo de conexión y reloj.
+:::
+

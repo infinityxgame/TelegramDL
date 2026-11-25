@@ -34,7 +34,36 @@ Los siguientes endpoints pueden ser accedidos sin autenticación:
 
 ### Puerta de configuración (sin token solo en el primer arranque)
 
-`/api/auth/status` (admite `GET`), `POST /api/auth/credentials`, `POST /api/auth/send-code`, `POST /api/auth/verify-code`, `POST /api/auth/verify-2fa` y `POST /api/auth/logout` responden sin token **solo mientras no exista ningún fichero de sesión de Telegram** (primera configuración). Exigen método `POST`, cabecera `X-TGDL-Request: 1` y `Content-Type: application/json`, con un límite de 5 peticiones/minuto por origen y 30/min global (el `429` incluye cabecera `Retry-After`). Con sesión guardada responden `401`.
+`/api/auth/status` (admite `GET`), `POST /api/auth/credentials`, `POST /api/auth/send-code`, `POST /api/auth/verify-code`, `POST /api/auth/verify-2fa`, `POST /api/auth/qr/start`, `GET /api/auth/qr/status`, `POST /api/auth/qr/cancel` y `POST /api/auth/logout` responden sin token **solo mientras no exista ningún fichero de sesión de Telegram** (primera configuración). Las mutaciones exigen método `POST`, cabecera `X-TGDL-Request: 1` y `Content-Type: application/json`, con un límite de 5 peticiones/minuto por origen y 30/min global (el `429` incluye cabecera `Retry-After`). Las consultas de estado tienen su propia cuota, más amplia. Con sesión guardada responden `401`.
+
+:::note
+`POST /api/auth/resend-code` no forma parte de la puerta de configuración: el panel lo llama con el token de acceso habitual (en el equipo local se obtiene automáticamente). Está pensado para el botón de método de entrega alternativo que aparece tras solicitar el código.
+:::
+
+### Endpoints de inicio de sesión de Telegram
+
+- **`GET /api/auth/status`**: Estado de la sesión (`UNCONFIGURED`, `NEED_PHONE`, `CONNECTING`, `WAITING_CODE`, `WAITING_2FA` o `LOGGED_IN`), credenciales configuradas y usuario autorizado.
+- **`POST /api/auth/credentials`**: Guarda las credenciales e inicia el cliente MTProto. Cuerpo: `{"api_id": "12345678", "api_hash": "0123456789abcdef0123456789abcdef"}`.
+- **`POST /api/auth/send-code`**: Solicita el código por teléfono. Cuerpo: `{"phone_number": "+34600000000"}`. Devuelve `phone_code_hash`, `state`, `phone_number`, `configured`, `has_credentials` y `can_resend`. El envío inicial siempre usa el método normal de Telegram.
+- **`POST /api/auth/resend-code`**: Solicita el método de entrega alternativo (por ejemplo, SMS) solo cuando `can_resend` es `true` y el usuario lo pide expresamente. Devuelve un nuevo `phone_code_hash`.
+- **`POST /api/auth/verify-code`**: Verifica el código. Cuerpo: `{"phone_number": "+34600000000", "code": "12345"}`. Puede responder `status: "2fa_required"` con `state: "WAITING_2FA"`.
+- **`POST /api/auth/verify-2fa`**: Valida la contraseña de verificación en dos pasos. Cuerpo: `{"password": "..."}`.
+- **`POST /api/auth/qr/start`**: Inicia el flujo QR. Es idempotente mientras el código está en `WAITING_SCAN` o `WAITING_2FA` y exige que el cliente MTProto esté listo.
+- **`GET /api/auth/qr/status`**: Devuelve el estado del flujo QR.
+- **`POST /api/auth/qr/cancel`**: Cancela el flujo QR activo.
+- **`POST /api/auth/logout`**: Cierra la sesión, elimina el archivo local y limpia la evidencia de autorización.
+
+Ejemplo de respuesta del flujo QR:
+
+```json
+{
+  "status": "WAITING_SCAN",
+  "image": "data:image/png;base64,...",
+  "expires_at": 1763999999
+}
+```
+
+El token del código QR nunca se devuelve: solo la imagen PNG y su caducidad. `expires_at` es la marca de tiempo UNIX de caducidad que entrega Telegram; TelegramDL la compara con el reloj corregido por NTP.
 
 ### Endpoints de Token (requieren autenticación)
 

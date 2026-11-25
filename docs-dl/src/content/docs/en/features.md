@@ -7,6 +7,18 @@ description: Overview of TelegramDL's download capabilities and architecture.
 
 ---
 
+## Flexible Authentication and Stable Connectivity
+
+- **Two sign-in methods**: log in with your phone number or by scanning a **QR code** from Telegram. You can switch methods without restarting the application.
+- **NTP-synchronized clock**: TelegramDL corrects the clock offset before creating the MTProto client, preventing session failures and premature QR expiry.
+- **Supervised connection**: if the direct transport is unavailable, it retries over WebSocket; reconnects do not force you to authenticate again.
+- **Persistent session**: the `WAITING_CODE` or `WAITING_2FA` stage survives a reconnect, and a temporary outage is shown as `CONNECTING` instead of restarting the wizard.
+- **Alternative code delivery**: if Telegram offers another delivery method, the wizard lets you request it manually.
+
+See [Connection & Authentication](/TelegramDL/en/connection-auth/) for the full flow and troubleshooting.
+
+---
+
 ## Supported Link Formats
 
 TelegramDL features an intelligent URL parser (`pkg/downloader/parser.go`) that handles direct messages, continuous ranges, and forum topics:

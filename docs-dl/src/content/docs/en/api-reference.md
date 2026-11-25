@@ -34,7 +34,36 @@ The following endpoints can be accessed without authentication:
 
 ### Setup Gate (no token only during first-time setup)
 
-`/api/auth/status` (also accepts `GET`), `POST /api/auth/credentials`, `POST /api/auth/send-code`, `POST /api/auth/verify-code`, `POST /api/auth/verify-2fa` and `POST /api/auth/logout` respond without a token **only while no Telegram session file exists** (first-time setup). They require the `POST` method, the `X-TGDL-Request: 1` header and `Content-Type: application/json`, with a limit of 5 requests/min per origin and 30/min globally (the `429` includes a `Retry-After` header). With a stored session they respond `401`.
+`/api/auth/status` (also accepts `GET`), `POST /api/auth/credentials`, `POST /api/auth/send-code`, `POST /api/auth/verify-code`, `POST /api/auth/verify-2fa`, `POST /api/auth/qr/start`, `GET /api/auth/qr/status`, `POST /api/auth/qr/cancel`, and `POST /api/auth/logout` respond without a token **only while no Telegram session file exists** (first-time setup). Mutations require the `POST` method, the `X-TGDL-Request: 1` header and `Content-Type: application/json`, with a limit of 5 requests/min per origin and 30/min globally (the `429` includes a `Retry-After` header). Status queries have their own, larger quota. With a stored session they respond `401`.
+
+:::note
+`POST /api/auth/resend-code` is not part of the setup gate: the dashboard calls it with the usual access token (obtained automatically on the local machine). It backs the alternative delivery button shown after requesting the code.
+:::
+
+### Telegram Sign-in Endpoints
+
+- **`GET /api/auth/status`**: Session state (`UNCONFIGURED`, `NEED_PHONE`, `CONNECTING`, `WAITING_CODE`, `WAITING_2FA`, or `LOGGED_IN`), configured credentials, and the authorized user.
+- **`POST /api/auth/credentials`**: Saves credentials and starts the MTProto client. Body: `{"api_id": "12345678", "api_hash": "0123456789abcdef0123456789abcdef"}`.
+- **`POST /api/auth/send-code`**: Requests the phone code. Body: `{"phone_number": "+12025550123"}`. Returns `phone_code_hash`, `state`, `phone_number`, `configured`, `has_credentials`, and `can_resend`. The initial request always uses Telegram's normal delivery method.
+- **`POST /api/auth/resend-code`**: Requests the alternative delivery method (for example, SMS) only when `can_resend` is `true` and the user explicitly asks for it. Returns a new `phone_code_hash`.
+- **`POST /api/auth/verify-code`**: Verifies the code. Body: `{"phone_number": "+12025550123", "code": "12345"}`. It may respond `status: "2fa_required"` with `state: "WAITING_2FA"`.
+- **`POST /api/auth/verify-2fa`**: Validates the two-step verification password. Body: `{"password": "..."}`.
+- **`POST /api/auth/qr/start`**: Starts the QR flow. It is idempotent while the code is `WAITING_SCAN` or `WAITING_2FA` and requires the MTProto client to be ready.
+- **`GET /api/auth/qr/status`**: Returns the QR flow state.
+- **`POST /api/auth/qr/cancel`**: Cancels the active QR flow.
+- **`POST /api/auth/logout`**: Closes the session, deletes the local file, and clears the authorization evidence.
+
+Example QR response:
+
+```json
+{
+  "status": "WAITING_SCAN",
+  "image": "data:image/png;base64,...",
+  "expires_at": 1763999999
+}
+```
+
+The QR token is never returned: only the PNG image and its expiry. `expires_at` is the UNIX expiry timestamp provided by Telegram; TelegramDL compares it against the NTP-corrected clock.
 
 ### Token Endpoints (require authentication)
 
