@@ -1004,6 +1004,7 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 				SessionKnown:   true,
 				Online:         false,
 				User:           savedUser,
+				ConnectionError: connectionError,
 			}
 		}
 		if authStage != "" {
