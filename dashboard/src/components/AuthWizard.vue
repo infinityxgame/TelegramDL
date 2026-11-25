@@ -196,16 +196,35 @@ const { qrImage, qrStatus, qrError, startQRLogin, cancelQRLogin } = useQRLogin({
 // Alterna entre los dos métodos sin mantener dos flujos de autenticación activos.
 const switchAuthMethod = async (method) => {
   if (loading.value || authMethod.value === method) return
+
   if (method === 'phone') {
     if (qrStatus.value === 'WAITING_SCAN' || qrStatus.value === 'STARTING') {
       await cancelQRLogin()
     }
     authMethod.value = 'phone'
+    // Cancelar/iniciar QR puede devolver el control al estado del servidor,
+    // que todavía puede ser WAITING_CODE por un intento telefónico anterior.
+    // Mantener el selector visible evita mostrar ese formulario obsoleto.
+    if (props.authStatus.state === 'WAITING_CODE') {
+      stepOverride.value = 2
+    }
     return
   }
+
   authMethod.value = 'qr'
+  // La llamada de inicio QR pasa por apiCall(), que normalmente elimina el
+  // override para seguir el estado del servidor. En este caso WAITING_CODE
+  // puede pertenecer al intento telefónico abandonado: la elección explícita
+  // del usuario debe mantener visible el panel QR.
+  stepOverride.value = 2
   if (qrStatus.value !== 'WAITING_SCAN' && qrStatus.value !== 'STARTING') {
     await startQRLogin()
+  }
+
+  // No forzar el selector si el QR ya completó la autenticación y el servidor
+  // avanzó a 2FA o a la sesión iniciada.
+  if (qrStatus.value !== 'WAITING_2FA' && qrStatus.value !== 'LOGGED_IN') {
+    stepOverride.value = 2
   }
 }
 
