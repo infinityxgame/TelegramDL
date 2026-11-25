@@ -419,14 +419,23 @@ func (s *Storage) SaveCredentials(apiID, apiHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.setConfigKey("api_id", apiID); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	return s.setConfigKey("api_hash", apiHash)
+	defer tx.Rollback()
+
+	const query = `INSERT INTO app_config(key, value) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`
+	if _, err := tx.Exec(query, "api_id", apiID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(query, "api_hash", apiHash); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-// getConfigKey lee una clave de app_config y devuelve cadena vacía si no está.
-// No toma el mutex: eso corresponde a quien lo llama.
 func (s *Storage) getConfigKey(key string) string {
 	var value string
 	if err := s.db.QueryRow("SELECT value FROM app_config WHERE key = ?", key).Scan(&value); err != nil {
