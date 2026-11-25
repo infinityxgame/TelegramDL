@@ -23,6 +23,7 @@ import { useI18n } from './i18n'
 import {
   applyLoaderTheme,
   applyTheme,
+  getStoredThemeId,
   initTheme,
   loadPublicTheme,
   themeMap
@@ -123,7 +124,7 @@ const settings = reactive({
   parallel_chunks: true,
   chunk_workers: 8,
   speed_limit: { value: 0, unit: 'MB' },
-  color_id: 5,
+  color_id: getStoredThemeId() ?? 5,
   loader_color_id: 5,
   download_folder: '',
   organize_by_chat: true,
@@ -254,16 +255,30 @@ const parseSpeed = (speedStr) => {
 const syncSettings = async (nextSettings) => {
   if (!nextSettings) return
   syncingSettings = true
+  // color_id y loader_color_id viven como punteros en Go: mientras el usuario
+  // no ha elegido tema llegan como null. Copiar ese null devolvería el panel
+  // al azul por defecto en cada snapshot, así que se descarta y se conserva el
+  // tema que ya está aplicado.
+  const incoming = { ...nextSettings }
+  if (incoming.color_id === null || incoming.color_id === undefined) {
+    delete incoming.color_id
+  }
+  if (
+    incoming.loader_color_id === null ||
+    incoming.loader_color_id === undefined
+  ) {
+    delete incoming.loader_color_id
+  }
   // Si el usuario acaba de tocar un botón de notificación del sidebar, no
   // sobrescribirlo con el snapshot que llegue por websocket: podría ser el
   // anterior a que el autoguardado suba el valor nuevo.
   if (userChangingSidebar) {
     // eslint-disable-next-line no-unused-vars
     const { sound_notification, bot_notifications, close_when_done, ...rest } =
-      nextSettings
+      incoming
     Object.assign(settings, rest)
   } else {
-    Object.assign(settings, nextSettings)
+    Object.assign(settings, incoming)
   }
   if (!settings.speed_limit) {
     settings.speed_limit = { value: 0, unit: 'MB' }
@@ -346,7 +361,9 @@ const fetchAuthStatus = async () => {
     } else {
       localStorage.removeItem('tgdl_auth')
       localStorage.removeItem('tgdl_user')
-      applyTheme(5)
+      // El tema es una preferencia del dispositivo, no de la cuenta: no se
+      // toca al perder la sesión (antes se forzaba aquí el azul por defecto y
+      // la pantalla de acceso se repintaba siempre igual).
     }
   } catch (err) {
     console.error(t('console.sessionStatusError'), err)
@@ -467,6 +484,14 @@ const fetchSettings = async () => {
 const saveSettings = async (newSettings) => {
   if (newSettings && typeof newSettings === 'object') {
     Object.assign(settings, newSettings)
+  }
+  // Sin token no hay forma de guardar en el servidor. La pantalla de acceso
+  // remota puede verse sin sesión: en ese caso la elección ya está aplicada y
+  // guardada en el dispositivo, y el PUT solo provocaría un 401 que repintaría
+  // el tema público encima del elegido.
+  if (!token.value) {
+    settingsSavePending.value = false
+    return
   }
   clearTimeout(saveTimer)
   saving.value = true

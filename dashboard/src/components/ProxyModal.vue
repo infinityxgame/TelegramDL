@@ -1010,6 +1010,19 @@ const handleSave = async () => {
 </template>
 
 <style scoped>
+/* La transición `fade` viene definida en global desde App.vue con 0,8 s, y se
+   notaba arrastrada al abrir y cerrar estos modales. Con la marca de scope gana
+   a la global y aquí se acorta. */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.4s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;

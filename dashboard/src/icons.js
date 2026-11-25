@@ -42,6 +42,7 @@ import {
   Message02Icon,
   MusicNote01Icon,
   Notification01Icon,
+  PaletteIcon,
   PauseIcon,
   PowerIcon,
   SmartPhone01Icon,
@@ -119,6 +120,7 @@ export const LogOut = icon(Logout03Icon) // cerrar sesión de Telegram
 export const Menu = icon(Menu01Icon) // menú en pantalla pequeña
 export const MessageCircle = icon(Message02Icon) // chat vigilado
 export const Music = icon(MusicNote01Icon) // audio
+export const Palette = icon(PaletteIcon) // selector de tema en el acceso
 export const Pause = icon(PauseIcon) // pausar
 export const Phone = icon(SmartPhone01Icon) // número de teléfono
 export const Play = icon(PlayIcon) // reanudar
@@ -129,22 +131,29 @@ export const Radio = icon(RadioTowerIcon) // entrada "Escucha" del menú
 export const QrCode = {
   inheritAttrs: false,
   setup(_, { attrs }) {
-    return () => h('svg', {
-      width: attrs.size || 20,
-      height: attrs.size || 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeWidth: 1.8,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-      ...attrs
-    }, [
-      h('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1 }),
-      h('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1 }),
-      h('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1 }),
-      h('path', { d: 'M6 6h1v1H6z M17 6h1v1h-1z M6 17h1v1H6z M14 14h2v2h-2z M18 14v2 M14 19h2 M19 18v3 M17 21h1' })
-    ])
+    return () =>
+      h(
+        'svg',
+        {
+          width: attrs.size || 20,
+          height: attrs.size || 20,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.8,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          ...attrs
+        },
+        [
+          h('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1 }),
+          h('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1 }),
+          h('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1 }),
+          h('path', {
+            d: 'M6 6h1v1H6z M17 6h1v1h-1z M6 17h1v1H6z M14 14h2v2h-2z M18 14v2 M14 19h2 M19 18v3 M17 21h1'
+          })
+        ]
+      )
   }
 }
 export const RefreshCw = icon(Refresh01Icon) // regenerar o recargar

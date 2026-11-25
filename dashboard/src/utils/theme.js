@@ -442,8 +442,28 @@ export const applyLoaderTheme = (colorId) => {
   localStorage.setItem('tgdl_loader_color', colorId)
 }
 
+// Clave propia para el tema del panel. No se guarda dentro de tgdl_user porque
+// la pantalla de acceso se pinta sin sesión y ahí tgdl_user se borra: el tema
+// elegido debe sobrevivir a una recarga aunque Telegram no esté conectado.
+const THEME_STORAGE_KEY = 'tgdl_theme'
+
+// Devuelve el tema guardado en este dispositivo, o null si no hay ninguno
+// válido (por ejemplo, un id que ya no existe en themeMap).
+export const getStoredThemeId = () => {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY)
+    if (raw === null) return null
+    const id = Number(raw)
+    return themeMap[id] ? id : null
+  } catch (e) {
+    console.error(e)
+    return null
+  }
+}
+
 export const applyTheme = (colorId) => {
-  const theme = themeMap[colorId] || themeMap[5]
+  const id = themeMap[colorId] ? colorId : 5
+  const theme = themeMap[id]
   const root = document.documentElement
   root.style.setProperty('--user-primary', theme.primary)
   root.style.setProperty('--user-accent', theme.accent)
@@ -457,7 +477,15 @@ export const applyTheme = (colorId) => {
   root.style.setProperty('--user-glow', theme.glow)
   root.style.setProperty('--user-text-dim', theme.textDim)
   root.style.setProperty('--user-gradient', theme.gradient)
-  applyThemeClass(themeMap[colorId] ? colorId : 5)
+  applyThemeClass(id)
+
+  // El tema se recuerda en este dispositivo al margen de la cuenta: es lo que
+  // permite que la pantalla de acceso (sin sesión) arranque con el tema elegido.
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, String(id))
+  } catch (e) {
+    console.error(e)
+  }
 
   // Persistir el color en el objeto de usuario para que index.html lo use en el arranque
   try {
@@ -498,22 +526,28 @@ export const loadPublicTheme = async () => {
 export const initTheme = () => {
   const storedUser = JSON.parse(localStorage.getItem('tgdl_user') || 'null')
   const storedLoaderColor = localStorage.getItem('tgdl_loader_color')
+  const storedTheme = getStoredThemeId()
 
-  if (storedUser && storedUser.color_id !== undefined) {
+  // Prioridad: el tema recordado en este dispositivo (sobrevive al cierre de
+  // sesión y a la pantalla de acceso), luego el del usuario y, por último, el
+  // azul por defecto.
+  if (storedTheme !== null) {
+    applyTheme(storedTheme)
+  } else if (storedUser && storedUser.color_id !== undefined) {
     applyTheme(storedUser.color_id)
-    if (storedLoaderColor !== null) {
-      applyLoaderTheme(parseInt(storedLoaderColor))
-    } else {
-      applyLoaderTheme(
-        storedUser.loader_color_id !== undefined
-          ? storedUser.loader_color_id
-          : storedUser.color_id
-      )
-    }
   } else {
     applyTheme(5)
-    applyLoaderTheme(
-      storedLoaderColor !== null ? parseInt(storedLoaderColor) : 5
-    )
+  }
+
+  if (storedLoaderColor !== null) {
+    applyLoaderTheme(parseInt(storedLoaderColor))
+  } else if (storedUser && storedUser.loader_color_id !== undefined) {
+    applyLoaderTheme(storedUser.loader_color_id)
+  } else if (storedTheme !== null) {
+    applyLoaderTheme(storedTheme)
+  } else if (storedUser && storedUser.color_id !== undefined) {
+    applyLoaderTheme(storedUser.color_id)
+  } else {
+    applyLoaderTheme(5)
   }
 }

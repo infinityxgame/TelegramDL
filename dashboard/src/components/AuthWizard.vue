@@ -11,14 +11,21 @@ import {
   Loader2,
   Info,
   QrCode,
-  Check
+  Palette,
+  Check,
+  X
 } from '../icons'
 import ProxyModal from './ProxyModal.vue'
-import { useAuthToken, isWailsRuntime } from '../composables/useAuthToken'
+import {
+  useAuthToken,
+  isWailsRuntime,
+  hasStoredToken
+} from '../composables/useAuthToken'
 import { openExternal } from '../composables/useExternalLink'
 import { useI18n } from '../i18n'
 import { isLoopbackHost } from '../utils/loopback.js'
 import { useQRLogin } from '../composables/useQRLogin'
+import { themeMap } from '../utils/theme'
 
 const { authHeaders } = useAuthToken()
 const { t, locale, setLocale, splitOn } = useI18n()
@@ -47,7 +54,32 @@ const emit = defineEmits([
 ])
 
 const showProxyModal = ref(false)
+const showThemeModal = ref(false)
 const authMethod = ref('phone')
+
+// Temas propios del panel (ids 16+). Se sacan del themeMap para que añadir uno
+// nuevo no obligue a tocar esta vista.
+const specialThemes = computed(() =>
+  Object.keys(themeMap)
+    .map(Number)
+    .filter((id) => id >= 16)
+    .sort((a, b) => a - b)
+)
+
+// Aplica el tema al instante (update:settings lo pinta en App.vue y deja la
+// copia local del dispositivo) y, si esta pantalla tiene token, lo guarda en el
+// servidor. Sin token el PUT respondería 401: basta con la copia local, que es
+// la que hace que la pantalla de acceso recuerde el tema al recargar.
+const selectTheme = (id) => {
+  emit('update:settings', { color_id: id })
+  if (hasStoredToken()) emit('save-settings')
+  // Se cierra al elegir: el cambio ya está aplicado y el modal no aporta nada
+  // más (antes había que cerrarlo a mano después de cada prueba de tema).
+  showThemeModal.value = false
+}
+
+// Mismo logo que el sidebar; Vite lo sirve desde /public con la base URL.
+const logoUrl = `${import.meta.env.BASE_URL}telegramdl-android-icon.svg`
 
 // Paso que dicta el servidor segun el estado real de la sesion de Telegram.
 const serverStep = computed(() => {
@@ -316,21 +348,23 @@ const cancelBack = () => {
 
 <template>
   <div class="auth-overlay">
+    <!-- Selector de tema: vive fuera de la tarjeta, en el fondo de la pantalla,
+         para no robarle ancho al título del encabezado. -->
+    <button
+      type="button"
+      class="auth-theme-fab"
+      :title="t('auth.themeBtn')"
+      :aria-label="t('auth.themeBtn')"
+      @click="showThemeModal = true"
+    >
+      <Palette :size="18" />
+    </button>
+
     <div class="auth-card">
       <!-- Header -->
       <div class="auth-header">
         <div class="auth-logo">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="m22 2-7 20-4-9-9-4Z" />
-            <path d="M22 2 11 13" />
-          </svg>
+          <img :src="logoUrl" alt="" />
         </div>
         <div class="auth-title-box">
           <h2>{{ t('auth.title') }}</h2>
@@ -819,6 +853,89 @@ const cancelBack = () => {
       </div>
     </div>
 
+    <!-- Selector de tema: solo los temas del panel (color_id), sin el loader -->
+    <Teleport to="body">
+      <div
+        v-if="showThemeModal"
+        class="theme-modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('auth.themeTitle')"
+        @click.self="showThemeModal = false"
+      >
+        <div class="theme-modal">
+          <div class="theme-modal-header">
+            <h3>{{ t('auth.themeTitle') }}</h3>
+            <button
+              type="button"
+              class="theme-modal-close"
+              :title="t('common.close')"
+              :aria-label="t('common.close')"
+              @click="showThemeModal = false"
+            >
+              <X :size="18" />
+            </button>
+          </div>
+          <p class="theme-modal-hint">{{ t('auth.themeHint') }}</p>
+
+          <span class="color-group-title">{{
+            t('settings.telegramGroup')
+          }}</span>
+          <div class="color-selector-container">
+            <div class="color-row">
+              <button
+                v-for="id in [0, 1, 2, 3, 4, 5, 6, 7]"
+                :key="'theme-solid-' + id"
+                type="button"
+                class="color-dot"
+                :class="{ active: settings?.color_id === id }"
+                :style="{ background: themeMap[id]?.gradient || '#38a7ff' }"
+                :title="t('settings.colorN', { n: id })"
+                @click="selectTheme(id)"
+              ></button>
+            </div>
+            <div class="color-row">
+              <button
+                v-for="id in [8, 9, 10, 11, 12, 13, 14, 15]"
+                :key="'theme-gradient-' + id"
+                type="button"
+                class="color-dot gradient-dot"
+                :class="{ active: settings?.color_id === id }"
+                :style="{
+                  background: `linear-gradient(135deg, ${themeMap[id]?.primary || '#38a7ff'} 49.8%, ${themeMap[id]?.secondary || '#b48bf2'} 50.2%)`
+                }"
+                :title="t('settings.gradientN', { n: id })"
+                @click="selectTheme(id)"
+              ></button>
+            </div>
+          </div>
+
+          <span class="color-group-title">{{
+            t('settings.thematicGroup')
+          }}</span>
+          <div class="themes-list">
+            <button
+              v-for="id in specialThemes"
+              :key="'theme-special-' + id"
+              type="button"
+              class="theme-chip"
+              :class="{ active: settings?.color_id === id }"
+              :title="themeMap[id]?.name || t('settings.themeN', { n: id })"
+              @click="selectTheme(id)"
+            >
+              <span
+                class="theme-swatch"
+                :style="{ background: themeMap[id]?.gradient }"
+              ></span>
+              <span class="theme-name">{{
+                themeMap[id]?.name || t('settings.themeN', { n: id })
+              }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <ProxyModal
       :show="showProxyModal"
       :settings="settings"
@@ -842,7 +959,7 @@ const cancelBack = () => {
 }
 
 .auth-card {
-  width: min(520px, 92vw);
+  width: min(560px, 92vw);
   background: var(--user-surface);
   border: 1px solid var(--user-border);
   border-radius: 20px;
@@ -857,10 +974,41 @@ const cancelBack = () => {
   overflow-y: auto;
 }
 
+/* Botón de tema flotante en la esquina superior derecha del fondo. */
+.auth-theme-fab {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--user-border);
+  background: var(--user-surface-light);
+  color: var(--user-text-dim);
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.auth-theme-fab:hover {
+  background: var(--user-surface);
+  color: var(--user-accent);
+  border-color: var(--user-primary);
+  transform: translateY(-1px);
+}
+
 .auth-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 24px;
 }
 
@@ -869,6 +1017,7 @@ const cancelBack = () => {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .proxy-badge-btn {
@@ -986,20 +1135,35 @@ const cancelBack = () => {
 .auth-logo {
   width: 44px;
   height: 44px;
+  flex-shrink: 0;
   border-radius: 12px;
-  background: linear-gradient(135deg, #38a7ff, #0077ff);
-  color: #fff;
+  overflow: hidden;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 15px rgba(56, 167, 255, 0.4);
+  /* Mismo vaivén que el logo del sidebar (brandFloat está en style.css). */
+  animation: brandFloat 5s ease-in-out infinite;
+}
+
+.auth-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .auth-header h2 {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
   color: #f1f7ff;
   margin: 0;
+  white-space: nowrap;
+}
+
+/* En pantallas estrechas el título vuelve a partirse en vez de desbordarse. */
+@media (max-width: 600px) {
+  .auth-header h2 {
+    white-space: normal;
+  }
 }
 
 .auth-header p {
@@ -1315,9 +1479,12 @@ const cancelBack = () => {
 }
 
 .auth-button.primary:hover:not(:disabled) {
-  background: #50b3ff;
+  /* El brillo y el halo salen del tema activo: antes estaban fijados en azul y
+     el botón se iluminaba igual en todos los temas. */
+  filter: brightness(1.1);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(56, 167, 255, 0.35);
+  box-shadow: 0 8px 20px
+    color-mix(in srgb, var(--user-primary) 35%, transparent);
 }
 
 .auth-button.secondary {
@@ -1395,6 +1562,82 @@ const cancelBack = () => {
   }
 }
 
+/* Modal de temas del panel. Se teletransporta a <body>, por eso no hereda el
+   recorte de la tarjeta y usa position: fixed sobre toda la ventana. */
+.theme-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+.theme-modal {
+  width: min(560px, 94vw);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 22px;
+  box-sizing: border-box;
+  border: 1px solid var(--user-border);
+  border-radius: 16px;
+  background: var(--user-surface);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+}
+
+.theme-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.theme-modal-header h3 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px;
+  color: #f1f7ff;
+}
+
+.theme-modal-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--user-border);
+  border-radius: 8px;
+  background: var(--user-surface-light);
+  color: var(--user-text-dim);
+  cursor: pointer;
+}
+
+.theme-modal-close:hover {
+  color: #fff;
+  border-color: var(--user-primary);
+}
+
+.theme-modal-hint {
+  margin: 6px 0 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--user-text-dim);
+}
+
+/* El título de grupo global trae márgenes pensados para el gap de Ajustes;
+   dentro del modal se espacian a mano. */
+.theme-modal .color-group-title {
+  margin: 16px 0 10px;
+}
+
+.theme-modal .color-group-title:first-of-type {
+  margin-top: 0;
+}
+
 /* Pantallas bajas (p. ej. 1366x768): se compacta la tarjeta para que quepa
    entera; si aun asi no cabe, el max-height de .auth-card permite desplazarla. */
 @media (max-height: 800px) {
@@ -1409,6 +1652,13 @@ const cancelBack = () => {
 
   .auth-header {
     margin-bottom: 16px;
+  }
+
+  .auth-theme-fab {
+    top: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
   }
 
   .auth-logo {
@@ -1432,6 +1682,19 @@ const cancelBack = () => {
 
   .qr-code-frame {
     width: min(210px, 100%);
+  }
+}
+
+/* Va después del bloque de altura para ganar en pantallas pequeñas (móvil en
+   vertical, que también puede ser bajito): hueco arriba para el botón flotante
+   y una tarjeta que no se salga por abajo. */
+@media (max-width: 600px) {
+  .auth-overlay {
+    padding-top: 64px;
+  }
+
+  .auth-card {
+    max-height: calc(100dvh - 84px);
   }
 }
 </style>

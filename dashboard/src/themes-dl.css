@@ -2023,6 +2023,7 @@ html.theme-light .log-row.debug::before {
    correcto (azul saturado), así que el color lo decide cada tema. */
 html.theme-light .primary-button,
 html.theme-light .save-button,
+html.theme-light .save-btn,
 html.theme-light .auth-button.primary,
 html.theme-light .update-btn,
 html.theme-light .pager-btn.active {
@@ -2560,6 +2561,7 @@ html.theme-silent-cherry .sidebar-shutdown.armed .shutdown-info {
 html.theme-silent-cherry .btn--primary,
 html.theme-silent-cherry .primary-button,
 html.theme-silent-cherry .save-button,
+html.theme-silent-cherry .save-btn,
 html.theme-silent-cherry .auth-button.primary,
 html.theme-silent-cherry .confirm-btn.primary,
 html.theme-silent-cherry .update-btn {
@@ -2570,6 +2572,7 @@ html.theme-silent-cherry .update-btn {
 html.theme-silent-cherry .btn--primary *,
 html.theme-silent-cherry .primary-button *,
 html.theme-silent-cherry .save-button *,
+html.theme-silent-cherry .save-btn *,
 html.theme-silent-cherry .auth-button.primary *,
 html.theme-silent-cherry .confirm-btn.primary *,
 html.theme-silent-cherry .update-btn * {
@@ -4691,4 +4694,30 @@ html.theme-light .saved-proxy-item.active,
 html.theme-silent-cherry .saved-proxy-item.active {
   background: rgba(244, 143, 177, 0.22) !important;
   border-color: #f48fb1 !important;
+}
+
+/* --- Ping y resultado de la prueba de proxy ------------------------------- */
+/* Los colores de estado del componente (#34d399 verde y #f87171 rojo) están
+   pensados para fondo oscuro; sobre el marfil de estos temas el texto casi
+   desaparece. Se usan las versiones oscurecidas de la paleta clara. */
+html.theme-light .proxy-item-ping.active,
+html.theme-silent-cherry .proxy-item-ping.active {
+  color: var(--light-ok, #25756a) !important;
+}
+
+html.theme-light .proxy-item-ping.error,
+html.theme-silent-cherry .proxy-item-ping.error {
+  color: var(--light-alert, #b03a56) !important;
+}
+
+html.theme-light .test-result.active,
+html.theme-silent-cherry .test-result.active {
+  color: var(--light-ok, #25756a) !important;
+  background: var(--light-ok-bg, rgba(160, 231, 229, 0.18)) !important;
+}
+
+html.theme-light .test-result.inactive,
+html.theme-silent-cherry .test-result.inactive {
+  color: var(--light-alert, #b03a56) !important;
+  background: var(--light-alert-bg, #fbe0e8) !important;
 }

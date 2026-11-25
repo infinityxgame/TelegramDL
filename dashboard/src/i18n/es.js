@@ -608,10 +608,14 @@ export default {
     qrTitle: 'Iniciar sesión con código QR',
     qrRetry: 'Generar otro código QR',
     qrStart: 'Iniciar sesión con código QR',
-    qrInstructions: 'En Telegram, abre Ajustes → Dispositivos → Vincular dispositivo de escritorio y escanea este código.',
+    qrInstructions:
+      'En Telegram, abre Ajustes → Dispositivos → Vincular dispositivo de escritorio y escanea este código.',
     qrAlt: 'Código QR para iniciar sesión en Telegram',
     qrWaiting: 'Esperando a que Telegram confirme el inicio de sesión…',
     qrPreparing: 'Preparando el código QR…',
+    themeBtn: 'Cambiar tema',
+    themeTitle: 'Tema del panel',
+    themeHint: 'Elige un tema: se aplica y se guarda al instante.',
     sendCode: 'Enviar Código',
     codeTitle: 'Código de Verificación',
     codeText:
