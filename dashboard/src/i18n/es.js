@@ -603,6 +603,7 @@ export default {
     connectRetry: 'Reintentar conexión',
     connectTimeout: 'Telegram no terminó de conectar a tiempo. Las credenciales se guardaron; puedes reintentar sin introducirlas otra vez.',
     connectFailed: 'No se pudo comprobar la conexión con Telegram. Las credenciales se guardaron; reintenta.',
+    connectErrorDetails: 'Telegram informa este error de conexión: {error}',
     editCredentials: 'Editar credenciales',
     phoneTitle: 'Número de Teléfono',
     phoneText: 'Ingresa tu número de teléfono registrado en Telegram.',
