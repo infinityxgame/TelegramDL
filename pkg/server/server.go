@@ -4739,109 +4739,140 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			// Manejo de interacción con botones en línea (Callback Query)
 			if up.CallbackQuery != nil {
 				cb := up.CallbackQuery
-				cbChatID := int64(0)
-				if cb.Message != nil {
-					cbChatID = cb.Message.Chat.ID
+				if cb.Message == nil {
+					continue
 				}
+				cbChatID := cb.Message.Chat.ID
 				normCbChatID := notifier.NormalizeChatID(cbChatID, topicID != nil && *topicID > 0)
-
 				if authorizedChatID != 0 && normCbChatID != normAuthChatID && cbChatID != authorizedChatID && cb.From.ID != authorizedChatID {
 					continue
 				}
-
 				data := cb.Data
 				var replyThreadID *int64
-				if cb.Message != nil && cb.Message.MessageThreadID != nil && *cb.Message.MessageThreadID > 0 {
+				if cb.Message.MessageThreadID != nil && *cb.Message.MessageThreadID > 0 {
 					replyThreadID = cb.Message.MessageThreadID
 				} else {
 					replyThreadID = topicID
 				}
-
 				n := notifier.NewNotifier(token, normAuthChatID, replyThreadID)
 				_ = n.AnswerCallbackQuerySync(ctx, cb.ID)
 
-				// Historial del bot: callbacks de paginación, selección y acciones.
 				if strings.HasPrefix(data, "hist:") {
 					parts := strings.Split(data, ":")
 					if len(parts) >= 3 && s.downloader != nil {
 						switch parts[1] {
 						case "page":
-							offset, err := strconv.Atoi(parts[2])
-							if err == nil && offset >= 0 { text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) }
-						case "select":
-							if len(parts) == 4 { offset, e1 := strconv.Atoi(parts[2]); index, e2 := strconv.Atoi(parts[3]); if e1 == nil && e2 == nil && index >= 0 { text, keyboard := s.botHistoryDetail(index, offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) } }
-						case "back":
-							offset, err := strconv.Atoi(parts[2]); if err == nil && offset >= 0 { text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) }
-						case "retry", "delete":
-							if len(parts) == 4 { id, offset := parts[2], 0; offset, err := strconv.Atoi(parts[3]); if err == nil { item, found := s.downloader.GetItem(id); if found { if parts[1] == "delete" { _ = s.downloader.DeleteDownload(id, true); s.broadcastState(); text, keyboard := s.botHistoryPage(offset); _ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard) } else if item.Status == "cancelled" || item.Status == "failed" { retry := *item; _ = s.downloader.DeleteDownload(id, true); retry.ID = config.NewID(); retry.JobID = config.NewID(); retry.Status = "queued"; retry.Speed = "0 B/s"; retry.CreatedAt = 0; retry.UpdatedAt = 0; if s.downloader.QueueItem(retry) != "" { s.broadcastState(); _ = n.EditMessageTextSync(ctx, cb.Message.MessageID, "✅ Reintentando: <b>"+html.EscapeString(retry.FileName)+"</b>") } else { _ = n.EditMessageTextSync(ctx, cb.Message.MessageID, "❌ No se pudo añadir a la cola.") } } } } }
+							pageOffset, err := strconv.Atoi(parts[2])
+							if err == nil && pageOffset >= 0 {
+							text, keyboard := s.botHistoryPage(pageOffset)
+						_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard)
+						}
+					case "select":
+							if len(parts) == 4 {
+							pageOffset, e1 := strconv.Atoi(parts[2])
+						index, e2 := strconv.Atoi(parts[3])
+						if e1 == nil && e2 == nil && pageOffset >= 0 && index >= 0 {
+							text, keyboard := s.botHistoryDetail(index, pageOffset)
+						_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard)
+						}
 					}
-					continue
-				}
-				if strings.HasPrefix(data, "fn:orig:") || strings.HasPrefix(data, "fn:capt:") {
-					parts := strings.Split(data, ":")
-					if len(parts) == 4 {
-						mode := parts[1]
-						targetChatID, parseChatErr := strconv.ParseInt(parts[2], 10, 64)
-						targetMsgID, parseMsgErr := strconv.ParseInt(parts[3], 10, 64)
-						if parseChatErr == nil && parseMsgErr == nil && targetMsgID > 0 {
-							key := fmt.Sprintf("%d:%d", targetChatID, targetMsgID)
-							var chosenName string
-
-							s.mu.RLock()
-							choice, found := s.pendingBotChoices[key]
-							s.mu.RUnlock()
-
+					case "back":
+						pageOffset, err := strconv.Atoi(parts[2])
+						if err == nil && pageOffset >= 0 {
+							text, keyboard := s.botHistoryPage(pageOffset)
+						_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard)
+						}
+					case "retry", "delete":
+						if len(parts) == 4 {
+							itemID := parts[2]
+						pageOffset, err := strconv.Atoi(parts[3])
+						if err == nil && pageOffset >= 0 {
+							item, found := s.downloader.GetItem(itemID)
 							if found {
-								if mode == "capt" && choice.CaptName != "" {
-									chosenName = choice.CaptName
-								} else {
-									chosenName = choice.OrigName
-								}
-							} else if s.downloader != nil && s.clientMgr != nil {
-								fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
-								if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
-									tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
-									if err == nil && tgMsg != nil {
-										mediaInfo := downloader.ExtractMediaInfo(tgMsg)
-										if mediaInfo != nil {
-											if mode == "capt" && mediaInfo.CaptionFileName != "" {
-												chosenName = mediaInfo.CaptionFileName
-											} else {
-												chosenName = mediaInfo.OriginalFileName
-											}
-										}
-									}
-								}
-								fetchCancel()
-							}
-
-							if chosenName != "" && s.downloader != nil {
-								s.mu.Lock()
-								delete(s.pendingBotChoices, key)
-								s.mu.Unlock()
-
-								jobID := config.NewID()
-								item := storage.DownloadItem{
-									ID:        config.NewID(),
-									JobID:     jobID,
-									MessageID: targetMsgID,
-									ChatID:    targetChatID,
-									Status:    "queued",
-									Source:    "bot",
-									FileName:  chosenName,
-								}
-								if s.downloader.QueueItem(item) != "" {
+								if parts[1] == "delete" {
+								// Eliminar historial completado no debe borrar el archivo descargado.
+							deleteFile := item.Status != "completed"
+							_ = s.downloader.DeleteDownload(itemID, deleteFile)
+							s.broadcastState()
+							text, keyboard := s.botHistoryPage(pageOffset)
+							_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, text, keyboard)
+							} else {
+								retry := *item
+							retry.ID = config.NewID()
+							retry.JobID = config.NewID()
+							retry.Status = "queued"
+							retry.Speed = "0 B/s"
+							retry.CreatedAt = 0
+							retry.UpdatedAt = 0
+							if s.downloader.QueueItem(retry) != "" {
+									_ = s.downloader.DeleteDownload(itemID, item.Status != "completed")
 									s.broadcastState()
-									logbus.Info(logbus.CatDownloads, i18n.T("server.ipcDownloadReceived", chosenName), "Bot Telegram")
-
-									if cb.Message != nil {
-										replyText := i18n.T("notifier.botFileQueued", html.EscapeString(chosenName))
-										_ = n.EditMessageTextSync(ctx, cb.Message.MessageID, replyText)
-									}
+									msg := "Reintento añadido a la cola: <b>" + html.EscapeString(retry.FileName) + "</b>"
+									_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
+								} else {
+									msg := "No se pudo añadir el reintento a la cola."
+									_ = n.EditMessageTextKeyboardSync(ctx, cb.Message.MessageID, msg, map[string]any{"inline_keyboard": [][]map[string]string{}})
 								}
 							}
 						}
 					}
+					}
+					continue
+				}
+
+				if strings.HasPrefix(data, "fn:orig:") || strings.HasPrefix(data, "fn:capt:") {
+					parts := strings.Split(data, ":")
+					if len(parts) == 4 {
+						mode := parts[1]
+					targetChatID, parseChatErr := strconv.ParseInt(parts[2], 10, 64)
+					targetMsgID, parseMsgErr := strconv.ParseInt(parts[3], 10, 64)
+					if parseChatErr == nil && parseMsgErr == nil && targetMsgID > 0 {
+						key := fmt.Sprintf("%d:%d", targetChatID, targetMsgID)
+						var chosenName string
+						s.mu.RLock()
+						choice, found := s.pendingBotChoices[key]
+						s.mu.RUnlock()
+						if found {
+							if mode == "capt" && choice.CaptName != "" {
+							chosenName = choice.CaptName
+						} else {
+							chosenName = choice.OrigName
+						}
+					} else if s.downloader != nil && s.clientMgr != nil {
+							fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+						if err := s.clientMgr.WaitReady(fetchCtx); err == nil {
+							tgMsg, err := s.downloader.FetchMessage(fetchCtx, targetChatID, int(targetMsgID))
+							if err == nil && tgMsg != nil {
+								mediaInfo := downloader.ExtractMediaInfo(tgMsg)
+							if mediaInfo != nil {
+								if mode == "capt" && mediaInfo.CaptionFileName != "" {
+									chosenName = mediaInfo.CaptionFileName
+								} else {
+									chosenName = mediaInfo.OriginalFileName
+								}
+							}
+							}
+						}
+						fetchCancel()
+					}
+					if chosenName != "" && s.downloader != nil {
+							s.mu.Lock()
+							delete(s.pendingBotChoices, key)
+							s.mu.Unlock()
+							item := storage.DownloadItem{
+								ID: config.NewID(), JobID: config.NewID(), MessageID: targetMsgID,
+							ChatID: targetChatID, Status: "queued", Source: "bot", FileName: chosenName,
+						}
+						if s.downloader.QueueItem(item) != "" {
+								s.broadcastState()
+								logbus.Info(logbus.CatDownloads, i18n.T("server.ipcDownloadReceived", chosenName), "Bot Telegram")
+								_ = n.EditMessageTextSync(ctx, cb.Message.MessageID, i18n.T("notifier.botFileQueued", html.EscapeString(chosenName)))
+							}
+						}
+						}
+						}
+					}
+					continue
 				}
 				continue
 			}
@@ -5534,11 +5565,85 @@ func (s *Server) runStatusUpdater(ctx context.Context, token string, chatID int6
 
 // botHistoryItems devuelve solo entradas terminales, en el mismo orden que el historial del panel.
 func (s *Server) botHistoryItems() []storage.DownloadItem {
-	if s.downloader == nil { return nil }
+	if s.downloader == nil {
+		return nil
+	}
 	items := s.downloader.GetDownloads()
 	filtered := make([]storage.DownloadItem, 0, len(items))
-	for _, item := range items { if item.Status == "completed" || item.Status == "cancelled" || item.Status == "failed" { filtered = append(filtered, item) } }
+	for _, item := range items {
+		if item.Status == "completed" || item.Status == "cancelled" || item.Status == "failed" {
+			filtered = append(filtered, item)
+		}
+	}
 	return filtered
+}
+
+func (s *Server) botHistoryPage(offset int) (string, map[string]any) {
+	items := s.botHistoryItems()
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(items) && len(items) > 0 {
+		offset = ((len(items) - 1) / 10) * 10
+	}
+	end := offset + 10
+	if end > len(items) {
+		end = len(items)
+	}
+	if len(items) == 0 {
+		return "<b>Historial de descargas</b>\n\nNo hay descargas completadas o canceladas.", map[string]any{"inline_keyboard": [][]map[string]string{}}
+	}
+	lines := make([]string, 0, end-offset)
+	rows := make([][]map[string]string, 0, end-offset+2)
+	for i := offset; i < end; i++ {
+		item := items[i]
+		status := "cancelado"
+		if item.Status == "completed" {
+			status = "completado"
+		} else if item.Status == "failed" {
+			status = "fallido"
+		}
+		name := item.FileName
+		if name == "" {
+			name = item.ID
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s (%s)", i+1, html.EscapeString(name), status))
+		rows = append(rows, []map[string]string{{"text": fmt.Sprintf("%d", i+1), "callback_data": fmt.Sprintf("hist:select:%d:%d", offset, i-offset)}})
+	}
+	if end < len(items) {
+		rows = append(rows, []map[string]string{{"text": "Siguiente", "callback_data": fmt.Sprintf("hist:page:%d", end)}})
+	}
+	if offset > 0 {
+		rows = append(rows, []map[string]string{{"text": "Anterior", "callback_data": fmt.Sprintf("hist:page:%d", offset-10)}})
+	}
+	return fmt.Sprintf("<b>Historial de descargas</b> (%d–%d de %d)\n\n%s", offset+1, end, len(items), strings.Join(lines, "\n")), map[string]any{"inline_keyboard": rows}
+}
+
+func (s *Server) botHistoryDetail(index, offset int) (string, map[string]any) {
+	items := s.botHistoryItems()
+	absolute := offset + index
+	if index < 0 || absolute >= len(items) {
+		text, keyboard := s.botHistoryPage(offset)
+		return text, keyboard
+	}
+	item := items[absolute]
+	name := item.FileName
+	if name == "" {
+		name = item.ID
+	}
+	status := "Cancelado"
+	if item.Status == "completed" {
+		status = "Completado"
+	} else if item.Status == "failed" {
+		status = "Fallido"
+	}
+	text := fmt.Sprintf("<b>%s</b>\n\nEstado: %s", html.EscapeString(name), status)
+	buttons := []map[string]string{
+		{"text": "Atrás", "callback_data": fmt.Sprintf("hist:back:%d", offset)},
+		{"text": "Reintentar", "callback_data": fmt.Sprintf("hist:retry:%s:%d", item.ID, offset)},
+		{"text": "Eliminar", "callback_data": fmt.Sprintf("hist:delete:%s:%d", item.ID, offset)},
+	}
+	return text, map[string]any{"inline_keyboard": [][]map[string]string{buttons}}
 }
 
 func (s *Server) botHistoryPage(offset int) (string, map[string]any) {
