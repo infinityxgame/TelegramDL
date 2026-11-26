@@ -378,40 +378,6 @@ func (s *Storage) GetCredentials() (string, string, error) {
 		log.Printf("[STORAGE] failed to read api_hash credential: %v", err)
 	}
 
-	if apiID == "" || apiHash == "" {
-		// Ya no hay respaldo en ningún .env: lo que hubiera en el archivo se
-		// vuelca a app_config una sola vez, al arrancar, desde
-		// MigrateLegacyEnv. Lo que queda aquí es el rescate del api_id para
-		// quien venga de la versión en Python.
-		if apiID == "" {
-			sessionFiles := []string{
-				filepath.Join(config.DataDir, "downloader_session.session"),
-				filepath.Join(config.BaseDir, "downloader_session.session"),
-			}
-			for _, sf := range sessionFiles {
-				if _, err := os.Stat(sf); err == nil {
-					db, err := sql.Open("sqlite", sf)
-					if err == nil {
-						var id int
-						if err := db.QueryRow("SELECT api_id FROM sessions LIMIT 1").Scan(&id); err == nil && id != 0 {
-							apiID = strconv.Itoa(id)
-						}
-						db.Close()
-					}
-					if apiID != "" {
-						break
-					}
-				}
-			}
-		}
-
-		if apiID != "" && apiHash != "" {
-			go func(id, hash string) {
-				_ = s.SaveCredentials(id, hash)
-			}(apiID, apiHash)
-		}
-	}
-
 	return apiID, apiHash, nil
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -428,7 +427,6 @@ func (cm *ClientManager) RememberChatUsername(peerID int64, username string) {
 func NewClientManager() *ClientManager {
 	config.InitPaths()
 	sessPath := filepath.Join(config.DataDir, "tg_session.json")
-	importPyrogramSession(sessPath)
 
 	cm := &ClientManager{
 		sessionPath:         sessPath,
@@ -457,102 +455,6 @@ func NewClientManager() *ClientManager {
 		return nil
 	})
 	return cm
-}
-
-func GetPyrogramCredentials() (string, error) {
-	sessionFiles := []string{
-		filepath.Join(config.DataDir, "downloader_session.session"),
-		filepath.Join(config.BaseDir, "downloader_session.session"),
-	}
-	for _, sf := range sessionFiles {
-		if _, err := os.Stat(sf); err == nil {
-			db, err := sql.Open("sqlite", sf)
-			if err == nil {
-				defer db.Close()
-				var apiID int
-				if err := db.QueryRow("SELECT api_id FROM sessions LIMIT 1").Scan(&apiID); err == nil && apiID != 0 {
-					return strconv.Itoa(apiID), nil
-				}
-			}
-		}
-	}
-	return "", errors.New("not found")
-}
-
-func importPyrogramSession(targetJSONPath string) {
-	// Si ya tenemos una sesión válida con clave de 256 bytes, no sobreescribir
-	if fi, err := os.Stat(targetJSONPath); err == nil && fi.Size() > 100 {
-		fileStorage := &session.FileStorage{Path: targetJSONPath}
-		loader := &session.Loader{Storage: fileStorage}
-		if data, err := loader.Load(context.Background()); err == nil && data != nil && len(data.AuthKey) == 256 {
-			return
-		}
-	}
-
-	sessionFiles := []string{
-		filepath.Join(config.DataDir, "downloader_session.session"),
-		filepath.Join(config.BaseDir, "downloader_session.session"),
-	}
-
-	var foundPath string
-	for _, sf := range sessionFiles {
-		if _, err := os.Stat(sf); err == nil {
-			foundPath = sf
-			break
-		}
-	}
-	if foundPath == "" {
-		return
-	}
-
-	db, err := sql.Open("sqlite", foundPath)
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
-	var dcID, apiID, port int
-	var authKey []byte
-	var userID int64
-	var serverAddr string
-	row := db.QueryRow("SELECT dc_id, api_id, auth_key, user_id, server_address, port FROM sessions LIMIT 1")
-	if err := row.Scan(&dcID, &apiID, &authKey, &userID, &serverAddr, &port); err != nil || len(authKey) != 256 {
-		return
-	}
-
-	if serverAddr == "" {
-		switch dcID {
-		case 1:
-			serverAddr = "149.154.175.53"
-		case 2:
-			serverAddr = "149.154.167.50"
-		case 3:
-			serverAddr = "149.154.175.100"
-		case 4:
-			serverAddr = "149.154.167.91"
-		case 5:
-			serverAddr = "91.108.56.165"
-		default:
-			serverAddr = "149.154.175.53"
-		}
-	}
-	if port == 0 {
-		port = 443
-	}
-
-	h := sha1.Sum(authKey)
-	keyID := h[len(h)-8:]
-
-	data := session.Data{
-		DC:        dcID,
-		Addr:      fmt.Sprintf("%s:%d", serverAddr, port),
-		AuthKey:   authKey,
-		AuthKeyID: keyID,
-	}
-
-	fileStorage := &session.FileStorage{Path: targetJSONPath}
-	loader := &session.Loader{Storage: fileStorage}
-	_ = loader.Save(context.Background(), &data)
 }
 
 // systemVersionLabel reporta el sistema operativo real en vez de un valor
