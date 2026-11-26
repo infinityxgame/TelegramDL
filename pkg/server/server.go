@@ -4346,6 +4346,11 @@ func (s *Server) handleUpdateProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
 	s.mu.RLock()
 	rel := s.latestRel
 	s.mu.RUnlock()
@@ -4387,6 +4392,11 @@ func (s *Server) handlePostponeUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
+		return
+	}
+
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 	go func() {
 		time.Sleep(500 * time.Millisecond)

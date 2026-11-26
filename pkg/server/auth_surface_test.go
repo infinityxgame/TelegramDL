@@ -383,3 +383,26 @@ func TestLogoutRespondeOkCuandoNoHayError(t *testing.T) {
 		t.Fatalf("estado inesperado: %q", cuerpo["status"])
 	}
 }
+
+// SEV-08: handleExit y handleInstallUpdate deben rechazar peticiones que no sean POST
+// con un código de estado 405 (Method Not Allowed).
+func TestExitAndInstallUpdateRequirePOST(t *testing.T) {
+	s := &Server{}
+
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		reqExit := httptest.NewRequest(method, "/api/app/exit", nil)
+		wExit := httptest.NewRecorder()
+		s.handleExit(wExit, reqExit)
+		if wExit.Code != http.StatusMethodNotAllowed {
+			t.Errorf("handleExit con método %s esperaba 405, got %d", method, wExit.Code)
+		}
+
+		reqInstall := httptest.NewRequest(method, "/api/update/install", nil)
+		wInstall := httptest.NewRecorder()
+		s.handleInstallUpdate(wInstall, reqInstall)
+		if wInstall.Code != http.StatusMethodNotAllowed {
+			t.Errorf("handleInstallUpdate con método %s esperaba 405, got %d", method, wInstall.Code)
+		}
+	}
+}
+
