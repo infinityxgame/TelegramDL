@@ -560,11 +560,18 @@ func (e *Engine) collectOldestTerminalLocked(need int) []string {
 func (e *Engine) ClearHistory() (int64, error) {
 	e.mu.Lock()
 	tempPaths := make([]string, 0, len(e.downloads))
+	untrusted := make([]string, 0)
 	for id, item := range e.downloads {
 		if item.Status == "completed" || item.Status == "failed" || item.Status == "cancelled" || item.Status == "skipped" || item.Status == "duplicate" {
-			// Los archivos temporales se borran después, fuera del candado.
+			// Los archivos temporales se borran después, fuera del candado. Si la
+			// ruta guardada no es de fiar, no se toca el disco (defensa en
+			// profundidad; ImportDownloads ya valida las entradas nuevas).
 			if item.FilePath != "" {
-				tempPaths = append(tempPaths, item.FilePath+".temp")
+				if ItemFilePathTrusted(*item, e.config.DownloadFolder) {
+					tempPaths = append(tempPaths, item.FilePath+".temp")
+				} else {
+					untrusted = append(untrusted, id)
+				}
 			}
 
 			key := fmt.Sprintf("%d:%d", item.ChatID, item.MessageID)
@@ -574,6 +581,10 @@ func (e *Engine) ClearHistory() (int64, error) {
 		}
 	}
 	e.mu.Unlock()
+
+	for _, id := range untrusted {
+		log.Printf("[ENGINE] %s", i18n.T("downloader.unsafePathSkipped", id))
+	}
 
 	// Eliminar archivos temporales de descargas no terminadas o canceladas
 	for _, path := range tempPaths {
@@ -612,6 +623,10 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	}
 
 	filePath := item.FilePath
+	// Defensa en profundidad: si la ruta guardada no supera la validación de
+	// componentes, no se borra nada del disco aunque la entrada se elimine de la
+	// base de datos y del historial.
+	trusted := ItemFilePathTrusted(*item, e.config.DownloadFolder)
 	// Un duplicado nunca creó el archivo: su file_path apunta al original.
 	// Tampoco se borra si otra entrada del historial referencia la misma ruta.
 	fileOwned := item.Status != "duplicate" && filePath != ""
@@ -640,7 +655,12 @@ func (e *Engine) DeleteDownload(id string, deleteFile bool) error {
 	}
 
 	if filePath != "" {
-		if fileOwned {
+		if !trusted {
+			// La entrada se borra de la base y del historial, pero el archivo se
+			// deja intacto: una ruta guardada que no supera la validación no es
+			// de fiar y borrarla podría destruir un archivo ajeno.
+			log.Printf("[ENGINE] %s", i18n.T("downloader.unsafePathSkipped", id))
+		} else if fileOwned {
 			// Al eliminar una entrada del historial, el parcial (.temp) ya no
 			// puede reanudarse desde ella y se limpia siempre. El archivo final
 			// solo se elimina cuando el usuario lo solicita explícitamente.
@@ -664,6 +684,90 @@ func sameFilePath(a, b string) bool {
 		return true
 	}
 	return (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && strings.EqualFold(ca, cb)
+}
+
+// ItemFilePathTrusted indica si la ruta guardada en una entrada se puede usar
+// para borrar o abrir el archivo. La ruta se construye con SubFolder y
+// FileName, así que si esos campos no pasan la misma validación que una
+// descarga normal, la entrada viene de una importación manipulada (o de una
+// base editada a mano) y no se debe tocar el disco. Es defensa en profundidad:
+// ImportDownloads ya valida al crear la entrada, pero las bases de datos
+// anteriores a esa corrección pueden contener rutas peligrosas.
+//
+// downloadFolder es la carpeta configurada ahora. Si la ruta guardada queda
+// dentro, la entrada es de fiar. Si no queda dentro puede ser legítima: cambiar
+// DownloadFolder no reescribe las rutas antiguas de SQLite. En ese caso solo se
+// acepta cuando la ruta termina en los componentes saneados de la propia
+// entrada, que es lo que produjo el motor al descargarla; una fila con FilePath
+// ajeno y un nombre que no encaja (por ejemplo, un ejecutable del sistema con
+// FileName «passwd») no pasa esa comprobación.
+func ItemFilePathTrusted(item storage.DownloadItem, downloadFolder string) bool {
+	if strings.TrimSpace(item.FilePath) == "" {
+		return false
+	}
+
+	// Una subcarpeta que no sobrevive a SafeRelativePath intentaba salir de la
+	// carpeta de descargas (absoluta, con «..» o con unidad de Windows).
+	rawSub := strings.TrimSpace(item.SubFolder)
+	sub := SafeRelativePath(rawSub)
+	if rawSub != "" && sub == "" {
+		return false
+	}
+
+	// El nombre no puede traer separadores ni una unidad: es lo que convertiría
+	// el Join en una ruta fuera del destino. Se comprueba sobre el valor
+	// guardado, no sobre el saneado, porque el ataque está en el valor. Un
+	// nombre vacío se admite para no romper entradas antiguas que solo guardaban
+	// FilePath; la importación ya exige un nombre no vacío.
+	rawName := strings.TrimSpace(item.FileName)
+	if rawName != "" && (rawName == "." || rawName == ".." ||
+		strings.ContainsAny(rawName, `/\:`) || filepath.IsAbs(rawName)) {
+		return false
+	}
+
+	// Caso normal: la ruta está dentro de la carpeta de descargas actual.
+	if PathWithin(downloadFolder, item.FilePath) {
+		return true
+	}
+
+	// Carpeta de descargas cambiada: se exige que la ruta acabe exactamente en
+	// la subcarpeta y el nombre saneados que la entrada declara.
+	name := ""
+	if rawName != "" {
+		name = SanitizeFileName(rawName)
+	}
+	relative := sub
+	if name != "" {
+		if relative == "" {
+			relative = name
+		} else {
+			relative = filepath.Join(relative, name)
+		}
+	}
+	if relative == "" {
+		// Entrada antigua sin componentes: fuera de la carpeta actual no hay
+		// forma de verificarla, así que no se toca el disco.
+		return false
+	}
+	return hasPathSuffix(item.FilePath, relative)
+}
+
+// hasPathSuffix informa de si path termina en los mismos segmentos que suffix.
+// La comparación de cada segmento respeta las reglas de mayúsculas del sistema
+// de archivos, igual que sameFilePath.
+func hasPathSuffix(path, suffix string) bool {
+	pathParts := strings.Split(filepath.Clean(path), string(filepath.Separator))
+	suffixParts := strings.Split(filepath.Clean(suffix), string(filepath.Separator))
+	if len(suffixParts) == 0 || len(suffixParts) > len(pathParts) {
+		return false
+	}
+	offset := len(pathParts) - len(suffixParts)
+	for i, part := range suffixParts {
+		if !sameFilePath(pathParts[offset+i], part) {
+			return false
+		}
+	}
+	return true
 }
 
 // chatLabel devuelve el nombre legible de un chat para los mensajes del
@@ -974,17 +1078,43 @@ func (e *Engine) ImportDownloads(payload DownloadsExportPayload) (int, int, erro
 			continue
 		}
 
-		// Recomputar la ruta del archivo con la carpeta de descargas de la maquina actual
-		subFolder := strings.TrimSpace(item.SubFolder)
-		var destDir string
+		// Recomputar la ruta del archivo con la carpeta de descargas de la
+		// máquina actual. El payload es entrada no confiable: SubFolder y
+		// FileName pasan por las mismas validaciones que una descarga normal
+		// antes de unirlos al destino. Si alguno intenta salir de la carpeta de
+		// descargas, la entrada se descarta entera en vez de guardar una ruta
+		// arbitraria en FilePath.
+		rawSubFolder := strings.TrimSpace(item.SubFolder)
+		subFolder := SafeRelativePath(rawSubFolder)
+		if rawSubFolder != "" && subFolder == "" {
+			log.Printf("[ENGINE] %s", i18n.T("downloader.importEntryRejected", item.ID))
+			continue
+		}
+
+		rawFileName := strings.TrimSpace(item.FileName)
+		if rawFileName == "" {
+			log.Printf("[ENGINE] %s", i18n.T("downloader.importEntryRejected", item.ID))
+			continue
+		}
+		fileName := SanitizeFileName(rawFileName)
+
+		destDir := downloadFolder
 		if subFolder != "" {
 			destDir = filepath.Join(downloadFolder, subFolder)
-		} else {
-			destDir = downloadFolder
 		}
-		_ = os.MkdirAll(destDir, 0755)
+		filePath := filepath.Join(destDir, fileName)
+		if !PathWithin(downloadFolder, filePath) {
+			log.Printf("[ENGINE] %s", i18n.T("downloader.importEntryRejected", item.ID))
+			continue
+		}
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			log.Printf("[ENGINE] error creating import directory %s: %v", destDir, err)
+			continue
+		}
 
-		item.FilePath = filepath.Join(destDir, item.FileName)
+		item.SubFolder = subFolder
+		item.FileName = fileName
+		item.FilePath = filePath
 
 		// Si el estado guardado era 'downloading' o vacio, se pasa a 'paused'
 		if item.Status == "downloading" || item.Status == "" {

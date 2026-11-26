@@ -140,6 +140,39 @@ func SafeRelativePath(sub string) string {
 	return filepath.Join(parts...)
 }
 
+// PathWithin informa de si target queda dentro de base. Se usa para validar
+// rutas que vienen de fuera (la importación de descargas) y como última
+// barrera antes de tocar el disco. La comparación es léxica sobre rutas
+// absolutas: no resuelve enlaces simbólicos, que aquí no intervienen porque la
+// ruta se construye con componentes ya saneados y el ataque buscado es el
+// escape por «..» o por ruta absoluta.
+func PathWithin(base, target string) bool {
+	if strings.TrimSpace(base) == "" || strings.TrimSpace(target) == "" {
+		return false
+	}
+
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return false
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		// Volúmenes distintos en Windows: no hay forma de que esté dentro.
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator)) &&
+		!filepath.IsAbs(rel)
+}
+
 // readableName devuelve el título ya limpio y apto para el disco, o cadena
 // vacía si de ese título no queda nada que sirva.
 func readableName(title string) string {

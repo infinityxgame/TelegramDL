@@ -1734,15 +1734,15 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	res := map[string]any{
-		"configured":      st.Configured,
-		"has_credentials": st.HasCredentials,
-		"authorized":      st.Authorized,
-		"authenticated":   st.Authenticated,
-		"state":           st.State,
+		"configured":       st.Configured,
+		"has_credentials":  st.HasCredentials,
+		"authorized":       st.Authorized,
+		"authenticated":    st.Authenticated,
+		"state":            st.State,
 		"connection_error": st.ConnectionError,
-		"phone":           st.Phone,
-		"user":            st.User,
-		"language":        configuredLang,
+		"phone":            st.Phone,
+		"user":             st.User,
+		"language":         configuredLang,
 	}
 	s.jsonResponse(w, http.StatusOK, res)
 }
@@ -2752,6 +2752,21 @@ func (s *Server) handleOpenDownload(w http.ResponseWriter, r *http.Request) {
 		s.errorResponse(w, http.StatusNotFound, i18n.T("server.fileNotFound"))
 		return
 	}
+	// Defensa en profundidad: una ruta guardada por una importación manipulada
+	// (o por una base editada) no debe abrirse. La validación de la entrada se
+	// hace en ImportDownloads; aquí se comprueba antes de tocar el sistema.
+	s.mu.RLock()
+	downloadFolder := s.config.DownloadFolder
+	s.mu.RUnlock()
+	if downloadFolder == "" {
+		downloadFolder = config.GetDefaultDownloadFolder()
+	}
+	if !downloader.ItemFilePathTrusted(*item, downloadFolder) {
+		logbus.Warn(logbus.CatServer, i18n.T("server.unsafeFilePath"),
+			i18n.T("server.requestOriginDetail", requestOrigin(r)))
+		s.errorResponse(w, http.StatusForbidden, i18n.T("server.unsafeFilePath"))
+		return
+	}
 
 	go openInSystem(item.FilePath)
 
@@ -2774,36 +2789,44 @@ func (s *Server) handleOpenFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.mu.RLock()
+	baseDir := s.config.DownloadFolder
+	s.mu.RUnlock()
+	if baseDir == "" {
+		baseDir = config.GetDefaultDownloadFolder()
+	}
+
 	var folderPath string
 	if item.FilePath != "" {
+		// Igual que en handleOpenDownload: no se abre una carpeta derivada de
+		// una ruta que no supera la validación.
+		if !downloader.ItemFilePathTrusted(*item, baseDir) {
+			logbus.Warn(logbus.CatServer, i18n.T("server.unsafeFilePath"),
+				i18n.T("server.requestOriginDetail", requestOrigin(r)))
+			s.errorResponse(w, http.StatusForbidden, i18n.T("server.unsafeFilePath"))
+			return
+		}
 		folderPath = filepath.Dir(item.FilePath)
 	} else if item.SubFolder != "" {
-		s.mu.RLock()
-		baseDir := s.config.DownloadFolder
-		s.mu.RUnlock()
-		if baseDir == "" {
-			baseDir = config.GetDefaultDownloadFolder()
+		// La subcarpeta se valida antes de unirla: una entrada antigua o
+		// manipulada podría traer «..» o una ruta absoluta.
+		subFolder := downloader.SafeRelativePath(item.SubFolder)
+		if subFolder == "" {
+			logbus.Warn(logbus.CatServer, i18n.T("server.unsafeFilePath"),
+				i18n.T("server.requestOriginDetail", requestOrigin(r)))
+			s.errorResponse(w, http.StatusForbidden, i18n.T("server.unsafeFilePath"))
+			return
 		}
-		folderPath = filepath.Join(baseDir, item.SubFolder)
+		folderPath = filepath.Join(baseDir, subFolder)
 	}
 
 	if folderPath == "" {
-		s.mu.RLock()
-		folderPath = s.config.DownloadFolder
-		s.mu.RUnlock()
-		if folderPath == "" {
-			folderPath = config.GetDefaultDownloadFolder()
-		}
+		folderPath = baseDir
 	}
 
 	// Si la subcarpeta concreta no existe en disco, abrir la carpeta de descargas principal
 	if _, err := os.Stat(folderPath); err != nil {
-		s.mu.RLock()
-		folderPath = s.config.DownloadFolder
-		s.mu.RUnlock()
-		if folderPath == "" {
-			folderPath = config.GetDefaultDownloadFolder()
-		}
+		folderPath = baseDir
 	}
 
 	go openInSystem(folderPath)
@@ -4102,7 +4125,6 @@ func (s *Server) handleSystemDisk(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, disk)
 }
 
-
 func (s *Server) handleServerBinding(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.errorResponse(w, http.StatusMethodNotAllowed, i18n.T("server.methodNotAllowed"))
@@ -4982,7 +5004,9 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 			if cmd == "/history" {
 				text, keyboard := s.botHistoryPage(0)
-				if err := n.SendMessageWithKeyboardSync(ctx, text, keyboard); err != nil { log.Printf("[BOT LISTENER] /history: %v", err) }
+				if err := n.SendMessageWithKeyboardSync(ctx, text, keyboard); err != nil {
+					log.Printf("[BOT LISTENER] /history: %v", err)
+				}
 				continue
 			}
 
