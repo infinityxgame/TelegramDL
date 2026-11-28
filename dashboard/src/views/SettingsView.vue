@@ -111,9 +111,12 @@ const setRemoteAccess = async (enabled) => {
       body: JSON.stringify({ remote_enabled: enabled })
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.detail || data.error || t('common.serverError'))
+    if (!response.ok)
+      throw new Error(data.detail || data.error || t('common.serverError'))
     remoteAccessEnabled.value = enabled
-    remoteAccessNotice.value = t('settings.remoteRestartNotice', { host: data.host })
+    remoteAccessNotice.value = t('settings.remoteRestartNotice', {
+      host: data.host
+    })
   } catch (err) {
     remoteAccessNotice.value = err.message
   } finally {

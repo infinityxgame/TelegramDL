@@ -301,6 +301,10 @@ export default {
     clearModalText:
       'The on-screen entries will be removed. The log file on disk is kept.',
     clearModalConfirm: 'Clear',
+    exportModalTitle: 'Export activity log',
+    exportModalText:
+      'The exported file contains system activity history. Personal folder paths and access tokens are automatically redacted for privacy.',
+    exportModalConfirm: 'Download log',
     levelTagError: 'ERROR',
     levelTagWarn: 'WARN',
     levelTagSuccess: 'OK',
@@ -416,7 +420,8 @@ export default {
       'The first time, your system language is detected automatically. Your choice is saved and also applies to the activity log.',
     remoteTitle: 'Remote access',
     remoteAccessToggle: 'Allow access from the network',
-    remoteAccessToggleDesc: 'On: listen on all network interfaces (0.0.0.0). Off: this computer only (127.0.0.1).',
+    remoteAccessToggleDesc:
+      'On: listen on all network interfaces (0.0.0.0). Off: this computer only (127.0.0.1).',
     remoteRestartNotice: 'Saved. Restart TelegramDL to apply {host}.',
 
     remoteSub: 'Token to control TelegramDL from another device',
@@ -590,12 +595,16 @@ export default {
     apiHashPlaceholder: 'Example: 0123456789abcdef0123456789abcdef',
     saveContinue: 'Save and Continue',
     connectingTitle: 'Connecting to Telegram…',
-    connectingText: 'Your API credentials have been saved. Waiting for Telegram to finish connecting before continuing.',
+    connectingText:
+      'Your API credentials have been saved. Waiting for Telegram to finish connecting before continuing.',
     connectFailedTitle: 'Credentials saved, connection not ready',
-    connectFailedText: 'The credentials are saved. Retry the connection check or edit them if needed.',
+    connectFailedText:
+      'The credentials are saved. Retry the connection check or edit them if needed.',
     connectRetry: 'Retry connection',
-    connectTimeout: 'Telegram did not finish connecting in time. Your credentials were saved; retry without entering them again.',
-    connectFailed: 'Could not check Telegram connection. Your credentials were saved; retry the connection.',
+    connectTimeout:
+      'Telegram did not finish connecting in time. Your credentials were saved; retry without entering them again.',
+    connectFailed:
+      'Could not check Telegram connection. Your credentials were saved; retry the connection.',
     connectErrorDetails: 'Telegram connection reports: {error}',
     editCredentials: 'Edit credentials',
     phoneTitle: 'Phone Number',

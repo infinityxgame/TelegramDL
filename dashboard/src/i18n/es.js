@@ -308,6 +308,10 @@ export default {
     clearModalText:
       'Se borrarán las entradas en pantalla. El archivo de registro en disco se conserva.',
     clearModalConfirm: 'Limpiar',
+    exportModalTitle: 'Exportar registro de actividad',
+    exportModalText:
+      'El archivo exportado contiene el historial de actividad del sistema. Las rutas personales de carpetas y los tokens de acceso han sido redactados automáticamente por seguridad.',
+    exportModalConfirm: 'Descargar log',
     levelTagError: 'ERROR',
     levelTagWarn: 'AVISO',
     levelTagSuccess: 'OK',
@@ -428,7 +432,8 @@ export default {
       'La primera vez se detecta el idioma de tu sistema automáticamente. Tu elección se guarda y se aplica también al registro de actividad.',
     remoteTitle: 'Acceso remoto',
     remoteAccessToggle: 'Permitir acceso desde la red',
-    remoteAccessToggleDesc: 'Activado: escucha en todas las interfaces (0.0.0.0). Desactivado: solo este equipo (127.0.0.1).',
+    remoteAccessToggleDesc:
+      'Activado: escucha en todas las interfaces (0.0.0.0). Desactivado: solo este equipo (127.0.0.1).',
     remoteRestartNotice: 'Guardado. Reinicia TelegramDL para aplicar {host}.',
 
     remoteSub: 'Token para controlar TelegramDL desde otro dispositivo',
@@ -603,12 +608,16 @@ export default {
     apiHashPlaceholder: 'Ejemplo: 0123456789abcdef0123456789abcdef',
     saveContinue: 'Guardar y Continuar',
     connectingTitle: 'Conectando con Telegram…',
-    connectingText: 'Las credenciales se guardaron. Esperando a que Telegram termine de conectar para continuar.',
+    connectingText:
+      'Las credenciales se guardaron. Esperando a que Telegram termine de conectar para continuar.',
     connectFailedTitle: 'Credenciales guardadas, conexión pendiente',
-    connectFailedText: 'Las credenciales están guardadas. Reintenta comprobar la conexión o edítalas si es necesario.',
+    connectFailedText:
+      'Las credenciales están guardadas. Reintenta comprobar la conexión o edítalas si es necesario.',
     connectRetry: 'Reintentar conexión',
-    connectTimeout: 'Telegram no terminó de conectar a tiempo. Las credenciales se guardaron; puedes reintentar sin introducirlas otra vez.',
-    connectFailed: 'No se pudo comprobar la conexión con Telegram. Las credenciales se guardaron; reintenta.',
+    connectTimeout:
+      'Telegram no terminó de conectar a tiempo. Las credenciales se guardaron; puedes reintentar sin introducirlas otra vez.',
+    connectFailed:
+      'No se pudo comprobar la conexión con Telegram. Las credenciales se guardaron; reintenta.',
     connectErrorDetails: 'Telegram informa este error de conexión: {error}',
     editCredentials: 'Editar credenciales',
     phoneTitle: 'Número de Teléfono',

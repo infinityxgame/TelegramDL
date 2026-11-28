@@ -115,3 +115,48 @@ func TestDailyLogFileRotation(t *testing.T) {
 		t.Errorf("el log del día 20 no contiene 'entrada dia 20': %s", string(data2))
 	}
 }
+
+// SEV-13: RedactSensitiveData debe redactar rutas de usuario, tokens e IPs remotas.
+func TestRedactSensitiveData(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = "/home/testuser"
+	}
+
+	input := "Path: " + home + "/downloads, Authorization: Bearer secrettoken123, IP: 192.168.1.50, Loopback: 127.0.0.1, Token: token=secretabc"
+	redacted := RedactSensitiveData(input)
+
+	if strings.Contains(redacted, home) {
+		t.Errorf("el texto redactado aún contiene la ruta home: %s", redacted)
+	}
+	if strings.Contains(redacted, "secrettoken123") {
+		t.Errorf("el texto redactado aún contiene el token Bearer: %s", redacted)
+	}
+	if strings.Contains(redacted, "192.168.1.50") {
+		t.Errorf("el texto redactado aún contiene la IP remota: %s", redacted)
+	}
+	if strings.Contains(redacted, "secretabc") {
+		t.Errorf("el texto redactado aún contiene el parámetro token: %s", redacted)
+	}
+	if !strings.Contains(redacted, "127.0.0.1") {
+		t.Errorf("el texto redactado debe preservar loopback 127.0.0.1: %s", redacted)
+	}
+	if !strings.Contains(redacted, "[HOME]") {
+		t.Errorf("el texto redactado debe sustituir home por [HOME]: %s", redacted)
+	}
+}
+
+func TestExportTextRedactsSensitiveInfo(t *testing.T) {
+	b := NewBus(16)
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		b.Emit(LevelInfo, CatSystem, "Iniciando descarga en "+home+"/Downloads", "Bearer abcdef123456")
+		exported := b.ExportText()
+		if strings.Contains(exported, home) {
+			t.Errorf("ExportText() no debe incluir la ruta home del usuario: %s", exported)
+		}
+		if strings.Contains(exported, "abcdef123456") {
+			t.Errorf("ExportText() no debe incluir el token Bearer: %s", exported)
+		}
+	}
+}

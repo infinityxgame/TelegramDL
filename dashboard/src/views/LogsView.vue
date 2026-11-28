@@ -257,26 +257,37 @@ const copyAll = async () => {
   }
 }
 
-const exportFile = async () => {
-  try {
-    const response = await fetch('/api/logs/export', {
-      headers: { ...authHeaders() }
-    })
-    if (!response.ok) throw new Error(t('logs.exportError'))
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-    link.href = url
-    link.download = `telegramdl-${stamp}.log`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
-    props.notify(t('logs.exported'))
-  } catch (err) {
-    error.value = err.message || t('logs.exportError')
-  }
+const exportFile = () => {
+  openConfirm({
+    title: t('logs.exportModalTitle'),
+    message: t('logs.exportModalText'),
+    confirmText: t('logs.exportModalConfirm'),
+    type: 'info',
+    action: async () => {
+      try {
+        const response = await fetch('/api/logs/export', {
+          headers: { ...authHeaders() }
+        })
+        if (!response.ok) throw new Error(t('logs.exportError'))
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        const stamp = new Date()
+          .toISOString()
+          .slice(0, 19)
+          .replace(/[:T]/g, '-')
+        link.href = url
+        link.download = `telegramdl-${stamp}.log`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        setTimeout(() => URL.revokeObjectURL(url), 2000)
+        props.notify(t('logs.exported'))
+      } catch (err) {
+        error.value = err.message || t('logs.exportError')
+      }
+    }
+  })
 }
 
 const clearLogs = () => {

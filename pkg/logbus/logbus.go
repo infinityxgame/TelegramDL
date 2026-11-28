@@ -411,7 +411,46 @@ func (b *Bus) Clear() {
 	b.mu.Unlock()
 }
 
-// ExportText devuelve todo el registro en memoria como texto plano.
+var (
+	bearerTokenRegex = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9_\-\.]+\b`)
+	tokenParamRegex  = regexp.MustCompile(`(?i)\b(token|api_token|bot_token|access_token|secret|password|api_id|api_hash)=([^\s&"'` + "`" + `]+)`)
+	ipv4Regex        = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+)
+
+// RedactSensitiveData sanitiza un texto de log redactando rutas personales del usuario,
+// tokens de autenticación y direcciones IP remotas (SEV-13).
+func RedactSensitiveData(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		text = strings.ReplaceAll(text, home, "[HOME]")
+		altHomeSlash := strings.ReplaceAll(home, "\\", "/")
+		if altHomeSlash != home {
+			text = strings.ReplaceAll(text, altHomeSlash, "[HOME]")
+		}
+		altHomeBack := strings.ReplaceAll(home, "/", "\\")
+		if altHomeBack != home {
+			text = strings.ReplaceAll(text, altHomeBack, "[HOME]")
+		}
+	}
+
+	text = bearerTokenRegex.ReplaceAllString(text, "Bearer [REDACTED_TOKEN]")
+	text = tokenParamRegex.ReplaceAllString(text, "$1=[REDACTED]")
+	text = ipv4Regex.ReplaceAllStringFunc(text, func(ip string) string {
+		if ip == "127.0.0.1" || ip == "0.0.0.0" {
+			return ip
+		}
+		return "[REDACTED_IP]"
+	})
+
+	return text
+}
+
+// ExportText devuelve todo el registro en memoria como texto plano, redactando
+// los datos sensibles (rutas de usuario, tokens, direcciones IP) para su
+// exportación segura (SEV-13).
 func (b *Bus) ExportText() string {
 	b.mu.RLock()
 	entries := make([]Entry, len(b.entries))
@@ -419,13 +458,14 @@ func (b *Bus) ExportText() string {
 	b.mu.RUnlock()
 
 	var sb strings.Builder
+	sb.WriteString("# TelegramDL Log Export - Sensitive data redacted for privacy\n")
 	for _, e := range entries {
 		sec := int64(e.Time)
 		nsec := int64((e.Time - float64(sec)) * 1e9)
 		sb.WriteString(formatLine(time.Unix(sec, nsec), e))
 		sb.WriteString("\n")
 	}
-	return sb.String()
+	return RedactSensitiveData(sb.String())
 }
 
 // ---------------------------------------------------------------------------

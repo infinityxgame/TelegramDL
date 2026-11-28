@@ -1,6 +1,6 @@
 import { onUnmounted, ref } from 'vue'
 
-export function useQRLogin({ authHeaders, t, authStatus, emit, apiCall }) {
+export function useQRLogin({ authHeaders, t, emit, apiCall }) {
   const qrImage = ref('')
   const qrStatus = ref('')
   const qrError = ref('')

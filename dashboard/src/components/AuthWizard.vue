@@ -132,7 +132,8 @@ const loading = ref(false)
 const errorMessage = ref('')
 const connectionWarning = ref('')
 const credentialsSaved = ref(
-  props.authStatus.has_credentials === true && props.authStatus.state === 'CONNECTING'
+  props.authStatus.has_credentials === true &&
+    props.authStatus.state === 'CONNECTING'
 )
 const connecting = ref(false)
 // Un error pertenece al paso en el que se produjo: al movernos de paso deja de
@@ -247,10 +248,20 @@ const pollConnectionStatus = async () => {
       } catch {
         throw new Error(t('auth.errInvalidResponse'))
       }
-      if (!res.ok) throw new Error(data.detail || data.error || t('auth.errProcess'))
+      if (!res.ok)
+        throw new Error(data.detail || data.error || t('auth.errProcess'))
       const state = data.state
-      if (data.connection_error) connectionWarning.value = t('auth.connectErrorDetails', { error: data.connection_error })
-      if (state === 'NEED_PHONE' || state === 'NOT_LOGGED_IN' || state === 'WAITING_CODE' || state === 'WAITING_2FA' || state === 'LOGGED_IN') {
+      if (data.connection_error)
+        connectionWarning.value = t('auth.connectErrorDetails', {
+          error: data.connection_error
+        })
+      if (
+        state === 'NEED_PHONE' ||
+        state === 'NOT_LOGGED_IN' ||
+        state === 'WAITING_CODE' ||
+        state === 'WAITING_2FA' ||
+        state === 'LOGGED_IN'
+      ) {
         emit('auth-success', data)
         connectionWarning.value = ''
         credentialsSaved.value = true
@@ -553,109 +564,139 @@ const cancelBack = () => {
             <Loader2 v-if="connecting" class="spin icon-accent" :size="28" />
             <AlertCircle v-else class="icon-accent" :size="28" />
             <div>
-              <h3>{{ connecting ? t('auth.connectingTitle') : t('auth.connectFailedTitle') }}</h3>
-              <p>{{ connecting ? t('auth.connectingText') : t('auth.connectFailedText') }}</p>
+              <h3>
+                {{
+                  connecting
+                    ? t('auth.connectingTitle')
+                    : t('auth.connectFailedTitle')
+                }}
+              </h3>
+              <p>
+                {{
+                  connecting
+                    ? t('auth.connectingText')
+                    : t('auth.connectFailedText')
+                }}
+              </p>
             </div>
           </div>
-          <div v-if="errorMessage" class="auth-alert danger" role="alert" aria-live="polite">
+          <div
+            v-if="errorMessage"
+            class="auth-alert danger"
+            role="alert"
+            aria-live="polite"
+          >
             <AlertCircle :size="18" class="alert-icon" />
             <span>{{ errorMessage }}</span>
           </div>
-          <div v-if="connectionWarning" class="info-banner" role="status" aria-live="polite">
+          <div
+            v-if="connectionWarning"
+            class="info-banner"
+            role="status"
+            aria-live="polite"
+          >
             <Info :size="16" />
             <span>{{ connectionWarning }}</span>
           </div>
           <div class="button-group">
-            <button class="auth-button primary full-width" :disabled="connecting" @click="retryConnection">
+            <button
+              class="auth-button primary full-width"
+              :disabled="connecting"
+              @click="retryConnection"
+            >
               <Loader2 v-if="connecting" class="spin" :size="18" />
               <span v-else>{{ t('auth.connectRetry') }}</span>
             </button>
-            <button class="auth-button secondary full-width" :disabled="connecting" @click="credentialsSaved = false">
+            <button
+              class="auth-button secondary full-width"
+              :disabled="connecting"
+              @click="credentialsSaved = false"
+            >
               {{ t('auth.editCredentials') }}
             </button>
           </div>
         </div>
         <div v-else>
-        <div class="step-intro">
-          <KeyRound :size="28" class="icon-accent" />
-          <div>
-            <h3>{{ t('auth.credsTitle') }}</h3>
-            <p>{{ t('auth.credsText') }}</p>
+          <div class="step-intro">
+            <KeyRound :size="28" class="icon-accent" />
+            <div>
+              <h3>{{ t('auth.credsTitle') }}</h3>
+              <p>{{ t('auth.credsText') }}</p>
+            </div>
           </div>
-        </div>
 
-        <div
-          v-if="errorMessage"
-          class="auth-alert danger"
-          role="alert"
-          aria-live="polite"
-        >
-          <AlertCircle :size="18" class="alert-icon" />
-          <span>{{ errorMessage }}</span>
-        </div>
+          <div
+            v-if="errorMessage"
+            class="auth-alert danger"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertCircle :size="18" class="alert-icon" />
+            <span>{{ errorMessage }}</span>
+          </div>
 
-        <div class="info-banner">
-          <Info :size="16" />
-          <span>
-            {{ t('auth.credsBannerA') }}
-            <a
-              href="https://my.telegram.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click="openExternal('https://my.telegram.org', $event)"
-              >my.telegram.org</a
-            >
-            {{ bannerBParts[0] }}<i>API development tools</i
-            >{{ bannerBParts[1] }}
-          </span>
-        </div>
+          <div class="info-banner">
+            <Info :size="16" />
+            <span>
+              {{ t('auth.credsBannerA') }}
+              <a
+                href="https://my.telegram.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click="openExternal('https://my.telegram.org', $event)"
+                >my.telegram.org</a
+              >
+              {{ bannerBParts[0] }}<i>API development tools</i
+              >{{ bannerBParts[1] }}
+            </span>
+          </div>
 
-        <div class="form-group">
-          <label>TGDL_API_ID</label>
-          <input
-            v-model="apiId"
-            type="text"
-            :placeholder="t('auth.apiIdPlaceholder')"
-            @keyup.enter="saveCredentials"
-          />
-        </div>
+          <div class="form-group">
+            <label>TGDL_API_ID</label>
+            <input
+              v-model="apiId"
+              type="text"
+              :placeholder="t('auth.apiIdPlaceholder')"
+              @keyup.enter="saveCredentials"
+            />
+          </div>
 
-        <div class="form-group">
-          <label>TGDL_API_HASH</label>
-          <!-- SEC-34: el hash es un secreto de la app, no debe verse en pantalla
+          <div class="form-group">
+            <label>TGDL_API_HASH</label>
+            <!-- SEC-34: el hash es un secreto de la app, no debe verse en pantalla
                (ni en capturas/grabaciones); autocomplete="off" igual que el campo
                de token de RemoteLogin para que el navegador no lo guarde. -->
-          <input
-            v-model="apiHash"
-            type="password"
-            :placeholder="t('auth.apiHashPlaceholder')"
-            autocomplete="off"
-            @keyup.enter="saveCredentials"
-          />
-        </div>
+            <input
+              v-model="apiHash"
+              type="password"
+              :placeholder="t('auth.apiHashPlaceholder')"
+              autocomplete="off"
+              @keyup.enter="saveCredentials"
+            />
+          </div>
 
-        <div class="button-group">
-          <button
-            v-if="stepOverride === 1 && serverStep > 1"
-            class="auth-button secondary btn-back"
-            :disabled="loading"
-            @click="cancelBack"
-          >
-            <ArrowLeft :size="16" />
-            <span>{{ t('common.cancel') }}</span>
-          </button>
-          <button
-            class="auth-button primary"
-            :disabled="loading"
-            @click="saveCredentials"
-          >
-            <Loader2 v-if="loading" class="spin" :size="18" />
-            <template v-else>
-              <span>{{ t('auth.saveContinue') }}</span>
-              <ArrowRight :size="18" />
-            </template>
-          </button>
-        </div>
+          <div class="button-group">
+            <button
+              v-if="stepOverride === 1 && serverStep > 1"
+              class="auth-button secondary btn-back"
+              :disabled="loading"
+              @click="cancelBack"
+            >
+              <ArrowLeft :size="16" />
+              <span>{{ t('common.cancel') }}</span>
+            </button>
+            <button
+              class="auth-button primary"
+              :disabled="loading"
+              @click="saveCredentials"
+            >
+              <Loader2 v-if="loading" class="spin" :size="18" />
+              <template v-else>
+                <span>{{ t('auth.saveContinue') }}</span>
+                <ArrowRight :size="18" />
+              </template>
+            </button>
+          </div>
         </div>
       </div>
 

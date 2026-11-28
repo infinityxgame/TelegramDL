@@ -798,7 +798,9 @@ const deleteDownload = async (item) => {
         { method: 'DELETE' }
       )
       showMessage(
-        deleteFile ? t('downloads.deletedMsg') : t('downloads.historyRemovedMsg')
+        deleteFile
+          ? t('downloads.deletedMsg')
+          : t('downloads.historyRemovedMsg')
       )
       await fetchDownloads()
     } catch (err) {
