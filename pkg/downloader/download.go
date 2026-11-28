@@ -165,7 +165,11 @@ func (e *Engine) executeDownload(ctx context.Context, itemID string) error {
 		destination = filepath.Join(downloadFolder, sub)
 	}
 
-	_ = os.MkdirAll(destination, 0755)
+	if err := os.MkdirAll(destination, 0755); err != nil {
+		log.Printf("[DOWNLOAD ERROR] %s: %v", i18n.T("listener.mkdirError", destination, err), err)
+		logbus.Error(logbus.CatDownloads, i18n.T("listener.mkdirError", destination, err.Error()), "")
+		return fmt.Errorf("error creando directorio de destino %s: %w", destination, err)
+	}
 
 	e.mu.Lock()
 	cachedMsg := e.messageCache[itemID]

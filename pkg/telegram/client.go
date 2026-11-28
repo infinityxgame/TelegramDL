@@ -43,17 +43,17 @@ type UserInfo struct {
 // si muestra el formulario de configuración, y devolverlos convertía el token
 // de acceso en una vía para leer las credenciales de Telegram del usuario.
 type AuthStatus struct {
-	Configured     bool      `json:"configured"`
-	HasCredentials bool      `json:"has_credentials"`
-	Authorized     bool      `json:"authorized"`
-	Authenticated  bool      `json:"authenticated"`
-	State          string    `json:"state"`
-	Phone          string    `json:"phone_number,omitempty"`
-	PhoneLegacy    string    `json:"phone,omitempty"`
-	Online         bool      `json:"online"`
+	Configured      bool      `json:"configured"`
+	HasCredentials  bool      `json:"has_credentials"`
+	Authorized      bool      `json:"authorized"`
+	Authenticated   bool      `json:"authenticated"`
+	State           string    `json:"state"`
+	Phone           string    `json:"phone_number,omitempty"`
+	PhoneLegacy     string    `json:"phone,omitempty"`
+	Online          bool      `json:"online"`
 	ConnectionError string    `json:"connection_error,omitempty"`
-	SessionKnown   bool      `json:"session_known"`
-	User           *UserInfo `json:"user,omitempty"`
+	SessionKnown    bool      `json:"session_known"`
+	User            *UserInfo `json:"user,omitempty"`
 }
 
 type ClientManager struct {
@@ -779,7 +779,9 @@ func (cm *ClientManager) rememberAuthorized(user *tg.User) {
 		if fp == "" {
 			fp = fmt.Sprintf("user_%d", user.ID)
 		}
-		_ = store.MarkTelegramAuthorized(fp, *uInfo)
+		if err := store.MarkTelegramAuthorized(fp, *uInfo); err != nil {
+			log.Printf("[TG CLIENT] error al guardar evidencia de sesión autorizada: %v", err)
+		}
 	}
 }
 
@@ -811,12 +813,12 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	}
 	if client == nil {
 		return AuthStatus{
-			Configured:     true,
-			HasCredentials: true,
-			Authorized:     false,
-			Authenticated:  false,
-			State:          "CONNECTING",
-			Online:         false,
+			Configured:      true,
+			HasCredentials:  true,
+			Authorized:      false,
+			Authenticated:   false,
+			State:           "CONNECTING",
+			Online:          false,
 			ConnectionError: connectionError,
 		}
 	}
@@ -845,16 +847,16 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	if err != nil {
 		if sessionKnown && savedUser != nil {
 			return AuthStatus{
-				Configured:     true,
-				HasCredentials: true,
-				Authorized:     true,
-				Authenticated:  true,
-				State:          "CONNECTING",
-				Phone:          savedUser.Phone,
-				PhoneLegacy:    savedUser.Phone,
-				SessionKnown:   true,
-				Online:         false,
-				User:           savedUser,
+				Configured:      true,
+				HasCredentials:  true,
+				Authorized:      true,
+				Authenticated:   true,
+				State:           "CONNECTING",
+				Phone:           savedUser.Phone,
+				PhoneLegacy:     savedUser.Phone,
+				SessionKnown:    true,
+				Online:          false,
+				User:            savedUser,
 				ConnectionError: connectionError,
 			}
 		}
@@ -871,12 +873,12 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 			}
 		}
 		return AuthStatus{
-			Configured:     true,
-			HasCredentials: true,
-			Authorized:     false,
-			Authenticated:  false,
-			State:          "CONNECTING",
-			Online:         false,
+			Configured:      true,
+			HasCredentials:  true,
+			Authorized:      false,
+			Authenticated:   false,
+			State:           "CONNECTING",
+			Online:          false,
 			ConnectionError: connectionError,
 		}
 	}
@@ -896,16 +898,16 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 	if statusErr != nil {
 		if sessionKnown && savedUser != nil {
 			return AuthStatus{
-				Configured:     true,
-				HasCredentials: true,
-				Authorized:     true,
-				Authenticated:  true,
-				State:          "CONNECTING",
-				Phone:          savedUser.Phone,
-				PhoneLegacy:    savedUser.Phone,
-				SessionKnown:   true,
-				Online:         false,
-				User:           savedUser,
+				Configured:      true,
+				HasCredentials:  true,
+				Authorized:      true,
+				Authenticated:   true,
+				State:           "CONNECTING",
+				Phone:           savedUser.Phone,
+				PhoneLegacy:     savedUser.Phone,
+				SessionKnown:    true,
+				Online:          false,
+				User:            savedUser,
 				ConnectionError: connectionError,
 			}
 		}
@@ -1007,7 +1009,9 @@ func (cm *ClientManager) GetAuthStatus(ctx context.Context) AuthStatus {
 		if fp == "" {
 			fp = fmt.Sprintf("user_%d", user.ID)
 		}
-		_ = store.MarkTelegramAuthorized(fp, *uInfo)
+		if err := store.MarkTelegramAuthorized(fp, *uInfo); err != nil {
+			log.Printf("[TG CLIENT] error al guardar evidencia de sesión autorizada: %v", err)
+		}
 	}
 
 	return AuthStatus{
@@ -1387,13 +1391,17 @@ func (cm *ClientManager) VerifyCode(ctx context.Context, phone, code, phoneCodeH
 		store := cm.sessionStore
 		cm.mu.Unlock()
 		if store != nil {
-			_ = store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo)
+			if err := store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo); err != nil {
+				log.Printf("[TG CLIENT] error al guardar evidencia de sesión autorizada: %v", err)
+			}
 		}
 	}
 
 	if proxyRestart && apiID != 0 && apiHash != "" {
 		go func() {
-			_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+			if err := cm.InitClient(strconv.Itoa(apiID), apiHash); err != nil {
+				log.Printf("[TG CLIENT] error al reiniciar cliente tras cambio de proxy: %v", err)
+			}
 		}()
 	}
 
@@ -1453,13 +1461,17 @@ func (cm *ClientManager) Verify2FA(ctx context.Context, password string) error {
 		store := cm.sessionStore
 		cm.mu.Unlock()
 		if store != nil {
-			_ = store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo)
+			if err := store.MarkTelegramAuthorized(fmt.Sprintf("%d", user.ID), *uInfo); err != nil {
+				log.Printf("[TG CLIENT] error al guardar evidencia de sesión autorizada: %v", err)
+			}
 		}
 	}
 
 	if proxyRestart && apiID != 0 && apiHash != "" {
 		go func() {
-			_ = cm.InitClient(strconv.Itoa(apiID), apiHash)
+			if err := cm.InitClient(strconv.Itoa(apiID), apiHash); err != nil {
+				log.Printf("[TG CLIENT] error al reiniciar cliente tras cambio de proxy: %v", err)
+			}
 		}()
 	}
 
@@ -1602,21 +1614,29 @@ func (cm *ClientManager) Logout(ctx context.Context) error {
 
 	if rawClient != nil {
 		logoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_, _ = rawClient.AuthLogOut(logoutCtx)
+		if _, err := rawClient.AuthLogOut(logoutCtx); err != nil {
+			log.Printf("[TG CLIENT] aviso: AuthLogOut raw finalizó con error: %v", err)
+		}
 		cancel()
 	} else if client != nil {
 		logoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_, _ = client.API().AuthLogOut(logoutCtx)
+		if _, err := client.API().AuthLogOut(logoutCtx); err != nil {
+			log.Printf("[TG CLIENT] aviso: AuthLogOut finalizó con error: %v", err)
+		}
 		cancel()
 	}
 
 	cm.stopRunning()
 
 	if sessionPath != "" {
-		_ = os.Remove(sessionPath)
+		if err := os.Remove(sessionPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[TG CLIENT] error al eliminar archivo de sesión %s: %v", sessionPath, err)
+		}
 	}
 	if store != nil {
-		_ = store.ClearTelegramAuthEvidence()
+		if err := store.ClearTelegramAuthEvidence(); err != nil {
+			log.Printf("[TG CLIENT] error al limpiar evidencia de sesión: %v", err)
+		}
 	}
 
 	cm.mu.Lock()

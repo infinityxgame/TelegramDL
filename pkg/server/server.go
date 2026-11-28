@@ -2615,7 +2615,11 @@ func (s *Server) handleDownloadsRoute(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		_ = s.downloader.DeleteDownload(subpath, delFile)
+		if err := s.downloader.DeleteDownload(subpath, delFile); err != nil {
+			logbus.Error(logbus.CatDownloads, i18n.T("downloader.deleteDownloadError", err.Error()), "")
+			s.errorResponse(w, http.StatusInternalServerError, i18n.T("downloader.deleteDownloadError", err.Error()))
+			return
+		}
 		s.listener.RemoveItem(subpath)
 		s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
@@ -2724,7 +2728,11 @@ func (s *Server) handleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = s.downloader.DeleteDownload(id, delFile)
+	if err := s.downloader.DeleteDownload(id, delFile); err != nil {
+		logbus.Error(logbus.CatDownloads, i18n.T("downloader.deleteDownloadError", err.Error()), "")
+		s.errorResponse(w, http.StatusInternalServerError, i18n.T("downloader.deleteDownloadError", err.Error()))
+		return
+	}
 	s.listener.RemoveItem(id)
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -4727,16 +4735,28 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 	// Obtener el último update_id al arrancar para no procesar mensajes antiguos acumulados
 	initReqURL := fmt.Sprintf("%s?offset=-1&limit=1", apiURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, initReqURL, nil)
-	if err == nil {
+	if err != nil {
+		if ctx.Err() == nil {
+			log.Printf("[BOT LISTENER] error al crear petición de inicialización: %v", err)
+			logbus.Warn(logbus.CatListener, "Error al crear petición de inicialización del bot de Telegram", err.Error())
+		}
+	} else {
 		resp, err := client.Do(req)
-		if err == nil {
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Printf("[BOT LISTENER] error al ejecutar petición de inicialización: %v", err)
+				logbus.Warn(logbus.CatListener, "Error al ejecutar petición de inicialización del bot de Telegram", err.Error())
+			}
+		} else {
 			var initRes struct {
 				OK     bool `json:"ok"`
 				Result []struct {
 					UpdateID int `json:"update_id"`
 				} `json:"result"`
 			}
-			if json.NewDecoder(resp.Body).Decode(&initRes) == nil && initRes.OK && len(initRes.Result) > 0 {
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&initRes); decodeErr != nil {
+				log.Printf("[BOT LISTENER] error al decodificar respuesta de inicialización: %v", decodeErr)
+			} else if initRes.OK && len(initRes.Result) > 0 {
 				offset = initRes.Result[0].UpdateID + 1
 			}
 			resp.Body.Close()
@@ -4753,6 +4773,11 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 		pollURL := fmt.Sprintf("%s?offset=%d&timeout=20", apiURL, offset)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, pollURL, nil)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("[BOT LISTENER] error al crear petición de polling: %v", err)
+			logbus.Warn(logbus.CatListener, "Error al crear petición de bot listener", err.Error())
 			select {
 			case <-ctx.Done():
 				return
@@ -4763,6 +4788,11 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 
 		resp, err := client.Do(req)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("[BOT LISTENER] error al consultar Telegram Bot API: %v", err)
+			logbus.Warn(logbus.CatListener, "Error al consultar Telegram Bot API", err.Error())
 			select {
 			case <-ctx.Done():
 				return
@@ -4780,6 +4810,16 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 		resp.Body.Close()
 
 		if decodeErr != nil || !res.OK {
+			if ctx.Err() != nil {
+				return
+			}
+			if decodeErr != nil {
+				log.Printf("[BOT LISTENER] error al decodificar respuesta del bot: %v", decodeErr)
+				logbus.Warn(logbus.CatListener, "Error al decodificar respuesta del bot listener", decodeErr.Error())
+			} else if !res.OK {
+				log.Printf("[BOT LISTENER] respuesta no OK del bot listener de Telegram")
+				logbus.Warn(logbus.CatListener, "Respuesta no OK de Telegram Bot API", "")
+			}
 			select {
 			case <-ctx.Done():
 				return
