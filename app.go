@@ -50,6 +50,7 @@ type App struct {
 	tray               trayState
 	lastTrayNotifyTime time.Time
 	shutdownOnce       sync.Once
+	iconPath           string
 }
 
 func NewApp(assets fs.FS) (*App, error) {
@@ -439,12 +440,38 @@ func (a *App) getAppIconPngPath() string {
 	if len(appIconPng) == 0 {
 		return ""
 	}
-	iconPath := filepath.Join(os.TempDir(), "tgdown_appicon.png")
-	if _, err := os.Stat(iconPath); os.IsNotExist(err) {
-		if err := os.WriteFile(iconPath, appIconPng, 0644); err != nil {
-			return ""
+	a.mu.Lock()
+	if a.iconPath != "" {
+		if _, err := os.Stat(a.iconPath); err == nil {
+			p := a.iconPath
+			a.mu.Unlock()
+			return p
 		}
 	}
+	a.mu.Unlock()
+
+	config.InitPaths()
+	dir := config.DataDir
+	if dir == "" {
+		dir = os.TempDir()
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return ""
+	}
+
+	iconPath := filepath.Join(dir, "tgdown_appicon.png")
+	if _, err := os.Stat(iconPath); os.IsNotExist(err) {
+		if err := os.WriteFile(iconPath, appIconPng, 0600); err != nil {
+			return ""
+		}
+	} else {
+		_ = os.Chmod(iconPath, 0600)
+	}
+
+	a.mu.Lock()
+	a.iconPath = iconPath
+	a.mu.Unlock()
+
 	return iconPath
 }
 
