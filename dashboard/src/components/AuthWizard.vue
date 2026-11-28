@@ -1501,6 +1501,14 @@ const cancelBack = () => {
   min-width: 0;
 }
 
+/* El selector de método (teléfono / QR) debe conservar sus pestañas
+   horizontales; no es un grupo vertical de campos del formulario. */
+.step-content > .auth-method-switch {
+  flex-direction: row;
+  align-self: center;
+  gap: 4px;
+}
+
 .step-intro {
   display: flex;
   gap: 14px;
