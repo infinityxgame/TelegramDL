@@ -1117,6 +1117,7 @@ const cancelBack = () => {
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
   animation: modalRise 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
+  min-height: 0;
   /* Si el contenido no cabe en la ventana, la tarjeta se desplaza por dentro
      en vez de salirse por abajo. */
   max-height: calc(100vh - 40px);
@@ -1491,6 +1492,15 @@ const cancelBack = () => {
   gap: 18px;
 }
 
+/* Cada paso contiene un wrapper interno; el gap de .step-content no se
+   aplicaba a sus campos y terminaba pegando el banner, inputs y botones. */
+.step-content > div {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
 .step-intro {
   display: flex;
   gap: 14px;
@@ -1830,8 +1840,47 @@ const cancelBack = () => {
     gap: 12px;
   }
 
+  .step-content > div {
+    gap: 10px;
+  }
+
   .qr-code-frame {
     width: min(210px, 100%);
+  }
+}
+
+/* En ventanas estrechas, los controles del encabezado pueden bajar de línea
+   y el stepper conserva sus cuatro etapas sin forzar el ancho de la tarjeta. */
+@media (max-width: 720px) {
+  .auth-header {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  .auth-title-box {
+    flex: 1 1 calc(100% - 60px);
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .stepper {
+    gap: 3px;
+  }
+
+  .step-item {
+    gap: 4px;
+  }
+
+  .step-label {
+    font-size: 10px;
+  }
+
+  .step-divider {
+    min-width: 3px;
+    margin: 0 1px;
   }
 }
 
