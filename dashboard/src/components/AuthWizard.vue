@@ -1494,15 +1494,16 @@ const cancelBack = () => {
 
 /* Cada paso contiene un wrapper interno; el gap de .step-content no se
    aplicaba a sus campos y terminaba pegando el banner, inputs y botones. */
-.step-content > div {
+/* Aplicar el apilado solo a los contenedores de cada paso. Los bloques
+   .step-intro deben conservar su distribución horizontal (icono + textos). */
+.step-content > div:not(.step-intro):not(.auth-method-switch):not(.qr-login-panel) {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
 }
 
-/* El selector de método (teléfono / QR) debe conservar sus pestañas
-   horizontales; no es un grupo vertical de campos del formulario. */
+/* El selector de método mantiene sus pestañas en una sola fila. */
 .step-content > .auth-method-switch {
   flex-direction: row;
   align-self: center;
