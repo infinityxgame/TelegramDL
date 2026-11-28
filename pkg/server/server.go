@@ -4737,15 +4737,17 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, initReqURL, nil)
 	if err != nil {
 		if ctx.Err() == nil {
-			log.Printf("[BOT LISTENER] error al crear petición de inicialización: %v", err)
-			logbus.Warn(logbus.CatListener, "Error al crear petición de inicialización del bot de Telegram", err.Error())
+    		safeErr := notifier.RedactError(err, token)
+      		log.Printf("[BOT LISTENER] error al crear petición de inicialización: %v", safeErr)
+      		logbus.Warn(logbus.CatListener, "Error al crear petición de inicialización del bot de Telegram", safeErr.Error())
 		}
 	} else {
 		resp, err := client.Do(req)
 		if err != nil {
 			if ctx.Err() == nil {
-				log.Printf("[BOT LISTENER] error al ejecutar petición de inicialización: %v", err)
-				logbus.Warn(logbus.CatListener, "Error al ejecutar petición de inicialización del bot de Telegram", err.Error())
+				safeErr := notifier.RedactError(err, token)
+				log.Printf("[BOT LISTENER] error al ejecutar petición de inicialización: %v", safeErr)
+				logbus.Warn(logbus.CatListener, "Error al ejecutar petición de inicialización del bot de Telegram", safeErr.Error())
 			}
 		} else {
 			var initRes struct {
@@ -4791,8 +4793,9 @@ func (s *Server) runBotListener(ctx context.Context, token string, authorizedCha
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("[BOT LISTENER] error al consultar Telegram Bot API: %v", err)
-			logbus.Warn(logbus.CatListener, "Error al consultar Telegram Bot API", err.Error())
+			safeErr := notifier.RedactError(err, token)
+			log.Printf("[BOT LISTENER] error al consultar Telegram Bot API: %v", safeErr)
+			logbus.Warn(logbus.CatListener, "Error al consultar Telegram Bot API", safeErr.Error())
 			select {
 			case <-ctx.Done():
 				return
